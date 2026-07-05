@@ -94,7 +94,7 @@ export function PageView({ doc, pageId }: Props) {
       canvas.style.height = `${vp.height}px`;
       const ctx = canvas.getContext("2d")!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
       if (cancelled) return;
       setViewport(vp as unknown as Viewport);
       const content = await page.getTextContent();

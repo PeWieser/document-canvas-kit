@@ -25,7 +25,7 @@ export function PageThumb({
       canvas.width = Math.floor(vp.width);
       canvas.height = Math.floor(vp.height);
       const ctx = canvas.getContext("2d")!;
-      await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
     })();
     return () => {
       cancelled = true;
