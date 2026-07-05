@@ -1,0 +1,145 @@
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+
+export type Lang = "de" | "en";
+
+type Dict = Record<string, string>;
+
+const de: Dict = {
+  appName: "PDF Studio",
+  tagline: "PDFs bearbeiten – lokal & privat",
+  openFile: "PDF öffnen",
+  dropHere: "PDF hierher ziehen oder klicken zum Öffnen",
+  dropHint: "Deine Datei bleibt vollständig in deinem Browser.",
+  select: "Auswahl",
+  highlight: "Markieren",
+  redact: "Schwärzen",
+  editText: "Text bearbeiten",
+  textbox: "Textbox",
+  pen: "Stift",
+  comment: "Kommentar",
+  download: "Exportieren",
+  exporting: "Exportiere…",
+  page: "Seite",
+  of: "von",
+  zoomIn: "Vergrößern",
+  zoomOut: "Verkleinern",
+  fitWidth: "Breite anpassen",
+  undo: "Rückgängig",
+  redo: "Wiederholen",
+  gridView: "Seitenübersicht",
+  pages: "Seiten",
+  color: "Farbe",
+  fontSize: "Schriftgröße",
+  penSize: "Stiftbreite",
+  delete: "Löschen",
+  duplicate: "Duplizieren",
+  deletePage: "Seite löschen",
+  save: "Speichern",
+  reset: "Verwerfen",
+  comments: "Kommentare",
+  addReply: "Antworten…",
+  reply: "Antworten",
+  resolve: "Erledigt",
+  reopen: "Erneut öffnen",
+  resolved: "Erledigt",
+  writeComment: "Kommentar schreiben…",
+  editHint: "Klicke auf einen Textabschnitt, um ihn zu ersetzen.",
+  replaceText: "Text ersetzen",
+  originalDeleted: "Originaltext wird gelöscht",
+  emptyComments: "Noch keine Kommentare.",
+  loading: "Wird geladen…",
+  exportDone: "PDF exportiert",
+  exportFail: "Export fehlgeschlagen",
+  language: "Sprache",
+  theme: "Design",
+  shortcuts: "Tastenkürzel",
+  newTextbox: "Neuer Text",
+  redactWarn: "Beim Export wird der Text unter den Balken dauerhaft entfernt.",
+  reorderHint: "Ziehen zum Umsortieren",
+};
+
+const en: Dict = {
+  appName: "PDF Studio",
+  tagline: "Edit PDFs – local & private",
+  openFile: "Open PDF",
+  dropHere: "Drop a PDF here or click to open",
+  dropHint: "Your file stays entirely in your browser.",
+  select: "Select",
+  highlight: "Highlight",
+  redact: "Redact",
+  editText: "Edit text",
+  textbox: "Text box",
+  pen: "Pen",
+  comment: "Comment",
+  download: "Export",
+  exporting: "Exporting…",
+  page: "Page",
+  of: "of",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  fitWidth: "Fit width",
+  undo: "Undo",
+  redo: "Redo",
+  gridView: "Page overview",
+  pages: "Pages",
+  color: "Color",
+  fontSize: "Font size",
+  penSize: "Pen width",
+  delete: "Delete",
+  duplicate: "Duplicate",
+  deletePage: "Delete page",
+  save: "Save",
+  reset: "Discard",
+  comments: "Comments",
+  addReply: "Reply…",
+  reply: "Reply",
+  resolve: "Resolve",
+  reopen: "Reopen",
+  resolved: "Resolved",
+  writeComment: "Write a comment…",
+  editHint: "Click a text span to replace it.",
+  replaceText: "Replace text",
+  originalDeleted: "Original text will be deleted",
+  emptyComments: "No comments yet.",
+  loading: "Loading…",
+  exportDone: "PDF exported",
+  exportFail: "Export failed",
+  language: "Language",
+  theme: "Theme",
+  shortcuts: "Shortcuts",
+  newTextbox: "New text",
+  redactWarn: "On export the text under the bars is permanently removed.",
+  reorderHint: "Drag to reorder",
+};
+
+const dicts: Record<Lang, Dict> = { de, en };
+
+interface I18nCtx {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: (key: keyof typeof de) => string;
+}
+
+const Ctx = createContext<I18nCtx | null>(null);
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [lang, setLangState] = useState<Lang>(() => {
+    if (typeof window === "undefined") return "de";
+    return (localStorage.getItem("pdfstudio-lang") as Lang) || "de";
+  });
+  const setLang = useCallback((l: Lang) => {
+    setLangState(l);
+    if (typeof window !== "undefined") localStorage.setItem("pdfstudio-lang", l);
+  }, []);
+  const t = useCallback(
+    (key: keyof typeof de) => dicts[lang][key] ?? String(key),
+    [lang],
+  );
+  return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
+}
+
+export function useI18n() {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useI18n must be used within I18nProvider");
+  return ctx;
+}
