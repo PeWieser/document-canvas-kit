@@ -1,24 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState, type ComponentType } from "react";
+import { I18nProvider } from "@/lib/i18n";
+import { Toaster } from "@/components/ui/sonner";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  // pdf.js and the editor rely on browser APIs, so load them only on the client.
+  const [Editor, setEditor] = useState<ComponentType | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    import("@/components/editor/PdfStudio").then((m) => {
+      if (mounted) setEditor(() => m.PdfStudio);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <I18nProvider>
+      <div className="min-h-screen bg-desk text-foreground">
+        {Editor ? (
+          <Editor />
+        ) : (
+          <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+            <span className="animate-pulse">PDF Studio…</span>
+          </div>
+        )}
+      </div>
+      <Toaster />
+    </I18nProvider>
   );
 }
