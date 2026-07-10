@@ -1,14 +1,21 @@
 import { create } from "zustand";
-import type { Annotation, Tool } from "@/lib/pdf/types";
+import type { Annotation, Tool, ViewMode } from "@/lib/pdf/types";
 
 interface Snapshot {
   annotations: Annotation[];
   pageOrder: number[];
 }
 
+export interface PageSize {
+  w: number;
+  h: number;
+}
+
 interface EditorState {
   fileName: string | null;
   originalBytes: Uint8Array | null;
+  fileHandle: FileSystemFileHandle | null;
+  dirty: boolean;
   numPages: number;
   pageOrder: number[]; // stable original page indices, in display order
   annotations: Annotation[];
@@ -19,20 +26,36 @@ interface EditorState {
   fontSize: number;
   penSize: number;
   zoom: number;
+  viewMode: ViewMode;
+  estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
+  sidebarOpen: boolean;
+  currentPage: number; // display index of the active page
   selectedId: string | null;
   gridOpen: boolean;
 
   past: Snapshot[];
   future: Snapshot[];
 
-  loadDoc: (fileName: string, bytes: Uint8Array, numPages: number) => void;
+  loadDoc: (
+    fileName: string,
+    bytes: Uint8Array,
+    numPages: number,
+    estimateSize: PageSize | null,
+    handle?: FileSystemFileHandle | null,
+  ) => void;
   closeDoc: () => void;
+  setFileHandle: (h: FileSystemFileHandle | null) => void;
+  markSaved: (bytes: Uint8Array) => void;
   setTool: (t: Tool) => void;
   setColor: (c: string) => void;
   setHighlightColor: (c: string) => void;
   setFontSize: (n: number) => void;
   setPenSize: (n: number) => void;
   setZoom: (z: number) => void;
+  setViewMode: (m: ViewMode) => void;
+  setSidebarOpen: (b: boolean) => void;
+  toggleSidebar: () => void;
+  setCurrentPage: (i: number) => void;
   setGridOpen: (b: boolean) => void;
   select: (id: string | null) => void;
 
@@ -57,6 +80,8 @@ function snap(s: EditorState): Snapshot {
 export const useEditor = create<EditorState>((set, get) => ({
   fileName: null,
   originalBytes: null,
+  fileHandle: null,
+  dirty: false,
   numPages: 0,
   pageOrder: [],
   annotations: [],
@@ -67,43 +92,62 @@ export const useEditor = create<EditorState>((set, get) => ({
   fontSize: 14,
   penSize: 3,
   zoom: 1.15,
+  viewMode: "fit-width",
+  estimateSize: null,
+  sidebarOpen: true,
+  currentPage: 0,
   selectedId: null,
   gridOpen: false,
 
   past: [],
   future: [],
 
-  loadDoc: (fileName, bytes, numPages) =>
+  loadDoc: (fileName, bytes, numPages, estimateSize, handle = null) =>
     set({
       fileName,
       originalBytes: bytes,
+      fileHandle: handle,
+      dirty: false,
       numPages,
+      estimateSize,
       pageOrder: Array.from({ length: numPages }, (_, i) => i),
       annotations: [],
       past: [],
       future: [],
       selectedId: null,
+      currentPage: 0,
       tool: "select",
+      viewMode: "fit-width",
     }),
 
   closeDoc: () =>
     set({
       fileName: null,
       originalBytes: null,
+      fileHandle: null,
+      dirty: false,
       numPages: 0,
       pageOrder: [],
       annotations: [],
       past: [],
       future: [],
       selectedId: null,
+      currentPage: 0,
     }),
+
+  setFileHandle: (h) => set({ fileHandle: h }),
+  markSaved: (bytes) => set({ originalBytes: bytes, dirty: false }),
 
   setTool: (t) => set({ tool: t, selectedId: null }),
   setColor: (c) => set({ color: c }),
   setHighlightColor: (c) => set({ highlightColor: c }),
   setFontSize: (n) => set({ fontSize: n }),
   setPenSize: (n) => set({ penSize: n }),
-  setZoom: (z) => set({ zoom: Math.min(4, Math.max(0.25, z)) }),
+  setZoom: (z) => set({ zoom: Math.min(6, Math.max(0.1, z)), viewMode: "custom" }),
+  setViewMode: (m) => set({ viewMode: m }),
+  setSidebarOpen: (b) => set({ sidebarOpen: b }),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setCurrentPage: (i) => set({ currentPage: i }),
   setGridOpen: (b) => set({ gridOpen: b }),
   select: (id) => set({ selectedId: id }),
 
@@ -112,6 +156,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: [...s.past, snap(s)],
       future: [],
+      dirty: true,
       annotations: [...s.annotations, a],
       selectedId: a.id,
     });
@@ -122,6 +167,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: [...s.past, snap(s)],
       future: [],
+      dirty: true,
       annotations: s.annotations.map((a) =>
         a.id === id ? ({ ...a, ...patch } as Annotation) : a,
       ),
@@ -133,6 +179,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: [...s.past, snap(s)],
       future: [],
+      dirty: true,
       annotations: s.annotations.filter((a) => a.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
     });
@@ -143,7 +190,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const order = [...s.pageOrder];
     const [moved] = order.splice(from, 1);
     order.splice(to, 0, moved);
-    set({ past: [...s.past, snap(s)], future: [], pageOrder: order });
+    set({ past: [...s.past, snap(s)], future: [], dirty: true, pageOrder: order });
   },
 
   deletePage: (displayIndex) => {
@@ -153,6 +200,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: [...s.past, snap(s)],
       future: [],
+      dirty: true,
       pageOrder: s.pageOrder.filter((_, i) => i !== displayIndex),
       annotations: s.annotations.filter((a) => a.page !== pageId),
     });
@@ -165,6 +213,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: s.past.slice(0, -1),
       future: [snap(s), ...s.future],
+      dirty: true,
       annotations: previous.annotations,
       pageOrder: previous.pageOrder,
       selectedId: null,
@@ -178,6 +227,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       past: [...s.past, snap(s)],
       future: s.future.slice(1),
+      dirty: true,
       annotations: next.annotations,
       pageOrder: next.pageOrder,
       selectedId: null,
