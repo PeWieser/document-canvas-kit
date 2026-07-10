@@ -11,6 +11,7 @@ import {
   type PDFRef,
   type PDFFont,
 } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import {
   tokenizeStream,
   filterRedactedText,
@@ -18,6 +19,7 @@ import {
   createInitialGraphicsState,
 } from "./ContentStreamEditor";
 import { loadPdfDocument, getPageTextItems, type LoadedTextItem } from "./pdfjs";
+import { getFontBytes } from "./fontDetect";
 import type { Annotation, Rect } from "./types";
 
 function hexToRgb(hex: string) {
@@ -63,7 +65,6 @@ function decodeContents(page: any): Uint8Array {
   } else if (raw) {
     pushStream(raw as PDFRawStream);
   }
-  // Join with a newline so operators from separate streams don't merge.
   let total = 0;
   for (const p of parts) total += p.length + 1;
   const combined = new Uint8Array(total);
@@ -99,14 +100,58 @@ export interface ExportProgress {
   (done: number, total: number): void;
 }
 
+/** Resolve (and cache) an embedded pdf-lib font for a given family/style. */
+function makeFontResolver(outDoc: PDFDocument, helvetica: Record<string, PDFFont>) {
+  const cache = new Map<string, PDFFont>();
+  return async function resolve(
+    family: string | undefined,
+    bold?: boolean,
+    italic?: boolean,
+  ): Promise<PDFFont> {
+    const key = `${family || ""}|${bold ? 1 : 0}|${italic ? 1 : 0}`;
+    if (cache.has(key)) return cache.get(key)!;
+    // Try to embed the real web font for a 1:1 look.
+    if (family) {
+      try {
+        const bytes = await getFontBytes(family, bold, italic);
+        if (bytes) {
+          const embedded = await outDoc.embedFont(bytes, { subset: true });
+          cache.set(key, embedded);
+          return embedded;
+        }
+      } catch (e) {
+        console.warn("font embed failed for", family, e);
+      }
+    }
+    // Fallback: closest Helvetica variant.
+    const fb =
+      bold && italic
+        ? helvetica.bi
+        : bold
+          ? helvetica.b
+          : italic
+            ? helvetica.i
+            : helvetica.r;
+    cache.set(key, fb);
+    return fb;
+  };
+}
+
+async function embedImage(outDoc: PDFDocument, dataUrl: string) {
+  const isPng = dataUrl.startsWith("data:image/png");
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const bin = atob(base64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return isPng ? outDoc.embedPng(arr) : outDoc.embedJpg(arr);
+}
+
 export async function exportPdf(
   originalBytes: Uint8Array,
   pageOrder: number[],
   annotations: Annotation[],
   onProgress?: ExportProgress,
 ): Promise<Uint8Array> {
-  // Collect pdf.js text items for the pages we actually keep (needed for
-  // accurate glyph-width mapping during redaction).
   const pdfjsDoc = await loadPdfDocument(originalBytes.buffer.slice(0) as ArrayBuffer);
   const textItemsByPage = new Map<number, LoadedTextItem[]>();
   for (const pageId of new Set(pageOrder)) {
@@ -116,7 +161,14 @@ export async function exportPdf(
 
   const srcDoc = await PDFDocument.load(originalBytes);
   const outDoc = await PDFDocument.create();
-  const font = await outDoc.embedFont(StandardFonts.Helvetica);
+  outDoc.registerFontkit(fontkit);
+  const helvetica = {
+    r: await outDoc.embedFont(StandardFonts.Helvetica),
+    b: await outDoc.embedFont(StandardFonts.HelveticaBold),
+    i: await outDoc.embedFont(StandardFonts.HelveticaOblique),
+    bi: await outDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+  };
+  const resolveFont = makeFontResolver(outDoc, helvetica);
 
   const copied = await outDoc.copyPages(srcDoc, pageOrder);
 
@@ -129,10 +181,13 @@ export async function exportPdf(
     const pageAnnos = annotations.filter((a) => a.page === pageId);
     const redactRects: { x: number; y: number; x2: number; y2: number }[] = [];
     for (const a of pageAnnos) {
-      if (a.kind === "redact") {
-        redactRects.push({ x: a.rect.x, y: a.rect.y, x2: a.rect.x + a.rect.w, y2: a.rect.y + a.rect.h });
-      } else if (a.kind === "textReplace") {
-        redactRects.push({ x: a.rect.x, y: a.rect.y, x2: a.rect.x + a.rect.w, y2: a.rect.y + a.rect.h });
+      if (a.kind === "redact" || a.kind === "textReplace") {
+        redactRects.push({
+          x: a.rect.x,
+          y: a.rect.y,
+          x2: a.rect.x + a.rect.w,
+          y2: a.rect.y + a.rect.h,
+        });
       }
     }
 
@@ -148,7 +203,6 @@ export async function exportPdf(
           createInitialGraphicsState(),
         );
         const newBytes = serializeTokens(filtered);
-        // Write the edited content back as an uncompressed stream.
         const rawStream = outDoc.context.stream(newBytes);
         const ref: PDFRef = outDoc.context.register(rawStream);
         page.node.set(PDFName.of("Contents"), ref);
@@ -162,14 +216,7 @@ export async function exportPdf(
       if (a.kind === "highlight") {
         const col = hexToRgb(a.color);
         for (const r of a.rects) {
-          page.drawRectangle({
-            x: r.x,
-            y: r.y,
-            width: r.w,
-            height: r.h,
-            color: col,
-            opacity: 0.4,
-          });
+          page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, color: col, opacity: 0.4 });
         }
       } else if (a.kind === "redact") {
         page.drawRectangle({
@@ -180,25 +227,18 @@ export async function exportPdf(
           color: rgb(0, 0, 0),
         });
       } else if (a.kind === "textReplace") {
-        drawWrappedText(
-          page,
-          font,
-          a.text,
-          a.rect.x,
-          a.rect.y + a.rect.h * 0.18,
-          a.fontSize,
-          hexToRgb(a.color),
-        );
+        const font = await resolveFont(a.fontFamily, a.bold, a.italic);
+        drawWrappedText(page, font, a.text, a.rect.x, a.rect.y + a.rect.h * 0.18, a.fontSize, hexToRgb(a.color));
       } else if (a.kind === "textbox") {
-        drawWrappedText(
-          page,
-          font,
-          a.text,
-          a.x,
-          a.y - a.fontSize * 0.8,
-          a.fontSize,
-          hexToRgb(a.color),
-        );
+        const font = await resolveFont(a.fontFamily, a.bold, a.italic);
+        drawWrappedText(page, font, a.text, a.x, a.y - a.fontSize * 0.8, a.fontSize, hexToRgb(a.color));
+      } else if (a.kind === "image") {
+        try {
+          const img = await embedImage(outDoc, a.dataUrl);
+          page.drawImage(img, { x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h });
+        } catch (e) {
+          console.warn("image draw failed", e);
+        }
       } else if (a.kind === "pen") {
         const col = hexToRgb(a.color);
         for (let i = 1; i < a.points.length; i++) {
@@ -213,10 +253,7 @@ export async function exportPdf(
           });
         }
       } else if (a.kind === "comment") {
-        // Embed as a real PDF sticky-note annotation.
-        const body =
-          a.text +
-          a.replies.map((r) => `\n\n↳ ${r.text}`).join("");
+        const body = a.text + a.replies.map((r) => `\n\n↳ ${r.text}`).join("");
         const annotDict = outDoc.context.obj({
           Type: "Annot",
           Subtype: "Text",
