@@ -522,10 +522,6 @@ export function PageView({ doc, pageId }: Props) {
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <ContextMenuItem onClick={() => menuPtRef.current && (() => { const vp = getVp(); if (!vp) return; })()} disabled>
-          {t("appName")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => {
             // find nearest span to right-click and replace it
