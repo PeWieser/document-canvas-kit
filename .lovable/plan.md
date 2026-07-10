@@ -1,89 +1,87 @@
-# PDF-Editor Webapp
+# PDF Studio – Umbau & Erweiterung
 
-Eine rein im Browser laufende Web-App zum Bearbeiten von PDFs – ähnlich der Funktion von Adobe Acrobat, aber mit komplett eigenem Design. Kein Login, keine Cloud: Dateien werden lokal geladen, bearbeitet und wieder heruntergeladen. Oberfläche auf Deutsch/Englisch umschaltbar.
+## 1. Performance: virtualisiertes Rendern & Fit-Modi
 
-## Kernfunktionen
+**Problem:** Aktuell rendert `PdfStudio` alle Seiten gleichzeitig als `PageView` in voller Auflösung → große PDFs hängen.
 
-1. **PDF-Viewer** – Öffnen per Drag & Drop oder Dateiauswahl, mehrseitige Anzeige, Zoom, Seiten-Navigation, Thumbnails, pdf seiten können links in der seiten neu angeordnet werden, sowie in einer zusätzlichen grid view. Anordnung per drag and drop. webapp soll rechtsklick menü für menü haben und tastenkombinationen wie strg s strg a usw. unterstützen.
-2. **Text markieren (Highlight)** – Textauswahl über die Textebene, farbige Markierungen (mehrere Farben) setzen und wieder entfernen.
-3. **Stifte man soll mit verschiedenen stiften wie in apple notes im pdf rummalen können, mit automatischer glättung, damit ruckler mit  der maus etwas geglättet werden.**
-4. **Schwärzen (echte Redaktion)** – Bereich aufziehen; der darunterliegende Text wird **wirklich aus dem Content-Stream gelöscht** (nicht nur überdeckt) und zusätzlich ein schwarzer Balken gezeichnet. Nutzt `filterRedactedText` aus dem hochgeladenen `ContentStreamEditor.ts`.
-5. **Bestehenden Text ersetzen (Word/Acrobat-like)** – Auf einen Textabschnitt klicken, Inhalt inline bearbeiten. Beim Speichern wird der Originaltext an dieser Stelle gelöscht und der neue Text an gleicher Position/Größe neu gesetzt.
-6. **Textboxen hinzufügen** – An beliebiger Stelle neue Textfelder platzieren, verschieben, Schriftgröße/Farbe wählen.
-7. **Kommentarfunktion:** Kommentare sollen mit reply funktion geladen hinzugefügt und bearbeitet werden können. als textbox, kommentarfeld und kommentarhighlighter.
-8. **Export** – Bearbeitetes PDF lokal herunterladen; alle Änderungen werden in die echten PDF-Bytes geschrieben.
-  &nbsp;
+**Lösung:**
 
-## Layout & Bedienung
+- `PageView` wird virtualisiert: jede Seite bekommt einen Platzhalter mit korrekter Höhe (aus der PDF-Seitengröße + Zoom berechnet, ohne zu rendern). Canvas/Text-Layer werden erst gemountet, wenn die Seite via `IntersectionObserver` (mit Vorlade-Rand, z.B. ±1 Seite) in den Viewport kommt, und wieder abgebaut, wenn sie weit draußen ist.
+- Sichtbare Seiten: hohe Auflösung (aktuelle Logik). Thumbnails links: niedrige Auflösung (bereits so, `width=130`) — zusätzlich werden Thumbnails nur gerendert, wenn im Rail-Viewport sichtbar.
+- Seitengrößen werden einmal beim Laden ausgelesen und im Store gecached (kein `getPage` pro Layout-Berechnung).
 
-```text
-┌───────────────────────────────────────────────────────────┐
-│  Toolbar: Öffnen · Auswahl · Markieren · Schwärzen ·       │
-│           Text bearbeiten · Textbox · | Zoom · Seite · DE/EN · Download │
-├────────────┬──────────────────────────────────────────────┤
-│ Thumbnails │                                              │
-│  (Seiten)  │        PDF-Arbeitsfläche (Seite)             │
-│            │   [Render-Canvas + Text-Layer + Overlay]     │
-└────────────┴──────────────────────────────────────────────┘
-```
+## 2. Fit-Modi & Standard-Skalierung
 
-- Linke Leiste: Seiten-Thumbnails. Oben: Werkzeugleiste mit aktivem Werkzeug-Zustand.
-- Kontext-Panel (rechts/Popover) je nach Werkzeug: Markierfarbe, Schwärzungsoptionen, Textbox-Eigenschaften (Schriftgröße, Farbe).
-- Jede Seite: PDF.js-Canvas + transparente Textebene (für Auswahl/Klick-zum-Bearbeiten) + Overlay-Ebene (Markierungen, Schwärzungs-Rechtecke, Textboxen als bewegliche Elemente).
+Neuer Store-State `viewMode: "fit-width" | "fit-height" | "two-page"` und `fitZoom` (berechnet).
 
-## Technische Architektur
+- **Standard = `fit-width**`: Seite füllt Fensterbreite minus kleinem Padding. Wird beim Laden und bei Fenster-Resize automatisch neu berechnet.
+- `**fit-height**`: Seite passt in die sichtbare Höhe.
+- `**two-page` (E-Book)**: zwei Seiten nebeneinander mit Blättereffekt. Umsetzung über `react-pageflip` (leichtgewichtig, canvas-basiert) — Doppelseiten-Ansicht mit Umblätter-Animation, Navigation per Klick/Pfeil.
+- Manuelles Zoom bleibt möglich und schaltet auf freien Zoom-Modus; Fit-Buttons stellen den jeweiligen Modus wieder her.
 
-**Bibliotheken (per `bun add`):**
+## 3. Responsives Layout
 
-- `pdfjs-dist` – Rendering + Textpositionen (`getTextContent` liefert `transform`/`width`, exakt die von `ContentStreamEditor` erwarteten „redactedItems“).
-- `pdf-lib` – Zugriff auf Seiten-Content-Streams, Einbetten von Schriften, Zeichnen neuer Textboxen, Schreiben der finalen Datei.
-- `pako` – FlateDecode-Streams dekomprimieren/rekomprimieren.
-- `zustand` – Editor-Zustand (Dokument, Werkzeug, Änderungsliste pro Seite).
-- Schriften via `@fontsource` (siehe Design).
+- `PdfStudio` und Toolbar responsiv: Menüleiste bricht auf kleinen Bildschirmen sauber um bzw. wandert in ein kompaktes Menü.
+- Container nutzt `ResizeObserver`, um `fitZoom` bei jeder Größenänderung neu zu berechnen.
+- Header-Zeilen nach Grid-Pattern (`min-w-0`, `shrink-0`, `truncate`) damit nichts abgeschnitten wird.
 
-**Zustandsmodell:** Original-PDF-Bytes + pro Seite eine Liste von Edits: `highlight`, `redaction` (Rect), `textReplace` (Rect + alter/neuer Text + Position/Größe), `textbox` (Position, Text, Stil). Rendering der Overlays in Bildschirmkoordinaten; Umrechnung in PDF-User-Space beim Export.
+## 4. Einklappbare Sidebar (Thumbnails)
 
-**Bearbeitungs-/Export-Pipeline (beim Download):**
+- Thumbnail-Rail wird ein-/ausklappbar (Toggle-Button). Eingeklappt: schmaler Streifen oder ganz versteckt mit sichtbarem Wieder-Öffnen-Button.
+- Aktive Seite: **blauer Balken links** an der aktiven Thumbnail + **Auto-Scroll**, sodass die aktive Seite im Rail möglichst oben/sichtbar bleibt (`scrollIntoView` bei Wechsel).
+- Design minimalistisch, Swiss-Style: klare Typo, viel Weißraum, dünne Trennlinien, reduzierte Farben (bestehende Tokens), keine überflüssigen Rahmen/Schatten.
 
-1. Original-Bytes mit `pdf-lib` laden.
-2. Pro Seite den/die Content-Stream(s) holen, mit `pako` inflaten.
-3. Mit `tokenizeStream` tokenisieren; `redactionRects` (aus Schwärzungen **und** aus Text-Ersetzungen) und die PDF.js-`redactedItems` an `filterRedactedText` übergeben → Text wird echt entfernt.
-4. Tokens mit `serializeTokens` zurückschreiben, neuen Stream setzen (rekomprimiert oder unkomprimiert).
-5. Für Schwärzungen zusätzlich schwarze Rechtecke zeichnen; für Text-Ersetzungen und Textboxen neuen Text mit eingebetteter Schrift (`pdf-lib` `drawText`) an umgerechneter Position platzieren.
-6. Markierungen als halbtransparente Rechtecke (Multiply-Effekt) zeichnen.
-7. `pdf-lib.save()` → Download.
+## 5. Neue Menüleiste oben
 
-**Koordinaten:** Zentrale Helfer für Umrechnung Bildschirm ↔ PDF-User-Space (Viewport-Skalierung, Y-Achsen-Flip), damit Overlays und Export exakt übereinstimmen.
+Zwei Menü-Reiter links (Dropdown-Menüs, shadcn) + zentrierte Ansichts-Steuerung:
 
-**Runtime:** Alles clientseitig; kein Backend. PDF.js-Worker via Vite `?url`-Import konfigurieren. Schwere Verarbeitung (Tokenisierung/Export) läuft im Browser; für große PDFs mit Ladeindikator.
+- **Datei** (links): PDF öffnen · Exportieren · Speichern · Speichern unter · Beenden.
+  - *Speichern* = Datei überschreiben. Im Browser nur via File System Access API (`showSaveFilePicker`/File-Handle) möglich — wo unterstützt (Chrome/Edge), sonst Fallback auf Download mit Hinweis. Datei-Handle wird beim Öffnen gemerkt, falls über den Picker geöffnet.
+  - *Beenden* = Tab schließen (`window.close()`, mit Bestätigung bei ungespeicherten Änderungen).
+- **Werkzeuge** (links, neuer Reiter): alle Bearbeitungswerkzeuge (Auswahl, Markieren, Schwärzen, Text bearbeiten, Textbox, Stift, Kommentar) mit eindeutigen Beschriftungen und **Hover-Tooltips** (shadcn Tooltip) je Werkzeug. Kontextuelle Einstellungen (Farbe, Größe) erscheinen nur, wenn das passende Werkzeug aktiv ist → „Bedienoberflächen nur sichtbar, wenn gebraucht".
+- **Mitte (zentriert):** Ansichtsmodi (Fit-Breite / Fit-Höhe / Doppelseite), Grid-View, Zoom −/%/+, sowie **Seiten-Navigation**: „Seite X von N", Vor/Zurück-Buttons und manuelles Eingabefeld für die Zielseite.
+- **Rechts:** Theme, Sprache, primärer Export/Download-Button (minimalistisch halten).
 
-## Design-System
+## 6. Fonterkennung & Text bearbeiten (1:1-Ersetzung)
 
-Eigenständiger, präziser „Werkstatt“-Look – ruhig, technisch, dokumentenfokussiert (kein Adobe-Rot, kein generisches Lila).
+Die beiden Beta-`FontLoader`-Dateien werden zu einem überarbeiteten Modul `src/lib/pdf/fontDetect.ts` konsolidiert:
 
-- **Schriften:** UI „Figtree“; Zahlen/Felder (Zoom, Seitenzahl, Koordinaten) „JetBrains Mono“. Installation via `@fontsource/figtree` und `@fontsource/jetbrains-mono`.
-- **Farben (als Tokens in `src/styles.css`, oklch):**
-  - Arbeitsfläche/Desk: weiches Neutralgrau `oklch(0.96 0.005 250)`; Papier: reines Weiß mit weichem Schatten.
-  - Werkzeugleisten: dunkles Anthrazit `oklch(0.24 0.02 260)`.
-  - Primär/Aktiv: sattes Blau `oklch(0.55 0.16 250)`.
-  - Schwärzung: Schwarz mit rotem Warn-Rand `oklch(0.55 0.22 25)`.
-  - Markieren: Gelb/Grün/Blau/Pink Presets.
-  - Dark-Mode-Variante konsequent über Tokens.
-- **Interaktion:** aktives Werkzeug klar hervorgehoben, Overlays mit sauberen Griffen (Resize/Move), dezente Übergänge; Cursor je Werkzeug (Fadenkreuz beim Schwärzen, Text-Cursor beim Markieren).
+- **Stil-Erkennung:** pro geklicktem Text-Item Bold/Italic/Fontgröße aus PDF.js (`fontName`, Transform-Höhe) ermitteln; `resolvePDFCoreFontName` (Subset-Prefix strippen, PS-Namen mappen, Bold/Italic ableiten). Optional visueller Pixel-Abgleich als Fallback (`guessFontByPixelDiff`) — performance-begrenzt (nur bei Bedarf, nicht über hunderte lokale Fonts).
+- **Font laden & einbetten:** `loadWebFont` (Bunny→Google Fallback) für die Live-Vorschau; `getFontBytes` lädt echte `.ttf` für die Einbettung beim Export via `pdf-lib` `embedFont` statt fix Helvetica. Bugfixes in den Betas (doppeltes `appendChild`, falsche Google-URL).
+- **Editier-Verhalten:** Beim Klick mit „Text bearbeiten" wird ein editierbares Feld exakt an Position/Größe/Stil des Originals gelegt (Baseline-genau). **Textrahmen passt sich automatisch dem Inhalt an** (auto-grow). **Originaltext wird sofort entfernt**, sobald der neue Text steht (Live-Redaktion des darunterliegenden Glyphs im Viewer; beim Export echte Content-Stream-Löschung wie bisher über `filterRedactedText`).
+- `TextReplaceAnno` erhält Felder `fontFamily`, `bold`, `italic`; Export nutzt diese für Font-Auswahl.
 
-## Umsetzungsschritte
+## 7. Bilder & Vektorgrafiken bearbeiten + eigenes Kontextmenü
 
-1. Abhängigkeiten + Schriften installieren; `ContentStreamEditor.ts` nach `src/lib/pdf/` übernehmen; Design-Tokens & Fonts einrichten.
-2. Grundgerüst: Route/Layout, Toolbar, Thumbnails, i18n (DE/EN-Umschalter), Zustand (zustand).
-3. PDF.js-Viewer: Rendering, Text-Layer, Zoom, Seiten-Navigation, Worker-Setup.
-4. Overlay-System + Koordinaten-Helfer; Werkzeug „Markieren“.
-5. Werkzeug „Schwärzen“ (Overlay + Anbindung an `filterRedactedText`).
-6. Werkzeug „Text ersetzen“ (Klick → Inline-Edit → Redaktion + Neusatz) und „Textbox hinzufügen“.
-7. Export-Pipeline (pdf-lib + pako + ContentStreamEditor) verdrahten; Download.
-8. Politur: leerer Zustand/Upload, Ladeindikatoren, Fehlerbehandlung, Responsive, SEO-Head (Titel/Description), QA mit Test-PDFs.
+- **Objekt-Erkennung:** Bild-XObjects und Vektorpfade der Seite werden erfasst (Position/BBox über PDF.js Operator-Liste bzw. Content-Stream). Auswahl-Werkzeug erlaubt Anklicken.
+- **Verschieben / Skalieren:** ausgewählte Bilder/Grafiken per Handles bewegen & skalieren; Änderung als Transform gespeichert und beim Export in den Content-Stream geschrieben (Verschieben/Löschen ist im `ContentStreamEditor` bereits angelegt).
+- **Ersetzen:** Bild durch hochgeladenes ersetzen (neues XObject einbetten, altes entfernen).
+- **Eigenes Kontextmenü:** natives Browser-Menü auf der Seite unterdrücken (`onContextMenu preventDefault`) und durch shadcn `ContextMenu` ersetzen — kontextabhängige Befehle:
+  - Text: Text bearbeiten, Schwärzen, Kopieren, Einfügen, Löschen.
+  - Bild/Vektor: Ersetzen, Kopieren, Löschen (Schwärzen-Äquivalent), Verschieben.
+
+## 8. i18n & Aufräumen
+
+- Neue Übersetzungs-Keys (DE/EN) für alle neuen Menüs, Modi, Tooltips, Kontextmenü-Befehle.
+- Redakt-Warnhinweis und Tooltips als Hover-Infos.
+
+---
+
+## Technischer Abriss (Dateien)
+
+- `src/store/editorStore.ts`: `viewMode`, `fitZoom`, `sidebarOpen`, `pageSizes`, `fileHandle`, Aktionen; Bild/Objekt-Transforms.
+- `src/components/editor/PdfStudio.tsx`: Virtualisierung (IntersectionObserver + Platzhalter), ResizeObserver-Fit, aktive-Seite-Fokus, Sidebar-Toggle, Kontextmenü-Root.
+- `src/components/editor/Toolbar.tsx` → aufgeteilt: `MenuBar.tsx` (Datei-/Werkzeuge-Dropdowns), `ViewControls.tsx` (zentriert: Modi, Zoom, Seiten-Nav).
+- `src/components/editor/ThumbnailRail.tsx`: einklappbar, aktiver blauer Balken, Auto-Scroll, lazy Thumbs.
+- `src/components/editor/PageView.tsx`: Fit-Modi-Rendering, Custom-ContextMenu, Bild/Vektor-Handles, verbessertes Text-Edit.
+- `src/components/editor/TwoPageView.tsx` (neu): `react-pageflip` E-Book-Ansicht.
+- `src/lib/pdf/fontDetect.ts` (neu, aus den Betas), `export.ts` (Font-Einbettung), `types.ts` (erweiterte Annotationen), `ContentStreamEditor.ts` (Bild-Transform/Ersetzen), `i18n.tsx`.
+- Neue Abhängigkeiten: `react-pageflip` (E-Book-Flip). shadcn `dropdown-menu`, `tooltip`, `context-menu` (falls noch nicht vorhanden).
 
 ## Hinweise / Grenzen
 
-- Echte In-Place-Ersetzung von PDF-Text ist aufwändig; der robuste Ansatz „Original löschen + neuen Text an gleicher Stelle setzen“ liefert Word/Acrobat-ähnliches Ergebnis, kann aber bei exotischen Schriften/Encodings visuell leicht abweichen (Standard-Schrift wird für Neusatz eingebettet). Kommentar: Nutze hier wenn möglich schrifterkennung und lade dann die schriften vom lokalen pc oder wenn nicht vorhanden von bunnyfonts und dann google fonts.
-- Fokus zunächst auf Standard-Text-PDFs (nicht gescannte Bilder ohne Textebene).
-- Sehr große/komplexe PDFs können im Browser spürbar Rechenzeit brauchen. (nutze hier lazy loading, falls das hilft)
+- „Speichern = überschreiben" funktioniert nur in Browsern mit File System Access API; sonst Download-Fallback.
+- Vektor-/Bildbearbeitung im Content-Stream ist komplex; Fokus zuerst auf Bilder (XObjects) verschieben/skalieren/ersetzen/löschen, dann Vektorpfade.
+- Alles bleibt lokal im Browser, kein Upload.
+
+Umsetzung erfolgt in Etappen: (A) Layout/Menüs/Sidebar/Responsiv, (B) Performance/Fit-Modi, (C) Fonterkennung/Text, (D) Bilder/Vektoren + Kontextmenü.
