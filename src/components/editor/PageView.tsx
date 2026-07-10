@@ -91,7 +91,6 @@ async function detectImages(page: any): Promise<Rect[]> {
       else if (fn === OPS.transform) ctm = mul(args as number[], ctm);
       else if (
         fn === OPS.paintImageXObject ||
-        fn === OPS.paintJpegXObject ||
         fn === OPS.paintImageXObjectRepeat ||
         fn === OPS.paintInlineImageXObject
       ) {
