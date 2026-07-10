@@ -17,6 +17,8 @@ export type Tool =
   | "pen"
   | "comment";
 
+export type ViewMode = "fit-width" | "fit-height" | "two-page" | "custom";
+
 export type AnnoColor = string; // hex
 
 export interface HighlightAnno {
@@ -42,6 +44,9 @@ export interface TextReplaceAnno {
   text: string;
   fontSize: number;
   color: AnnoColor;
+  fontFamily?: string;
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface TextboxAnno {
@@ -55,6 +60,9 @@ export interface TextboxAnno {
   text: string;
   fontSize: number;
   color: AnnoColor;
+  fontFamily?: string;
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface PenAnno {
@@ -83,10 +91,21 @@ export interface CommentAnno {
   resolved: boolean;
 }
 
+// A moved / replaced raster image. `rect` is the target box in PDF space.
+// `dataUrl` (optional) carries a replacement image drawn on export.
+export interface ImageAnno {
+  id: string;
+  kind: "image";
+  page: number;
+  rect: Rect;
+  dataUrl: string;
+}
+
 export type Annotation =
   | HighlightAnno
   | RedactAnno
   | TextReplaceAnno
   | TextboxAnno
   | PenAnno
-  | CommentAnno;
+  | CommentAnno
+  | ImageAnno;
