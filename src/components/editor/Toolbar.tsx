@@ -229,6 +229,9 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
           <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
             <Redo2 className="h-4 w-4" />
           </TBtn>
+          <TBtn title={t("toggleComments")} active={commentsPanelOpen} onClick={toggleCommentsPanel}>
+            <MessagesSquare className="h-4 w-4" />
+          </TBtn>
           <TBtn title={t("theme")} onClick={onToggleTheme}>
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </TBtn>
