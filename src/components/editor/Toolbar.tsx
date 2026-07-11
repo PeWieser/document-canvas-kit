@@ -25,6 +25,7 @@ import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  MessagesSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
