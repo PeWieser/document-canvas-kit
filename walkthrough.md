@@ -36,19 +36,23 @@ Ich habe Phase 1 (Bug-Fixes) fertiggestellt und verifiziert sowie Phase 3 (UI Ov
 
 ## 2. Testergebnisse (Vitest)
 
-Ich habe das Test-Framework Vitest mit einer `happy-dom`-Simulationsumgebung aufgesetzt. Alle **36 Tests** laufen fehlerfrei durch:
+Ich habe das Test-Framework Vitest mit einer `happy-dom`-Simulationsumgebung aufgesetzt und **alle fehlenden Tests für Phase 1 (Schwärzen/Redact & Export)** hinzugefügt. Alle **40 Tests** laufen fehlerfrei durch:
 
 ```bash
-> test
-> vitest run
+> npx vitest run
 
  RUN  v4.1.10 D:/code gemini/pdf git/document-canvas-kit
 
- ✓ src/__tests__/pdf/fontDetect.test.ts (17 tests) 9ms
- ✓ src/__tests__/store/editorStore.test.ts (19 tests) 11ms
+ ✓ src/__tests__/pdf/ContentStreamEditor.test.ts (2 tests) 8ms
+ ✓ src/__tests__/store/editorStore.test.ts (19 tests) 15ms
+ ✓ src/__tests__/pdf/fontDetect.test.ts (17 tests) 10ms
+ ✓ src/__tests__/pdf/export.test.ts (2 tests) 61ms
 
- Test Files  2 passed (2)
-      Tests  36 passed (36)
-   Start at  23:38:29
-   Duration  1.25s (transform 83ms, setup 0ms, import 165ms, tests 20ms, environment 1.73s)
+ Test Files  4 passed (4)
+      Tests  40 passed (40)
+   Start at  23:44:04
+   Duration  1.84s
 ```
+
+Damit ist Phase 1 auf funktionaler und testgetriebener Ebene vollständig abgeschlossen.
+
