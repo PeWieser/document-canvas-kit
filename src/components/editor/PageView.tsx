@@ -398,6 +398,26 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     const pt = menuPtRef.current;
     if (!vp || !pt) return;
+    // 1) Prefer an active text selection → redact each fragment.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && wrapRef.current) {
+      const base = wrapRef.current.getBoundingClientRect();
+      let any = false;
+      for (let i = 0; i < sel.rangeCount; i++) {
+        for (const cr of Array.from(sel.getRangeAt(i).getClientRects())) {
+          if (cr.width < 1 || cr.height < 1) continue;
+          const p1 = pdfPoint(cr.left - base.left, cr.top - base.top, vp);
+          const p2 = pdfPoint(cr.right - base.left, cr.bottom - base.top, vp);
+          addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: rectFromPdfPoints(p1, p2) } as Annotation);
+          any = true;
+        }
+      }
+      if (any) {
+        sel.removeAllRanges();
+        return;
+      }
+    }
+    // 2) Fallback: redact the image under the cursor, or a small default box.
     const img = imageRectAt(pt[0], pt[1]);
     const rect = img ?? { x: pdfPoint(pt[0], pt[1], vp)[0] - 40, y: pdfPoint(pt[0], pt[1], vp)[1] - 8, w: 80, h: 16 };
     addAnnotation({ id: uid(), kind: "redact", page: pageId, rect } as Annotation);
