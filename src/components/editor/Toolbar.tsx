@@ -70,6 +70,8 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
   const setGridOpen = useEditor((s) => s.setGridOpen);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const toggleSidebar = useEditor((s) => s.toggleSidebar);
+  const commentsPanelOpen = useEditor((s) => s.commentsPanelOpen);
+  const toggleCommentsPanel = useEditor((s) => s.toggleCommentsPanel);
   const color = useEditor((s) => s.color);
   const setColor = useEditor((s) => s.setColor);
   const highlightColor = useEditor((s) => s.highlightColor);
