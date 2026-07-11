@@ -429,11 +429,11 @@ export function PageView({ doc, pageId }: Props) {
     reader.readAsDataURL(file);
   };
 
-  const textInteractive = tool === "highlight" || tool === "edit-text";
-  const overlayInteractive = tool === "redact" || tool === "pen" || tool === "textbox" || tool === "comment";
+  const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact";
+  const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment";
 
   const cursor =
-    tool === "redact" || tool === "pen"
+    tool === "pen"
       ? "crosshair"
       : tool === "textbox" || tool === "comment"
         ? "copy"
