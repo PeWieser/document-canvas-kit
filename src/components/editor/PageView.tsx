@@ -245,6 +245,14 @@ export function PageView({ doc, pageId }: Props) {
     }
     if (tool === "comment") {
       const [px, py] = pdfPoint(sx, sy, vp);
+      // If a pin already exists nearby, open it instead of stacking a new one.
+      const existing = pageAnnos.find(
+        (a) => a.kind === "comment" && Math.hypot(a.x - px, a.y - py) < 20 / zoom,
+      );
+      if (existing) {
+        select(existing.id);
+        return;
+      }
       addAnnotation({ id: uid(), kind: "comment", page: pageId, x: px, y: py, text: "", replies: [], resolved: false } as Annotation);
       return;
     }
