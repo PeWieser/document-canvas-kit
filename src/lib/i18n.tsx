@@ -76,7 +76,7 @@ const de: Dict = {
   expandSidebar: "Seitenleiste ausklappen",
   toolSelectHint: "Objekte auswählen, verschieben und bearbeiten",
   toolHighlightHint: "Text markieren",
-  toolRedactHint: "Bereich schwärzen – Text wird beim Export gelöscht",
+  toolRedactHint: "Text auswählen → wird beim Export gelöscht",
   toolEditHint: "Auf Text klicken, um ihn direkt zu ersetzen",
   toolTextboxHint: "Neues Textfeld einfügen",
   toolPenHint: "Freihand zeichnen",
