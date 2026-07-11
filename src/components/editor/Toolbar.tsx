@@ -39,6 +39,7 @@ import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
 import type { Tool } from "@/lib/pdf/types";
 import { cn } from "@/lib/utils";
+import { FontPicker } from "./FontPicker";
 
 const HL_COLORS = ["#ffd54a", "#7ee787", "#7cc4ff", "#ff9ecb"];
 const PEN_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b"];
