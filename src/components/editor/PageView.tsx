@@ -489,7 +489,7 @@ export function PageView({ doc, pageId }: Props) {
                 key={i}
                 data-i={i}
                 onClick={() => onSpanClick(i)}
-                style={{ cursor: tool === "edit-text" ? "text" : undefined }}
+                style={{ cursor: tool === "edit-text" || tool === "redact" ? "text" : undefined }}
               >
                 {it.str}
               </span>
