@@ -29,6 +29,7 @@ interface EditorState {
   viewMode: ViewMode;
   estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
   sidebarOpen: boolean;
+  commentsPanelOpen: boolean;
   currentPage: number; // display index of the active page
   selectedId: string | null;
   gridOpen: boolean;
