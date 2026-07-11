@@ -33,12 +33,12 @@ export function ThumbnailRail({
   if (!sidebarOpen) return null;
 
   return (
-    <aside className="flex w-[180px] shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center justify-between px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <aside className="flex w-[140px] shrink-0 flex-col border-r border-border bg-sidebar select-none">
+      <div className="flex items-center justify-between px-3 py-3.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         <span>{t("pages")}</span>
-        <span className="font-mono">{pageOrder.length}</span>
+        <span className="font-mono text-xs">{pageOrder.length}</span>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-4">
+      <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-4 scrollbar-thin">
         {pageOrder.map((pageId, index) => (
           <div
             key={pageId}
@@ -60,41 +60,42 @@ export function ThumbnailRail({
             }}
             onClick={() => onJump(index)}
             className={cn(
-              "group relative flex cursor-pointer items-stretch gap-2 rounded-md p-1 transition",
-              dragOver === index && dragFrom !== null && "bg-accent/60",
+              "group relative flex cursor-pointer flex-col items-center gap-1.5 rounded-lg p-1.5 transition duration-200",
+              dragOver === index && dragFrom !== null && "bg-accent/40",
+              activeIndex === index ? "bg-accent/30" : "hover:bg-accent/15"
             )}
             title={t("reorderHint")}
           >
-            {/* active blue bar */}
-            <span
-              className={cn(
-                "w-1 shrink-0 rounded-full transition-colors",
-                activeIndex === index ? "bg-primary" : "bg-transparent",
-              )}
-            />
             <div
               className={cn(
-                "relative flex-1 rounded-sm ring-1 transition",
-                activeIndex === index ? "ring-primary" : "ring-border group-hover:ring-primary/40",
+                "relative flex-1 w-full rounded-md border bg-background overflow-hidden transition-all duration-200 shadow-2xs",
+                activeIndex === index 
+                  ? "border-primary ring-1 ring-primary/45 shadow-xs" 
+                  : "border-border/80 group-hover:border-primary/30"
               )}
             >
               <PageThumb doc={doc} pageId={pageId} />
-              <span className="absolute bottom-1 left-1 rounded bg-foreground/70 px-1 font-mono text-[10px] text-background">
-                {index + 1}
-              </span>
               {pageOrder.length > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     deletePage(index);
                   }}
-                  className="absolute right-1 top-1 rounded bg-destructive p-0.5 text-destructive-foreground opacity-0 transition group-hover:opacity-100"
+                  className="absolute right-1 top-1 rounded-md bg-destructive/90 p-1 text-destructive-foreground opacity-0 backdrop-blur-xs transition hover:bg-destructive group-hover:opacity-100 shadow-sm"
                   title={t("deletePage")}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
+            
+            {/* Subtle, small page index badge at bottom */}
+            <span className={cn(
+              "text-[10px] font-mono transition-colors duration-200",
+              activeIndex === index ? "text-primary font-bold" : "text-muted-foreground"
+            )}>
+              {index + 1}
+            </span>
           </div>
         ))}
       </div>

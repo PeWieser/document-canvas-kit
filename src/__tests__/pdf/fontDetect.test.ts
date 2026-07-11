@@ -4,7 +4,7 @@
  * Testet resolvePDFCoreFontName mit realen PostScript-Namen aus PDFs.
  */
 import { describe, it, expect } from "vitest";
-import { resolvePDFCoreFontName, cssFontStack, COMMON_FONTS } from "../lib/pdf/fontDetect";
+import { resolvePDFCoreFontName, cssFontStack, COMMON_FONTS } from "../../lib/pdf/fontDetect";
 
 describe("resolvePDFCoreFontName", () => {
   // --- Subset-prefix stripping ---
