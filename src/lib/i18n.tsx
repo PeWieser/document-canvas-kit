@@ -174,7 +174,7 @@ const en: Dict = {
   expandSidebar: "Expand sidebar",
   toolSelectHint: "Select, move and edit objects",
   toolHighlightHint: "Highlight text",
-  toolRedactHint: "Redact an area – text is deleted on export",
+  toolRedactHint: "Select text → deleted on export",
   toolEditHint: "Click text to replace it directly",
   toolTextboxHint: "Insert a new text box",
   toolPenHint: "Draw freehand",
