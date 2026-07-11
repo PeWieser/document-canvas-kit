@@ -294,9 +294,9 @@ export function PageView({ doc, pageId }: Props) {
     startRef.current = null;
   };
 
-  // --- selection based highlight (text layer) ---
+  // --- selection based highlight / redact (text layer) ---
   const onTextMouseUp = useCallback(() => {
-    if (tool !== "highlight") return;
+    if (tool !== "highlight" && tool !== "redact") return;
     const vp = getVp();
     const sel = window.getSelection();
     if (!vp || !sel || sel.isCollapsed || !wrapRef.current) return;
@@ -311,7 +311,13 @@ export function PageView({ doc, pageId }: Props) {
       }
     }
     if (rects.length) {
-      addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects, color: highlightColor } as Annotation);
+      if (tool === "redact") {
+        for (const r of rects) {
+          addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: r } as Annotation);
+        }
+      } else {
+        addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects, color: highlightColor } as Annotation);
+      }
       sel.removeAllRanges();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
