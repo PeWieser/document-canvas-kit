@@ -89,7 +89,18 @@ const de: Dict = {
   ctxReplaceImage: "Bild ersetzen",
   ctxAddText: "Text hier einfügen",
   copied: "Kopiert",
-};
+  toolRedactHint: "Text auswählen → wird beim Export gelöscht",
+  commentsPanel: "Kommentare",
+  toggleComments: "Kommentar-Übersicht",
+  filterAll: "Alle",
+  filterOpen: "Offen",
+  filterResolved: "Erledigt",
+  jumpToComment: "Zum Kommentar springen",
+  noReplies: "Keine Antworten",
+  font: "Schriftart",
+  bold: "Fett",
+  italic: "Kursiv",
+  fontEmbedWarn: "Einige Schriften konnten nicht eingebettet werden – Ersatzschrift verwendet:",
 
 const en: Dict = {
   appName: "PDF Studio",
