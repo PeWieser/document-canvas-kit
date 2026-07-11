@@ -182,6 +182,7 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
               title={t("fontSize")}
             />
           )}
+          {(tool === "textbox" || tool === "edit-text") && <FontPicker />}
         </div>
 
         {/* CENTER: view + page navigation */}
