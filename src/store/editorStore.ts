@@ -151,6 +151,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setViewMode: (m) => set({ viewMode: m }),
   setSidebarOpen: (b) => set({ sidebarOpen: b }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  toggleCommentsPanel: () => set((s) => ({ commentsPanelOpen: !s.commentsPanelOpen })),
+  setCommentsPanelOpen: (b) => set({ commentsPanelOpen: b }),
   setCurrentPage: (i) => set({ currentPage: i }),
   setGridOpen: (b) => set({ gridOpen: b }),
   select: (id) => set({ selectedId: id }),
