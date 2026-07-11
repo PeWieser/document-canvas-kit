@@ -89,7 +89,6 @@ const de: Dict = {
   ctxReplaceImage: "Bild ersetzen",
   ctxAddText: "Text hier einfügen",
   copied: "Kopiert",
-  toolRedactHint: "Text auswählen → wird beim Export gelöscht",
   commentsPanel: "Kommentare",
   toggleComments: "Kommentar-Übersicht",
   filterAll: "Alle",
