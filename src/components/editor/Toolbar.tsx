@@ -171,18 +171,7 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
               title={t("penSize")}
             />
           )}
-          {(tool === "textbox" || tool === "edit-text") && (
-            <input
-              type="number"
-              min={6}
-              max={96}
-              value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value))}
-              className="w-14 rounded bg-toolbar-accent px-1.5 py-1 font-mono text-xs"
-              title={t("fontSize")}
-            />
-          )}
-          {(tool === "textbox" || tool === "edit-text") && <FontPicker />}
+          {(tool === "textbox" || tool === "edit-text" || tool === "select") && <FontPicker />}
         </div>
 
         {/* CENTER: view + page navigation */}

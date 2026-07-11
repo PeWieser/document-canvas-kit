@@ -245,9 +245,10 @@ export function PageView({ doc, pageId }: Props) {
     }
     if (tool === "comment") {
       const [px, py] = pdfPoint(sx, sy, vp);
-      // If a pin already exists nearby, open it instead of stacking a new one.
+      // If a pin already exists nearby, select it instead of creating a new one.
+      // Note: the pin button itself also stops propagation, so this is a safety fallback.
       const existing = pageAnnos.find(
-        (a) => a.kind === "comment" && Math.hypot(a.x - px, a.y - py) < 20 / zoom,
+        (a) => a.kind === "comment" && Math.hypot(a.x - px, a.y - py) < 24 / zoom,
       );
       if (existing) {
         select(existing.id);
@@ -450,7 +451,9 @@ export function PageView({ doc, pageId }: Props) {
   };
 
   const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact";
-  const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment";
+  // Overlay handles pointer events for drawing tools and comment placement.
+  // select tool also needs overlay to be interactive for existing annotation drag/resize handles.
+  const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment" || tool === "select";
 
   const cursor =
     tool === "pen"
@@ -870,9 +873,15 @@ function CommentPin({
   return (
     <div className="absolute" style={{ left, top, pointerEvents: "auto" }}>
       <button
-        onClick={onSelect}
+        onPointerDown={(e) => {
+          // Stop the overlay's onPointerDown from firing – otherwise a new
+          // comment pin is created instead of opening this existing one.
+          e.stopPropagation();
+          onSelect();
+        }}
+        onClick={(e) => e.stopPropagation()}
         className={cn(
-          "flex h-7 w-7 -translate-y-full items-center justify-center rounded-full rounded-bl-none shadow-md",
+          "flex h-7 w-7 -translate-y-full items-center justify-center rounded-full rounded-bl-none shadow-md transition-transform hover:scale-110 active:scale-95",
           anno.resolved ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground",
         )}
       >

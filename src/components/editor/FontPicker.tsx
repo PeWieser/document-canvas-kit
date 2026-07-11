@@ -7,8 +7,13 @@ import { cn } from "@/lib/utils";
 const TEXT_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b", "#ffffff"];
 
 /**
- * Compact inline font controls (Word/Pages/Notion style) shown when a
- * text annotation is selected. Edits go straight to the store.
+ * Compact inline font controls (Word / Pages / Notion style).
+ *
+ * Shown in the Toolbar when:
+ *   - tool is "textbox" or "edit-text" (for new annotations), OR
+ *   - tool is "select" and a text annotation is currently selected.
+ *
+ * All edits are written directly to the store via updateAnnotation.
  */
 export function FontPicker() {
   const { t } = useI18n();
@@ -17,24 +22,28 @@ export function FontPicker() {
   const updateAnnotation = useEditor((s) => s.updateAnnotation);
 
   const anno = annotations.find((a) => a.id === selectedId);
+
+  // Only render for text-carrying annotations.
   if (!anno || (anno.kind !== "textReplace" && anno.kind !== "textbox")) return null;
 
-  // Families = common list + the font already detected on this annotation.
-  const families = anno.fontFamily && !COMMON_FONTS.includes(anno.fontFamily)
-    ? [anno.fontFamily, ...COMMON_FONTS]
-    : COMMON_FONTS;
+  // Font family dropdown: detected font first, then common list.
+  const families =
+    anno.fontFamily && !COMMON_FONTS.includes(anno.fontFamily)
+      ? [anno.fontFamily, ...COMMON_FONTS]
+      : COMMON_FONTS;
 
   const patch = (p: Record<string, unknown>) => updateAnnotation(anno.id, p as never);
 
   return (
     <div className="flex items-center gap-1 rounded-md bg-toolbar-accent/50 px-1.5 py-1">
+      {/* Font family */}
       <select
         value={anno.fontFamily || "Helvetica"}
         onChange={(e) => {
           void loadWebFont(e.target.value);
           patch({ fontFamily: e.target.value });
         }}
-        className="max-w-[8rem] rounded bg-toolbar-accent px-1.5 py-1 text-xs outline-none"
+        className="max-w-[8rem] rounded bg-toolbar-accent px-1.5 py-1 text-xs outline-none focus:ring-1 focus:ring-primary"
         title={t("font")}
       >
         {families.map((f) => (
@@ -44,16 +53,18 @@ export function FontPicker() {
         ))}
       </select>
 
+      {/* Font size */}
       <input
         type="number"
         min={6}
         max={96}
         value={Math.round(anno.fontSize)}
-        onChange={(e) => patch({ fontSize: Number(e.target.value) })}
-        className="w-12 rounded bg-toolbar-accent px-1 py-1 text-center font-mono text-xs outline-none"
+        onChange={(e) => patch({ fontSize: Math.max(6, Math.min(96, Number(e.target.value))) })}
+        className="w-12 rounded bg-toolbar-accent px-1 py-1 text-center font-mono text-xs outline-none focus:ring-1 focus:ring-primary"
         title={t("fontSize")}
       />
 
+      {/* Bold */}
       <button
         onClick={() => patch({ bold: !anno.bold })}
         className={cn(
@@ -64,6 +75,8 @@ export function FontPicker() {
       >
         <Bold className="h-3.5 w-3.5" />
       </button>
+
+      {/* Italic */}
       <button
         onClick={() => patch({ italic: !anno.italic })}
         className={cn(
@@ -75,6 +88,7 @@ export function FontPicker() {
         <Italic className="h-3.5 w-3.5" />
       </button>
 
+      {/* Color swatches */}
       <div className="flex items-center gap-1 pl-1">
         {TEXT_COLORS.map((c) => (
           <button
@@ -82,7 +96,7 @@ export function FontPicker() {
             onClick={() => patch({ color: c })}
             className={cn(
               "h-4 w-4 rounded-full ring-offset-1 ring-offset-toolbar transition",
-              anno.color === c ? "ring-2 ring-white" : "ring-1 ring-white/30",
+              anno.color === c ? "ring-2 ring-primary" : "ring-1 ring-white/30",
             )}
             style={{ background: c }}
             title={t("color")}
