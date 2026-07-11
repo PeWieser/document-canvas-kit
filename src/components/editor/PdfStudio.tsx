@@ -419,6 +419,7 @@ export function PdfStudio() {
             </div>
           )}
         </main>
+        <CommentsPanel onJump={jumpTo} />
       </div>
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
     </div>
