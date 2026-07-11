@@ -1,87 +1,88 @@
-# PDF Studio – Umbau & Erweiterung
+# PDF Studio – Phasen 1–3
 
-## 1. Performance: virtualisiertes Rendern & Fit-Modi
+Umsetzung der Phasen 1 (Bugfixes), 2 (Font-Caching) und 3 (Design-Overhaul) aus `implementation_plan.md`, in einem Durchlauf. Alle Änderungen bleiben clientseitig; die in der Kompatibilitätsgarantie gesperrten Dateien (`vite.config.ts`, `server.ts`, `start.ts`, `router.tsx`, `routeTree.gen.ts`, `__root.tsx`, `index.tsx`, `.lovable/`) werden nicht angefasst.
 
-**Problem:** Aktuell rendert `PdfStudio` alle Seiten gleichzeitig als `PageView` in voller Auflösung → große PDFs hängen.
+---
 
-**Lösung:**
+## Phase 1 – Bugfixes
 
-- `PageView` wird virtualisiert: jede Seite bekommt einen Platzhalter mit korrekter Höhe (aus der PDF-Seitengröße + Zoom berechnet, ohne zu rendern). Canvas/Text-Layer werden erst gemountet, wenn die Seite via `IntersectionObserver` (mit Vorlade-Rand, z.B. ±1 Seite) in den Viewport kommt, und wieder abgebaut, wenn sie weit draußen ist.
-- Sichtbare Seiten: hohe Auflösung (aktuelle Logik). Thumbnails links: niedrige Auflösung (bereits so, `width=130`) — zusätzlich werden Thumbnails nur gerendert, wenn im Rail-Viewport sichtbar.
-- Seitengrößen werden einmal beim Laden ausgelesen und im Store gecached (kein `getPage` pro Layout-Berechnung).
+### 1.1 Schwärzen per Textauswahl
 
-## 2. Fit-Modi & Standard-Skalierung
+`PageView.tsx`:
 
-Neuer Store-State `viewMode: "fit-width" | "fit-height" | "two-page"` und `fitZoom` (berechnet).
+- Textlayer wird auch bei `tool === "redact"` interaktiv (`textInteractive` erweitern), Cursor `text`.
+- `onTextMouseUp` behandelt zusätzlich `redact`: liest `window.getSelection()`, wandelt jede `ClientRect` via `pdfPoint()` in PDF-Koordinaten und legt pro Fragment eine `RedactAnno` an (analog zur Highlight-Selektion). Rechteck-Zeichnen bleibt als Fallback erhalten.
+- Kontextmenü-Eintrag „Schwärzen": bei vorhandener Textselektion die Selektion schwärzen, sonst wie bisher Bild/Fixpunkt.
 
-- **Standard = `fit-width**`: Seite füllt Fensterbreite minus kleinem Padding. Wird beim Laden und bei Fenster-Resize automatisch neu berechnet.
-- `**fit-height**`: Seite passt in die sichtbare Höhe.
-- `**two-page` (E-Book)**: zwei Seiten nebeneinander mit Blättereffekt. Umsetzung über `react-pageflip` (leichtgewichtig, canvas-basiert) — Doppelseiten-Ansicht mit Umblätter-Animation, Navigation per Klick/Pfeil.
-- Manuelles Zoom bleibt möglich und schaltet auf freien Zoom-Modus; Fit-Buttons stellen den jeweiligen Modus wieder her.
+`Toolbar.tsx`: Redact-Tooltip/Hint auf „Text auswählen → wird geschwärzt" anpassen (i18n-Key).
 
-## 3. Responsives Layout
+### 1.2 Schrifterkennung & FontPicker
 
-- `PdfStudio` und Toolbar responsiv: Menüleiste bricht auf kleinen Bildschirmen sauber um bzw. wandert in ein kompaktes Menü.
-- Container nutzt `ResizeObserver`, um `fitZoom` bei jeder Größenänderung neu zu berechnen.
-- Header-Zeilen nach Grid-Pattern (`min-w-0`, `shrink-0`, `truncate`) damit nichts abgeschnitten wird.
+`fontDetect.ts`:
 
-## 4. Einklappbare Sidebar (Thumbnails)
+- `psNameMap` erweitern (Calibri, Cambria, Verdana, Georgia, Trebuchet MS, Tahoma, Consolas, Courier New) inkl. Bold/Italic-Varianten.
+- Subset-Prefix robuster strippen: Regex `^[A-Z]{6}\+`.
+- Rein numerische/unbekannte CID-Namen → Erstellung eines Algorithmus, der Fonts erkennen kann und prüfen kann (bekannte fonts werden mit ausgelesener fontgröße und formatierung über originaltext gelegt und geprüft, ob eine Übereinstimmung (kanten da ist=.
+- Schriftfarbenerkennung
 
-- Thumbnail-Rail wird ein-/ausklappbar (Toggle-Button). Eingeklappt: schmaler Streifen oder ganz versteckt mit sichtbarem Wieder-Öffnen-Button.
-- Aktive Seite: **blauer Balken links** an der aktiven Thumbnail + **Auto-Scroll**, sodass die aktive Seite im Rail möglichst oben/sichtbar bleibt (`scrollIntoView` bei Wechsel).
-- Design minimalistisch, Swiss-Style: klare Typo, viel Weißraum, dünne Trennlinien, reduzierte Farben (bestehende Tokens), keine überflüssigen Rahmen/Schatten.
+`FontPicker.tsx` (neu): kompaktes Menü (Familie-Dropdown, Größe, Bold/Italic-Toggles, Farbwähler). Zeigt Werte der selektierten Annotation, ruft `updateAnnotation(id, {...})`. Familienliste = gängige Fonts + im Dokument erkannte.
 
-## 5. Neue Menüleiste oben
+`Toolbar.tsx`: `FontPicker` inline einblenden, wenn `tool` in `edit-text`/`textbox` **und** eine passende Annotation selektiert ist.
 
-Zwei Menü-Reiter links (Dropdown-Menüs, shadcn) + zentrierte Ansichts-Steuerung:
+`export.ts`: `makeFontResolver` gibt bei fehlgeschlagener Einbettung ein Warn-Signal zurück; `exportPdf` sammelt fehlende Fonts und meldet sie über einen Toast (statt stillem Helvetica-Fallback).
 
-- **Datei** (links): PDF öffnen · Exportieren · Speichern · Speichern unter · Beenden.
-  - *Speichern* = Datei überschreiben. Im Browser nur via File System Access API (`showSaveFilePicker`/File-Handle) möglich — wo unterstützt (Chrome/Edge), sonst Fallback auf Download mit Hinweis. Datei-Handle wird beim Öffnen gemerkt, falls über den Picker geöffnet.
-  - *Beenden* = Tab schließen (`window.close()`, mit Bestätigung bei ungespeicherten Änderungen).
-- **Werkzeuge** (links, neuer Reiter): alle Bearbeitungswerkzeuge (Auswahl, Markieren, Schwärzen, Text bearbeiten, Textbox, Stift, Kommentar) mit eindeutigen Beschriftungen und **Hover-Tooltips** (shadcn Tooltip) je Werkzeug. Kontextuelle Einstellungen (Farbe, Größe) erscheinen nur, wenn das passende Werkzeug aktiv ist → „Bedienoberflächen nur sichtbar, wenn gebraucht".
-- **Mitte (zentriert):** Ansichtsmodi (Fit-Breite / Fit-Höhe / Doppelseite), Grid-View, Zoom −/%/+, sowie **Seiten-Navigation**: „Seite X von N", Vor/Zurück-Buttons und manuelles Eingabefeld für die Zielseite.
-- **Rechts:** Theme, Sprache, primärer Export/Download-Button (minimalistisch halten).
+### 1.3 Kommentare
 
-## 6. Fonterkennung & Text bearbeiten (1:1-Ersetzung)
+`PageView.tsx` (`onOverlayPointerDown`, `comment`): vor dem Erstellen prüfen, ob ein bestehender Pin im Radius (~20 PDF-Punkte / Zoom) liegt → dann `select(existing.id)` statt neuem Pin.
 
-Die beiden Beta-`FontLoader`-Dateien werden zu einem überarbeiteten Modul `src/lib/pdf/fontDetect.ts` konsolidiert:
+`editorStore.ts`: State `commentsPanelOpen: boolean` (default false) + `toggleCommentsPanel()`.
 
-- **Stil-Erkennung:** pro geklicktem Text-Item Bold/Italic/Fontgröße aus PDF.js (`fontName`, Transform-Höhe) ermitteln; `resolvePDFCoreFontName` (Subset-Prefix strippen, PS-Namen mappen, Bold/Italic ableiten). Optional visueller Pixel-Abgleich als Fallback (`guessFontByPixelDiff`) — performance-begrenzt (nur bei Bedarf, nicht über hunderte lokale Fonts).
-- **Font laden & einbetten:** `loadWebFont` (Bunny→Google Fallback) für die Live-Vorschau; `getFontBytes` lädt echte `.ttf` für die Einbettung beim Export via `pdf-lib` `embedFont` statt fix Helvetica. Bugfixes in den Betas (doppeltes `appendChild`, falsche Google-URL).
-- **Editier-Verhalten:** Beim Klick mit „Text bearbeiten" wird ein editierbares Feld exakt an Position/Größe/Stil des Originals gelegt (Baseline-genau). **Textrahmen passt sich automatisch dem Inhalt an** (auto-grow). **Originaltext wird sofort entfernt**, sobald der neue Text steht (Live-Redaktion des darunterliegenden Glyphs im Viewer; beim Export echte Content-Stream-Löschung wie bisher über `filterRedactedText`).
-- `TextReplaceAnno` erhält Felder `fontFamily`, `bold`, `italic`; Export nutzt diese für Font-Auswahl.
+`CommentsPanel.tsx` (neu): rechte Leiste, alle Kommentare nach Seite gruppiert, Status-Badge offen/erledigt, Klick springt zur Seite und selektiert, Antwort-Threads, Filter offen/erledigt/alle.
 
-## 7. Bilder & Vektorgrafiken bearbeiten + eigenes Kontextmenü
+`PdfStudio.tsx`: `CommentsPanel` rechts rendern, wenn `commentsPanelOpen`.
 
-- **Objekt-Erkennung:** Bild-XObjects und Vektorpfade der Seite werden erfasst (Position/BBox über PDF.js Operator-Liste bzw. Content-Stream). Auswahl-Werkzeug erlaubt Anklicken.
-- **Verschieben / Skalieren:** ausgewählte Bilder/Grafiken per Handles bewegen & skalieren; Änderung als Transform gespeichert und beim Export in den Content-Stream geschrieben (Verschieben/Löschen ist im `ContentStreamEditor` bereits angelegt).
-- **Ersetzen:** Bild durch hochgeladenes ersetzen (neues XObject einbetten, altes entfernen).
-- **Eigenes Kontextmenü:** natives Browser-Menü auf der Seite unterdrücken (`onContextMenu preventDefault`) und durch shadcn `ContextMenu` ersetzen — kontextabhängige Befehle:
-  - Text: Text bearbeiten, Schwärzen, Kopieren, Einfügen, Löschen.
-  - Bild/Vektor: Ersetzen, Kopieren, Löschen (Schwärzen-Äquivalent), Verschieben.
+`Toolbar.tsx`: Toggle-Button (rechts) für das Panel.
 
-## 8. i18n & Aufräumen
+`export.ts`: Replies als verknüpfte Annotationen (`IRT`), `resolved` → `AS: /Completed`.
 
-- Neue Übersetzungs-Keys (DE/EN) für alle neuen Menüs, Modi, Tooltips, Kontextmenü-Befehle.
-- Redakt-Warnhinweis und Tooltips als Hover-Infos.
+---
+
+## Phase 2 – Font-Caching (Offline-First)
+
+`fontCache.ts` (neu): Wrapper um die Cache Storage API (`getCachedFont`/`setCachedFont`, Cache `pdfstudio-fonts-v1`).
+
+`fontDetect.ts`: `getFontBytes()` prüft zuerst den Cache, lädt sonst aus dem Netz und speichert das Ergebnis. Sicher gekapselt (kein Absturz, wenn `caches` fehlt, z. B. bei SSR).
+
+---
+
+## Phase 3 – Design-Overhaul (Swiss / Notion, hell & dunkel)
+
+`styles.css`:
+
+- Neue Tokens: warmes Weiß im Hellmodus, dezente steingraue Ränder, Toolbar/Sidebar kaum vom Canvas abgesetzt; Akzent Blau. Dunkelmodus in warmem Schiefergrau, Dokument-Canvas bleibt weiß.
+- UI-Font auf System-Font-Stack umstellen (Mono-Stack bleibt für Zahlen).
+
+Komponenten-Feinschliff (nur Präsentation):
+
+- `Toolbar.tsx`: kompaktere einzeilige Leiste, dezentere Trenner/Akzente.
+- `ThumbnailRail.tsx`: ruhigere Seitennummern, dünnere Linien.
+- `DropZone.tsx`: minimalistisch – Feature-Kacheln entfernen, reduzierter Upload-Bereich.
+- `PageView.tsx`: leichtere Schatten um die Seiten.
+- `GridOverview.tsx`: engere, ruhigere Kacheln.
+
+`i18n.tsx`: neue DE/EN-Keys für Redact-Hint (Textauswahl), Kommentar-Panel (Titel, Filter offen/erledigt/alle, springe zu), FontPicker (Bold/Italic/Familie) und Font-Einbettungs-Warnung.
 
 ---
 
 ## Technischer Abriss (Dateien)
 
-- `src/store/editorStore.ts`: `viewMode`, `fitZoom`, `sidebarOpen`, `pageSizes`, `fileHandle`, Aktionen; Bild/Objekt-Transforms.
-- `src/components/editor/PdfStudio.tsx`: Virtualisierung (IntersectionObserver + Platzhalter), ResizeObserver-Fit, aktive-Seite-Fokus, Sidebar-Toggle, Kontextmenü-Root.
-- `src/components/editor/Toolbar.tsx` → aufgeteilt: `MenuBar.tsx` (Datei-/Werkzeuge-Dropdowns), `ViewControls.tsx` (zentriert: Modi, Zoom, Seiten-Nav).
-- `src/components/editor/ThumbnailRail.tsx`: einklappbar, aktiver blauer Balken, Auto-Scroll, lazy Thumbs.
-- `src/components/editor/PageView.tsx`: Fit-Modi-Rendering, Custom-ContextMenu, Bild/Vektor-Handles, verbessertes Text-Edit.
-- `src/components/editor/TwoPageView.tsx` (neu): `react-pageflip` E-Book-Ansicht.
-- `src/lib/pdf/fontDetect.ts` (neu, aus den Betas), `export.ts` (Font-Einbettung), `types.ts` (erweiterte Annotationen), `ContentStreamEditor.ts` (Bild-Transform/Ersetzen), `i18n.tsx`.
-- Neue Abhängigkeiten: `react-pageflip` (E-Book-Flip). shadcn `dropdown-menu`, `tooltip`, `context-menu` (falls noch nicht vorhanden).
+Neu: `src/components/editor/FontPicker.tsx`, `src/components/editor/CommentsPanel.tsx`, `src/lib/pdf/fontCache.ts`.
 
-## Hinweise / Grenzen
+Geändert: `src/components/editor/PageView.tsx`, `Toolbar.tsx`, `PdfStudio.tsx`, `ThumbnailRail.tsx`, `DropZone.tsx`, `GridOverview.tsx`, `src/store/editorStore.ts`, `src/lib/pdf/fontDetect.ts`, `src/lib/pdf/export.ts`, `src/lib/i18n.tsx`, `src/styles.css`.
 
-- „Speichern = überschreiben" funktioniert nur in Browsern mit File System Access API; sonst Download-Fallback.
-- Vektor-/Bildbearbeitung im Content-Stream ist komplex; Fokus zuerst auf Bilder (XObjects) verschieben/skalieren/ersetzen/löschen, dann Vektorpfade.
-- Alles bleibt lokal im Browser, kein Upload.
+Keine neuen npm-Abhängigkeiten nötig (Cache API ist nativ).
 
-Umsetzung erfolgt in Etappen: (A) Layout/Menüs/Sidebar/Responsiv, (B) Performance/Fit-Modi, (C) Fonterkennung/Text, (D) Bilder/Vektoren + Kontextmenü.
+## Verifikation
+
+- Typecheck/Build muss sauber sein.
+- Smoke-Test im Preview: PDF laden, Text markieren → schwärzen, Text bearbeiten (FontPicker), Kommentar setzen + erneut anklicken (öffnet Popup, kein neuer Pin), Panel öffnen, Hell/Dunkel umschalten.
