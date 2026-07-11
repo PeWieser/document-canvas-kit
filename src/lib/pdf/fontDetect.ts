@@ -1,7 +1,12 @@
 // Font detection & loading for text replacement.
 // Consolidated & fixed from the uploaded FontLoader betas.
 
+import { getCachedFont, setCachedFont } from "./fontCache";
+
 const STANDARD = new Set(["sans-serif", "serif", "monospace"]);
+
+// Subset prefixes look like "ABCDEF+" – six uppercase letters and a plus.
+const SUBSET_PREFIX = /^[A-Z]{6}\+/;
 
 /** Load a web font family into the document so the live preview matches. */
 export async function loadWebFont(fontFamily: string): Promise<boolean> {
@@ -38,52 +43,99 @@ export interface ResolvedFont {
   isItalic: boolean;
 }
 
+// Common PostScript / embedded font names → friendly CSS families.
+const psNameMap: Record<string, string> = {
+  // Times
+  TimesNewRomanPSMT: "Times New Roman",
+  "TimesNewRomanPS-BoldMT": "Times New Roman",
+  "TimesNewRomanPS-ItalicMT": "Times New Roman",
+  "TimesNewRomanPS-BoldItalicMT": "Times New Roman",
+  TimesNewRoman: "Times New Roman",
+  // Arial
+  ArialMT: "Arial",
+  "Arial-BoldMT": "Arial",
+  "Arial-ItalicMT": "Arial",
+  "Arial-BoldItalicMT": "Arial",
+  // Calibri
+  Calibri: "Calibri",
+  "Calibri-Bold": "Calibri",
+  "Calibri-Italic": "Calibri",
+  "Calibri-BoldItalic": "Calibri",
+  // Cambria
+  Cambria: "Cambria",
+  "Cambria-Bold": "Cambria",
+  "Cambria-Italic": "Cambria",
+  "Cambria-BoldItalic": "Cambria",
+  CambriaMath: "Cambria",
+  // Verdana
+  Verdana: "Verdana",
+  "Verdana-Bold": "Verdana",
+  "Verdana-Italic": "Verdana",
+  "Verdana-BoldItalic": "Verdana",
+  // Georgia
+  Georgia: "Georgia",
+  "Georgia-Bold": "Georgia",
+  "Georgia-Italic": "Georgia",
+  "Georgia-BoldItalic": "Georgia",
+  // Trebuchet MS
+  "TrebuchetMS": "Trebuchet MS",
+  "TrebuchetMS-Bold": "Trebuchet MS",
+  "TrebuchetMS-Italic": "Trebuchet MS",
+  "TrebuchetMS-BoldItalic": "Trebuchet MS",
+  // Tahoma
+  Tahoma: "Tahoma",
+  "Tahoma-Bold": "Tahoma",
+  // Consolas
+  Consolas: "Consolas",
+  "Consolas-Bold": "Consolas",
+  "Consolas-Italic": "Consolas",
+  // Courier
+  CourierNewPSMT: "Courier New",
+  "CourierNewPS-BoldMT": "Courier New",
+  "CourierNewPS-ItalicMT": "Courier New",
+  "CourierNewPS-BoldItalicMT": "Courier New",
+};
+
 /** Resolve a raw PDF font name (possibly subset-prefixed) to a friendly family + style. */
 export function resolvePDFCoreFontName(fontName: string): ResolvedFont {
   if (!fontName) return { family: "Helvetica", isBold: false, isItalic: false };
 
-  let cleanName = fontName;
-  const plusIndex = cleanName.indexOf("+");
-  if (plusIndex !== -1 && plusIndex < 7) cleanName = cleanName.substring(plusIndex + 1);
+  let cleanName = fontName.replace(SUBSET_PREFIX, "");
 
-  const psNameMap: Record<string, string> = {
-    TimesNewRomanPSMT: "Times New Roman",
-    "TimesNewRomanPS-BoldMT": "Times New Roman",
-    "TimesNewRomanPS-ItalicMT": "Times New Roman",
-    "TimesNewRomanPS-BoldItalicMT": "Times New Roman",
-    ArialMT: "Arial",
-    "Arial-BoldMT": "Arial",
-    "Arial-ItalicMT": "Arial",
-    "Arial-BoldItalicMT": "Arial",
-  };
+  // Derive style from the *raw* name before we strip style tokens away.
+  const lowerRaw = cleanName.toLowerCase();
+  const isBold =
+    lowerRaw.includes("bold") ||
+    lowerRaw.includes("-bd") ||
+    lowerRaw.includes(" bd") ||
+    lowerRaw.endsWith("bd") ||
+    lowerRaw.includes("heavy") ||
+    lowerRaw.includes("black") ||
+    lowerRaw.includes("semibold");
+  const isItalic =
+    lowerRaw.includes("italic") ||
+    lowerRaw.includes("oblique") ||
+    lowerRaw.includes("-it") ||
+    lowerRaw.includes(" it");
 
   if (psNameMap[cleanName]) {
-    cleanName = psNameMap[cleanName];
-  } else {
-    cleanName = cleanName.replace(/([a-z])([A-Z])/g, "$1 $2");
+    return { family: psNameMap[cleanName], isBold, isItalic };
   }
 
-  const lowerName = cleanName.toLowerCase();
-  const isBold =
-    lowerName.includes("bold") ||
-    lowerName.includes("-bd") ||
-    lowerName.includes(" bd") ||
-    lowerName.endsWith("bd") ||
-    lowerName.includes("heavy") ||
-    lowerName.includes("black") ||
-    lowerName.includes("semibold");
-  const isItalic =
-    lowerName.includes("italic") ||
-    lowerName.includes("oblique") ||
-    lowerName.includes("-it") ||
-    lowerName.includes(" it");
-
+  // Fall back to splitting camelCase and stripping style tokens.
   cleanName = cleanName
-    .replace(/[-_ ]?(SemiBold|Bold|Italic|Oblique|Regular|Medium|Light|Heavy|Black|MT|Bd|It)/gi, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_ ]?(SemiBold|Bold|Italic|Oblique|Regular|Medium|Light|Heavy|Black|MT|PS|Bd|It)/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  return { family: cleanName || "Helvetica", isBold, isItalic };
+  // CID / purely numeric / empty names → safe default with a warning.
+  if (!cleanName || /^\d+$/.test(cleanName) || /^[A-Za-z]{1,2}\d+$/.test(cleanName)) {
+    if (fontName) console.warn("Unresolved font name, falling back to Helvetica:", fontName);
+    return { family: "Helvetica", isBold, isItalic };
+  }
+
+  return { family: cleanName, isBold, isItalic };
 }
 
 /** Fetch real .ttf bytes for pdf-lib embedding (Bunny Fonts, spoofing an old UA). */
@@ -98,12 +150,19 @@ export async function getFontBytes(
   cleanName = cleanName.replace(/-(Bold|Italic|Oblique|Regular|Medium|Light)$/i, "");
   if (STANDARD.has(cleanName.toLowerCase())) return null;
 
-  try {
-    let styleSuffix = "";
-    if (isBold && isItalic) styleSuffix = ":700i";
-    else if (isBold) styleSuffix = ":700";
-    else if (isItalic) styleSuffix = ":400i";
+  let styleSuffix = "";
+  if (isBold && isItalic) styleSuffix = ":700i";
+  else if (isBold) styleSuffix = ":700";
+  else if (isItalic) styleSuffix = ":400i";
 
+  const cacheKey = `font:${cleanName}${styleSuffix}`;
+
+  // 1) Cache first (offline-first).
+  const cached = await getCachedFont(cacheKey);
+  if (cached) return new Uint8Array(cached);
+
+  // 2) Network.
+  try {
     const cssUrl = `https://fonts.bunny.net/css?family=${cleanName.replace(/\s+/g, "+")}${styleSuffix}`;
     const cssRes = await fetch(cssUrl, {
       headers: {
@@ -119,7 +178,11 @@ export async function getFontBytes(
       let fontUrl = urlMatch[1];
       if (fontUrl.startsWith("'") || fontUrl.startsWith('"')) fontUrl = fontUrl.slice(1, -1);
       const fontRes = await fetch(fontUrl);
-      if (fontRes.ok) return new Uint8Array(await fontRes.arrayBuffer());
+      if (fontRes.ok) {
+        const buf = await fontRes.arrayBuffer();
+        await setCachedFont(cacheKey, buf.slice(0));
+        return new Uint8Array(buf);
+      }
     }
   } catch (err) {
     console.warn("Could not fetch font bytes for", cleanName, err);
@@ -132,3 +195,18 @@ export function cssFontStack(family: string): string {
   if (!family || STANDARD.has(family.toLowerCase())) return "Helvetica, Arial, sans-serif";
   return `"${family}", Helvetica, Arial, sans-serif`;
 }
+
+// Families offered in the manual font picker.
+export const COMMON_FONTS = [
+  "Arial",
+  "Helvetica",
+  "Times New Roman",
+  "Calibri",
+  "Cambria",
+  "Georgia",
+  "Verdana",
+  "Tahoma",
+  "Trebuchet MS",
+  "Courier New",
+  "Consolas",
+];

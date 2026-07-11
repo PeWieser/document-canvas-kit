@@ -25,6 +25,7 @@ import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  MessagesSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
 import type { Tool } from "@/lib/pdf/types";
 import { cn } from "@/lib/utils";
+import { FontPicker } from "./FontPicker";
 
 const HL_COLORS = ["#ffd54a", "#7ee787", "#7cc4ff", "#ff9ecb"];
 const PEN_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b"];
@@ -68,6 +70,8 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
   const setGridOpen = useEditor((s) => s.setGridOpen);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const toggleSidebar = useEditor((s) => s.toggleSidebar);
+  const commentsPanelOpen = useEditor((s) => s.commentsPanelOpen);
+  const toggleCommentsPanel = useEditor((s) => s.toggleCommentsPanel);
   const color = useEditor((s) => s.color);
   const setColor = useEditor((s) => s.setColor);
   const highlightColor = useEditor((s) => s.highlightColor);
@@ -178,6 +182,7 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
               title={t("fontSize")}
             />
           )}
+          {(tool === "textbox" || tool === "edit-text") && <FontPicker />}
         </div>
 
         {/* CENTER: view + page navigation */}
@@ -223,6 +228,9 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
           </TBtn>
           <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
             <Redo2 className="h-4 w-4" />
+          </TBtn>
+          <TBtn title={t("toggleComments")} active={commentsPanelOpen} onClick={toggleCommentsPanel}>
+            <MessagesSquare className="h-4 w-4" />
           </TBtn>
           <TBtn title={t("theme")} onClick={onToggleTheme}>
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

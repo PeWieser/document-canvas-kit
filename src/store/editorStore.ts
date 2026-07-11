@@ -29,6 +29,7 @@ interface EditorState {
   viewMode: ViewMode;
   estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
   sidebarOpen: boolean;
+  commentsPanelOpen: boolean;
   currentPage: number; // display index of the active page
   selectedId: string | null;
   gridOpen: boolean;
@@ -55,6 +56,8 @@ interface EditorState {
   setViewMode: (m: ViewMode) => void;
   setSidebarOpen: (b: boolean) => void;
   toggleSidebar: () => void;
+  toggleCommentsPanel: () => void;
+  setCommentsPanelOpen: (b: boolean) => void;
   setCurrentPage: (i: number) => void;
   setGridOpen: (b: boolean) => void;
   select: (id: string | null) => void;
@@ -95,6 +98,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   viewMode: "fit-width",
   estimateSize: null,
   sidebarOpen: true,
+  commentsPanelOpen: false,
   currentPage: 0,
   selectedId: null,
   gridOpen: false,
@@ -147,6 +151,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setViewMode: (m) => set({ viewMode: m }),
   setSidebarOpen: (b) => set({ sidebarOpen: b }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  toggleCommentsPanel: () => set((s) => ({ commentsPanelOpen: !s.commentsPanelOpen })),
+  setCommentsPanelOpen: (b) => set({ commentsPanelOpen: b }),
   setCurrentPage: (i) => set({ currentPage: i }),
   setGridOpen: (b) => set({ gridOpen: b }),
   select: (id) => set({ selectedId: id }),

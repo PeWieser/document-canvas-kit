@@ -12,6 +12,7 @@ import { ThumbnailRail } from "./ThumbnailRail";
 import { GridOverview } from "./GridOverview";
 import { PageView } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
+import { CommentsPanel } from "./CommentsPanel";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -418,6 +419,7 @@ export function PdfStudio() {
             </div>
           )}
         </main>
+        <CommentsPanel onJump={jumpTo} />
       </div>
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
     </div>

@@ -245,6 +245,14 @@ export function PageView({ doc, pageId }: Props) {
     }
     if (tool === "comment") {
       const [px, py] = pdfPoint(sx, sy, vp);
+      // If a pin already exists nearby, open it instead of stacking a new one.
+      const existing = pageAnnos.find(
+        (a) => a.kind === "comment" && Math.hypot(a.x - px, a.y - py) < 20 / zoom,
+      );
+      if (existing) {
+        select(existing.id);
+        return;
+      }
       addAnnotation({ id: uid(), kind: "comment", page: pageId, x: px, y: py, text: "", replies: [], resolved: false } as Annotation);
       return;
     }
@@ -294,9 +302,9 @@ export function PageView({ doc, pageId }: Props) {
     startRef.current = null;
   };
 
-  // --- selection based highlight (text layer) ---
+  // --- selection based highlight / redact (text layer) ---
   const onTextMouseUp = useCallback(() => {
-    if (tool !== "highlight") return;
+    if (tool !== "highlight" && tool !== "redact") return;
     const vp = getVp();
     const sel = window.getSelection();
     if (!vp || !sel || sel.isCollapsed || !wrapRef.current) return;
@@ -311,7 +319,13 @@ export function PageView({ doc, pageId }: Props) {
       }
     }
     if (rects.length) {
-      addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects, color: highlightColor } as Annotation);
+      if (tool === "redact") {
+        for (const r of rects) {
+          addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: r } as Annotation);
+        }
+      } else {
+        addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects, color: highlightColor } as Annotation);
+      }
       sel.removeAllRanges();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -384,6 +398,26 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     const pt = menuPtRef.current;
     if (!vp || !pt) return;
+    // 1) Prefer an active text selection → redact each fragment.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && wrapRef.current) {
+      const base = wrapRef.current.getBoundingClientRect();
+      let any = false;
+      for (let i = 0; i < sel.rangeCount; i++) {
+        for (const cr of Array.from(sel.getRangeAt(i).getClientRects())) {
+          if (cr.width < 1 || cr.height < 1) continue;
+          const p1 = pdfPoint(cr.left - base.left, cr.top - base.top, vp);
+          const p2 = pdfPoint(cr.right - base.left, cr.bottom - base.top, vp);
+          addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: rectFromPdfPoints(p1, p2) } as Annotation);
+          any = true;
+        }
+      }
+      if (any) {
+        sel.removeAllRanges();
+        return;
+      }
+    }
+    // 2) Fallback: redact the image under the cursor, or a small default box.
     const img = imageRectAt(pt[0], pt[1]);
     const rect = img ?? { x: pdfPoint(pt[0], pt[1], vp)[0] - 40, y: pdfPoint(pt[0], pt[1], vp)[1] - 8, w: 80, h: 16 };
     addAnnotation({ id: uid(), kind: "redact", page: pageId, rect } as Annotation);
@@ -415,11 +449,11 @@ export function PageView({ doc, pageId }: Props) {
     reader.readAsDataURL(file);
   };
 
-  const textInteractive = tool === "highlight" || tool === "edit-text";
-  const overlayInteractive = tool === "redact" || tool === "pen" || tool === "textbox" || tool === "comment";
+  const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact";
+  const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment";
 
   const cursor =
-    tool === "redact" || tool === "pen"
+    tool === "pen"
       ? "crosshair"
       : tool === "textbox" || tool === "comment"
         ? "copy"
@@ -455,7 +489,7 @@ export function PageView({ doc, pageId }: Props) {
                 key={i}
                 data-i={i}
                 onClick={() => onSpanClick(i)}
-                style={{ cursor: tool === "edit-text" ? "text" : undefined }}
+                style={{ cursor: tool === "edit-text" || tool === "redact" ? "text" : undefined }}
               >
                 {it.str}
               </span>

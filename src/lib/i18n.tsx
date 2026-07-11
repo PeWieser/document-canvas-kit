@@ -76,7 +76,7 @@ const de: Dict = {
   expandSidebar: "Seitenleiste ausklappen",
   toolSelectHint: "Objekte auswählen, verschieben und bearbeiten",
   toolHighlightHint: "Text markieren",
-  toolRedactHint: "Bereich schwärzen – Text wird beim Export gelöscht",
+  toolRedactHint: "Text auswählen → wird beim Export gelöscht",
   toolEditHint: "Auf Text klicken, um ihn direkt zu ersetzen",
   toolTextboxHint: "Neues Textfeld einfügen",
   toolPenHint: "Freihand zeichnen",
@@ -89,6 +89,17 @@ const de: Dict = {
   ctxReplaceImage: "Bild ersetzen",
   ctxAddText: "Text hier einfügen",
   copied: "Kopiert",
+  commentsPanel: "Kommentare",
+  toggleComments: "Kommentar-Übersicht",
+  filterAll: "Alle",
+  filterOpen: "Offen",
+  filterResolved: "Erledigt",
+  jumpToComment: "Zum Kommentar springen",
+  noReplies: "Keine Antworten",
+  font: "Schriftart",
+  bold: "Fett",
+  italic: "Kursiv",
+  fontEmbedWarn: "Einige Schriften konnten nicht eingebettet werden – Ersatzschrift verwendet:",
 };
 
 const en: Dict = {
@@ -163,7 +174,7 @@ const en: Dict = {
   expandSidebar: "Expand sidebar",
   toolSelectHint: "Select, move and edit objects",
   toolHighlightHint: "Highlight text",
-  toolRedactHint: "Redact an area – text is deleted on export",
+  toolRedactHint: "Select text → deleted on export",
   toolEditHint: "Click text to replace it directly",
   toolTextboxHint: "Insert a new text box",
   toolPenHint: "Draw freehand",
@@ -176,6 +187,17 @@ const en: Dict = {
   ctxReplaceImage: "Replace image",
   ctxAddText: "Add text here",
   copied: "Copied",
+  commentsPanel: "Comments",
+  toggleComments: "Comments overview",
+  filterAll: "All",
+  filterOpen: "Open",
+  filterResolved: "Resolved",
+  jumpToComment: "Jump to comment",
+  noReplies: "No replies",
+  font: "Font",
+  bold: "Bold",
+  italic: "Italic",
+  fontEmbedWarn: "Some fonts could not be embedded – used a fallback:",
 };
 
 const dicts: Record<Lang, Dict> = { de, en };
