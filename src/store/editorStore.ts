@@ -56,6 +56,8 @@ interface EditorState {
   setViewMode: (m: ViewMode) => void;
   setSidebarOpen: (b: boolean) => void;
   toggleSidebar: () => void;
+  toggleCommentsPanel: () => void;
+  setCommentsPanelOpen: (b: boolean) => void;
   setCurrentPage: (i: number) => void;
   setGridOpen: (b: boolean) => void;
   select: (id: string | null) => void;
@@ -96,6 +98,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   viewMode: "fit-width",
   estimateSize: null,
   sidebarOpen: true,
+  commentsPanelOpen: false,
   currentPage: 0,
   selectedId: null,
   gridOpen: false,
