@@ -187,6 +187,17 @@ const en: Dict = {
   ctxReplaceImage: "Replace image",
   ctxAddText: "Add text here",
   copied: "Copied",
+  commentsPanel: "Comments",
+  toggleComments: "Comments overview",
+  filterAll: "All",
+  filterOpen: "Open",
+  filterResolved: "Resolved",
+  jumpToComment: "Jump to comment",
+  noReplies: "No replies",
+  font: "Font",
+  bold: "Bold",
+  italic: "Italic",
+  fontEmbedWarn: "Some fonts could not be embedded – used a fallback:",
 };
 
 const dicts: Record<Lang, Dict> = { de, en };
