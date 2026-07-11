@@ -101,6 +101,7 @@ const de: Dict = {
   bold: "Fett",
   italic: "Kursiv",
   fontEmbedWarn: "Einige Schriften konnten nicht eingebettet werden – Ersatzschrift verwendet:",
+};
 
 const en: Dict = {
   appName: "PDF Studio",
