@@ -38,6 +38,18 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
+    // If a Vite dynamic import chunk fails to load (often due to a new deployment replacing old chunks)
+    // we should automatically force a full page reload so the browser fetches the new index.html and hashes.
+    const msg = error.message || "";
+    if (
+      msg.includes("Failed to fetch dynamically imported module") ||
+      msg.includes("Importing a module script failed") ||
+      msg.includes("dynamically imported module")
+    ) {
+      window.location.reload();
+      return;
+    }
+    
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
