@@ -344,11 +344,11 @@ export function PdfStudio() {
 
   // smooth scroll zoom zentriert auf Cursor
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        const el = scrollRef.current;
+        if (!el) return;
         const zoomFactor = 1.08;
         const oldZoom = useEditor.getState().zoom;
         let newZoom = oldZoom;
@@ -378,8 +378,8 @@ export function PdfStudio() {
         }
       }
     };
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
+    document.addEventListener("wheel", handleWheel, { passive: false });
+    return () => document.removeEventListener("wheel", handleWheel);
   }, []);
 
   // keyboard shortcuts

@@ -125,6 +125,7 @@ export function PageView({ doc, pageId }: Props) {
   const [imageRects, setImageRects] = useState<Rect[]>([]);
   const fontRealNames = useRef<Record<string, string>>({});
   const replaceRectRef = useRef<Rect | null>(null);
+  const [hoverCursor, setHoverCursor] = useState<string | null>(null);
 
   const zoom = useEditor((s) => s.zoom);
   const tool = useEditor((s) => s.tool);
@@ -283,6 +284,29 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     if (!vp) return;
     const [sx, sy] = localXY(e);
+    
+    if (tool === "select") {
+      const img = imageRectAt(sx, sy);
+      if (img) {
+        setHoverCursor("pointer");
+      } else {
+        const el = e.currentTarget as HTMLElement;
+        const target = e.target as HTMLElement;
+        if (target === el) {
+          el.style.pointerEvents = "none";
+          const hit = document.elementFromPoint(e.clientX, e.clientY);
+          el.style.pointerEvents = "auto";
+          if (hit && hit.tagName.toLowerCase() === "span" && hit.parentElement?.classList.contains("pdf-text-layer")) {
+            setHoverCursor("text");
+          } else {
+            setHoverCursor(null);
+          }
+        } else {
+          setHoverCursor(null);
+        }
+      }
+    }
+
     if (tool === "pen" && penPtsRef.current.length) {
       penPtsRef.current.push([sx, sy]);
       setPenScreen([...penPtsRef.current]);
@@ -486,11 +510,13 @@ export function PageView({ doc, pageId }: Props) {
   const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment" || tool === "select";
 
   const cursor =
-    tool === "pen"
-      ? "crosshair"
-      : tool === "textbox" || tool === "comment"
-        ? "copy"
-        : "default";
+    hoverCursor && tool === "select"
+      ? hoverCursor
+      : tool === "pen"
+        ? "crosshair"
+        : tool === "textbox" || tool === "comment"
+          ? "copy"
+          : "default";
 
   return (
     <ContextMenu>
@@ -550,6 +576,7 @@ export function PageView({ doc, pageId }: Props) {
             onPointerDown={onOverlayPointerDown}
             onPointerMove={onOverlayPointerMove}
             onPointerUp={onOverlayPointerUp}
+            onPointerLeave={() => setHoverCursor(null)}
           >
             {viewport &&
               pageAnnos.map((a) => (
@@ -804,7 +831,7 @@ function AnnoView({
 
   if (anno.kind === "comment") {
     const p = vp.convertToViewportPoint(anno.x, anno.y);
-    return <CommentPin anno={anno} left={p[0]} top={p[1]} selected={selected} onSelect={onSelect} onUpdate={onUpdate} onRemove={onRemove} t={t} />;
+    return <CommentPin anno={anno} vp={vp} left={p[0]} top={p[1]} selected={selected} onSelect={onSelect} onUpdate={onUpdate} onRemove={onRemove} t={t} />;
   }
 
   return null;
@@ -883,6 +910,7 @@ function ResizeHandle({ onResize }: { onResize: (dx: number, dy: number) => void
 
 function CommentPin({
   anno,
+  vp,
   left,
   top,
   selected,
@@ -892,6 +920,7 @@ function CommentPin({
   t,
 }: {
   anno: Extract<Annotation, { kind: "comment" }>;
+  vp: Viewport;
   left: number;
   top: number;
   selected: boolean;
@@ -901,18 +930,43 @@ function CommentPin({
   t: (k: any) => string;
 }) {
   const [replyText, setReplyText] = useState("");
+  const last = useRef<[number, number] | null>(null);
+  const isDragging = useRef(false);
+
   return (
     <div className="absolute" style={{ left, top, pointerEvents: "auto" }}>
       <button
         onPointerDown={(e) => {
-          // Stop the overlay's onPointerDown from firing – otherwise a new
-          // comment pin is created instead of opening this existing one.
           e.stopPropagation();
-          onSelect();
+          (e.target as Element).setPointerCapture(e.pointerId);
+          last.current = [e.clientX, e.clientY];
+          isDragging.current = false;
+        }}
+        onPointerMove={(e) => {
+          if (!last.current) return;
+          const dx = e.clientX - last.current[0];
+          const dy = e.clientY - last.current[1];
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            isDragging.current = true;
+          }
+          if (isDragging.current) {
+            last.current = [e.clientX, e.clientY];
+            const p0 = vp.convertToPdfPoint(0, 0);
+            const p1 = vp.convertToPdfPoint(dx, dy);
+            onUpdate({ x: anno.x + (p1[0] - p0[0]), y: anno.y + (p1[1] - p0[1]) });
+          }
+        }}
+        onPointerUp={(e) => {
+          (e.target as Element).releasePointerCapture(e.pointerId);
+          last.current = null;
+          if (!isDragging.current) {
+            onSelect();
+          }
+          isDragging.current = false;
         }}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "flex h-7 w-7 -translate-y-full items-center justify-center rounded-full rounded-bl-none shadow-md transition-transform hover:scale-110 active:scale-95",
+          "flex h-7 w-7 -translate-y-full items-center justify-center rounded-full rounded-bl-none shadow-md transition-transform hover:scale-110 cursor-move",
           anno.resolved ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground",
         )}
       >

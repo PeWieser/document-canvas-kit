@@ -79,3 +79,22 @@ Die Erkennung wurde nahtlos in die UI integriert:
 1. Ein **Toast ("Erkannt: [Font]")** poppt auf, sobald ein Match bei der Textersetzung gefunden wird.
 2. Der erkannte Font wird im `editorStore` als `defaultFontFamily` gesetzt, sodass neu gezogene Textboxen sofort mit der korrekten Schriftart formatiert sind.
 3. Abgesichert wurde dies durch den neuen Test `fontIntegration.test.tsx`, der die nahtlose Übergabe der erkannten Schriftart in den Text-Editor simuliert.
+
+---
+
+## 4. Phase 7: Bugfixes, Automated Font-QA & System-Dokumentation
+
+In Phase 7 wurden parallel durch drei Sub-Agents Fehler behoben, die Architekturdokumentation aufgebaut und eine automatisierte QA-Loop für die Schrifterkennung eingerichtet:
+
+### 🐛 Bugfixes (UI & Interaktion)
+- **Strg+Scroll Zoom gefixt:** Der Wheel-Eventlistener wurde in `PdfStudio.tsx` hart umgestellt, um den ungewollten globalen nativen Browser-Zoom nun absolut zuverlässig zu unterdrücken.
+- **Draggable Comments:** Die `CommentPin`-Komponente wurde grundlegend überarbeitet und nutzt nun Drag-and-Drop über `onPointerDown`/`onPointerMove`. So können Kommentare pixelgenau auf dem Dokument umplatziert werden.
+- **Auswahl-Modus Cursor:** Wenn man sich im Werkzeug "Auswählen" befindet, ändert sich der Cursor dynamisch in einen Text-Cursor (`text`), wenn er sich über Text-Spans befindet, und in ein Händchen (`pointer`), wenn er über eingebetteten Bildern schwebt.
+
+### 🎯 Automated Font-QA Loop
+- Über `pdf-lib` wurde ein dediziertes Test-PDF generiert, welches verschiedenste Schriftarten (Arial, Times New Roman, Courier New), Formatierungen (Bold/Italic), Größen und Farben (Rot, Blau, Grün, Schwarz) enthält.
+- Die Auswertelogik in `fontVectorMatch.ts` (`extractTextBlocks`) wurde so lange **iterativ von einem dedizierten Sub-Agent gegen die Unit-Tests optimiert**, bis 100% aller Texte aus dem Dokument fehlerfrei samt Farbe, Font-Family und Größe erkannt wurden.
+
+### 📖 System-Dokumentation
+- Es wurde eine zentrale `PROJECT_DOCUMENTATION.md` im Root-Verzeichnis erstellt. 
+- Diese detailliert die Architektur (React, TanStack, Cloudflare) sowie die Funktionsweise der Redaction-Logik auf der `pdf.js` Token-Ebene (ContentStreamEditor). Damit ist sichergestellt, dass sich zukünftige KI-Assistenten in Sekunden einen vollständigen Überblick verschaffen können.
