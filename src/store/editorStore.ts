@@ -25,6 +25,7 @@ interface EditorState {
   highlightColor: string;
   fontSize: number;
   penSize: number;
+  defaultFontFamily: string | null;
   zoom: number;
   viewMode: ViewMode;
   estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
@@ -52,6 +53,7 @@ interface EditorState {
   setHighlightColor: (c: string) => void;
   setFontSize: (n: number) => void;
   setPenSize: (n: number) => void;
+  setDefaultFontFamily: (f: string) => void;
   setZoom: (z: number) => void;
   setViewMode: (m: ViewMode) => void;
   setSidebarOpen: (b: boolean) => void;
@@ -94,6 +96,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   highlightColor: "#ffd54a",
   fontSize: 14,
   penSize: 3,
+  defaultFontFamily: null,
   zoom: 1.15,
   viewMode: "fit-width",
   estimateSize: null,
@@ -147,6 +150,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setHighlightColor: (c) => set({ highlightColor: c }),
   setFontSize: (n) => set({ fontSize: n }),
   setPenSize: (n) => set({ penSize: n }),
+  setDefaultFontFamily: (f) => set({ defaultFontFamily: f }),
   setZoom: (z) => set({ zoom: Math.min(6, Math.max(0.1, z)), viewMode: "custom" }),
   setViewMode: (m) => set({ viewMode: m }),
   setSidebarOpen: (b) => set({ sidebarOpen: b }),

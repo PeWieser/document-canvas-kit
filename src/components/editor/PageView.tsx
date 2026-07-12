@@ -131,6 +131,8 @@ export function PageView({ doc, pageId }: Props) {
   const color = useEditor((s) => s.color);
   const highlightColor = useEditor((s) => s.highlightColor);
   const fontSize = useEditor((s) => s.fontSize);
+  const defaultFontFamily = useEditor((s) => s.defaultFontFamily);
+  const setDefaultFontFamily = useEditor((s) => s.setDefaultFontFamily);
   const penSize = useEditor((s) => s.penSize);
   const annotations = useEditor((s) => s.annotations);
   const selectedId = useEditor((s) => s.selectedId);
@@ -259,7 +261,19 @@ export function PageView({ doc, pageId }: Props) {
     }
     if (tool === "textbox") {
       const [px, py] = pdfPoint(sx, sy, vp);
-      addAnnotation({ id: uid(), kind: "textbox", page: pageId, x: px, y: py, w: 180, h: fontSize * 2, text: "", fontSize, color } as Annotation);
+      addAnnotation({
+        id: uid(),
+        kind: "textbox",
+        page: pageId,
+        x: px,
+        y: py,
+        w: 180,
+        h: fontSize * 2,
+        text: "",
+        fontSize,
+        color,
+        fontFamily: defaultFontFamily || "Helvetica",
+      } as Annotation);
       return;
     }
     startRef.current = [sx, sy];
@@ -350,7 +364,11 @@ export function PageView({ doc, pageId }: Props) {
 
     const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
     const resolved = resolvePDFCoreFontName(realName);
-    if (resolved.family) void loadWebFont(resolved.family);
+    if (resolved.family) {
+      void loadWebFont(resolved.family);
+      setDefaultFontFamily(resolved.family);
+      import("sonner").then((m) => m.toast.success(`Erkannt: ${resolved.family}`));
+    }
 
     addAnnotation({
       id: uid(),
@@ -392,7 +410,19 @@ export function PageView({ doc, pageId }: Props) {
     const pt = menuPtRef.current;
     if (!vp || !pt) return;
     const [px, py] = pdfPoint(pt[0], pt[1], vp);
-    addAnnotation({ id: uid(), kind: "textbox", page: pageId, x: px, y: py, w: 200, h: fontSize * 2, text: "", fontSize, color } as Annotation);
+    addAnnotation({
+      id: uid(),
+      kind: "textbox",
+      page: pageId,
+      x: px,
+      y: py,
+      w: 200,
+      h: fontSize * 2,
+      text: "",
+      fontSize,
+      color,
+      fontFamily: defaultFontFamily || "Helvetica",
+    } as Annotation);
   };
 
   const ctxRedactHere = () => {

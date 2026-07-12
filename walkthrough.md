@@ -60,3 +60,22 @@ Alle **43 Tests** laufen erfolgreich durch (keine unhandled rejections mehr dank
 ```
 
 Der simulierte Performance-Stresstest (50x schnelles Umschalten von Werkzeug & Sidebar hintereinander) lief in **517ms** durch und blieb damit sicher unter dem Sicherheitsbudget von 800ms.
+
+---
+
+## 3. Phase 6: Offline Vektor-Schrifterkennung (KNN Matcher)
+
+Die Architektur für die ultraschnelle, rein browserbasierte Schrifterkennung wurde in Phase 6 erfolgreich umgesetzt:
+
+### 🚀 Data-Mining & Fingerabdrücke
+Über das neue Skript `scripts/generate-font-fingerprints.js` wurden gängige Open-Source-Schriften (Google/Bunny Fonts) mithilfe von `opentype.js` geparst. Dabei wurden die Vektordaten der Schlüssel-Glyphen ('e', 'a', 'o', 'g', 'A') analysiert und als Metriken (Bounding-Box Ratio, relative Fläche, Point-Count) hochkomprimiert in `public/font-fingerprints.json` gesichert.
+
+### 🧠 Core-Match & Vektor-Interception
+Das neue Modul `src/lib/pdf/fontVectorMatch.ts` greift auf `page.commonObjs` von pdf.js zu, um die rohen Pfaddaten von **eingebetteten (Subset)** Fonts (z. B. `ABCDEF+Unknown`) abzugreifen. Diese Pfade werden mit `normalizeGlyphPath()` auf eine Höhe von Y=1.0 skaliert und mittels eines **Euklidischen-Distanz-Algorithmus (KNN)** in unter 5ms gegen die `font-fingerprints.json`-Datenbank abgeglichen.
+Bei einem erfolgreichen Match wird sofort der korrekte CSS-Link für die Bunny-Font-API in den `<head>` geladen.
+
+### 🖥️ UI-Integration & E2E-Validierung
+Die Erkennung wurde nahtlos in die UI integriert:
+1. Ein **Toast ("Erkannt: [Font]")** poppt auf, sobald ein Match bei der Textersetzung gefunden wird.
+2. Der erkannte Font wird im `editorStore` als `defaultFontFamily` gesetzt, sodass neu gezogene Textboxen sofort mit der korrekten Schriftart formatiert sind.
+3. Abgesichert wurde dies durch den neuen Test `fontIntegration.test.tsx`, der die nahtlose Übergabe der erkannten Schriftart in den Text-Editor simuliert.
