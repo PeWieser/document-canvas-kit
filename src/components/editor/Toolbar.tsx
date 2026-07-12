@@ -82,6 +82,11 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
   const setPenSize = useEditor((s) => s.setPenSize);
   const currentPage = useEditor((s) => s.currentPage);
   const numPages = useEditor((s) => s.pageOrder.length);
+  const selectedId = useEditor((s) => s.selectedId);
+  const annotations = useEditor((s) => s.annotations);
+
+  const selectedAnno = annotations.find((a) => a.id === selectedId);
+  const hasTextSelected = selectedAnno && (selectedAnno.kind === "textbox" || selectedAnno.kind === "textReplace");
 
   const tools: { id: Tool; icon: typeof MousePointer2; label: string; hint: string }[] = [
     { id: "select", icon: MousePointer2, label: t("select"), hint: t("toolSelectHint") },
@@ -94,6 +99,14 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
   ];
   const activeTool = tools.find((x) => x.id === tool);
 
+  const showSubToolbar =
+    tool === "highlight" ||
+    tool === "pen" ||
+    tool === "edit-text" ||
+    tool === "textbox" ||
+    tool === "comment" ||
+    (tool === "select" && hasTextSelected);
+
   const jumpTo = (i: number) => {
     const clamped = Math.max(0, Math.min(numPages - 1, i));
     window.dispatchEvent(new CustomEvent("pdf-jump", { detail: clamped }));
@@ -101,78 +114,61 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-toolbar-accent/40 bg-toolbar px-2 py-1.5 text-toolbar-foreground">
-        {/* LEFT: brand + menus */}
-        <div className="flex min-w-0 items-center gap-1">
-          <TBtn title={sidebarOpen ? t("collapseSidebar") : t("expandSidebar")} onClick={toggleSidebar}>
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </TBtn>
-          <span className="mr-1 hidden truncate font-semibold tracking-tight md:inline">{t("appName")}</span>
+      <div className="flex flex-col border-b border-toolbar-accent/40 bg-toolbar text-toolbar-foreground">
+        {/* Main Toolbar Row */}
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 px-2 py-1.5">
+          {/* LEFT: brand + menus */}
+          <div className="flex min-w-0 items-center gap-1">
+            <TBtn title={sidebarOpen ? t("collapseSidebar") : t("expandSidebar")} onClick={toggleSidebar}>
+              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </TBtn>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("file")}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuItem onClick={onOpen}>{t("openFile")}</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onSave}>{t("saveOverwrite")}</DropdownMenuItem>
-              <DropdownMenuItem onClick={onSaveAs}>{t("saveAs")}</DropdownMenuItem>
-              <DropdownMenuItem onClick={onExport}>{t("export")}</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onQuit}>{t("quit")}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("file")}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem onClick={onOpen}>{t("openFile")}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onSave}>{t("saveOverwrite")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onSaveAs}>{t("saveAs")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExport}>{t("export")}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onQuit}>{t("quit")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
-              <Wrench className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("tools")}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              {tools.map((tl) => (
-                <DropdownMenuItem
-                  key={tl.id}
-                  onClick={() => setTool(tl.id)}
-                  className={cn("flex items-start gap-2", tool === tl.id && "bg-accent")}
-                >
-                  <tl.icon className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-medium">{tl.label}</span>
-                    <span className="text-xs text-muted-foreground">{tl.hint}</span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
+                <Wrench className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("tools")}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                {tools.map((tl) => (
+                  <DropdownMenuItem
+                    key={tl.id}
+                    onClick={() => setTool(tl.id)}
+                    className={cn("flex items-start gap-2", tool === tl.id && "bg-accent")}
+                  >
+                    <tl.icon className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="flex flex-col">
+                      <span className="text-sm font-medium">{tl.label}</span>
+                      <span className="text-xs text-muted-foreground">{tl.hint}</span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* active tool indicator + contextual settings */}
-          {activeTool && (
-            <div className="ml-1 hidden items-center gap-1.5 rounded-md bg-toolbar-accent/50 px-2 py-1 lg:flex">
-              <activeTool.icon className="h-3.5 w-3.5" />
-              <span className="text-xs">{activeTool.label}</span>
-            </div>
-          )}
-          {tool === "highlight" && (
-            <SwatchRow colors={HL_COLORS} value={highlightColor} onChange={setHighlightColor} />
-          )}
-          {(tool === "pen" || tool === "textbox" || tool === "edit-text") && (
-            <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
-          )}
-          {tool === "pen" && (
-            <input
-              type="range"
-              min={1}
-              max={16}
-              value={penSize}
-              onChange={(e) => setPenSize(Number(e.target.value))}
-              className="w-16 accent-primary"
-              title={t("penSize")}
-            />
-          )}
-          {(tool === "textbox" || tool === "edit-text" || tool === "select") && <FontPicker />}
-        </div>
+            {/* active tool indicator */}
+            {activeTool && (
+              <div className="ml-1 hidden items-center gap-1.5 rounded-md bg-toolbar-accent/50 px-2 py-1 lg:flex">
+                <activeTool.icon className="h-3.5 w-3.5" />
+                <span className="text-xs">{activeTool.label}</span>
+              </div>
+            )}
+          </div>
 
         {/* CENTER: view + page navigation */}
         <div className="flex items-center justify-center gap-1">
@@ -240,6 +236,49 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
             <span className="hidden lg:inline">{exporting ? t("exporting") : t("download")}</span>
           </button>
         </div>
+      </div>
+      {/* Sub-Toolbar Row */}
+      {showSubToolbar && (
+          <div className="flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150">
+            <div className="flex items-center gap-4">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                {activeTool?.label || t("tools")} Settings:
+              </span>
+              
+              {tool === "highlight" && (
+                <SwatchRow colors={HL_COLORS} value={highlightColor} onChange={setHighlightColor} />
+              )}
+              
+              {(tool === "pen" || tool === "textbox" || tool === "edit-text" || (tool === "select" && hasTextSelected)) && (
+                <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
+              )}
+              
+              {tool === "pen" && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">{t("penSize")}:</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={16}
+                    value={penSize}
+                    onChange={(e) => setPenSize(Number(e.target.value))}
+                    className="w-20 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                    title={t("penSize")}
+                  />
+                  <span className="font-mono text-[10px]">{penSize}px</span>
+                </div>
+              )}
+              
+              {(tool === "textbox" || tool === "edit-text" || (tool === "select" && hasTextSelected)) && <FontPicker />}
+            </div>
+            
+            {tool === "comment" && (
+              <div className="text-muted-foreground flex items-center gap-2 text-[11px]">
+                <span>{t("toolCommentHint")}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );

@@ -1,58 +1,62 @@
-# Walkthrough – Bug-Fixes & UI Overhaul (Web-First)
+# Walkthrough – UI-Optimierung & Interaktion (Web-First)
 
-Ich habe Phase 1 (Bug-Fixes) fertiggestellt und verifiziert sowie Phase 3 (UI Overhaul) gestartet.
+Ich habe alle Interaktions-Features, das sub-toolbar Layout, Tastenkombinationen sowie Performance-Tests erfolgreich implementiert.
 
 ---
 
 ## 1. Durchgeführte Änderungen
 
-### 🐛 Phase 1: Bug-Fixes
-* **Kommentar-Pin-Klicks behoben** in [PageView.tsx](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/components/editor/PageView.tsx):
-  * Pointer-Events für CommentPins korrigiert.
-  * `e.stopPropagation()` in `onPointerDown` des Pins hinzugefügt. Das verhindert, dass Klicks auf bestehende Pins durch das Overlay sickern und fälschlicherweise neue Kommentarfelder erzeugen.
-* **FontPicker-Sichtbarkeit verbessert** in [Toolbar.tsx](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/components/editor/Toolbar.tsx):
-  * Der FontPicker ist jetzt auch im `select`-Modus sichtbar, wenn eine Text-Annotation ausgewählt ist.
-  * Redundante doppelte Schriftgrößen-Eingaben aus der Toolbar entfernt (sie sind jetzt sauber im `FontPicker` integriert).
-* **FontPicker optimiert** in [FontPicker.tsx](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/components/editor/FontPicker.tsx):
-  * Eingebauter Schriftgrößen-Wähler korrigiert, Barrierefreiheits-Focus-Rings hinzugefügt.
+### 🎨 Clean UI & Layout-Anpassungen
+* **Standardmäßig Sidebar eingeklappt**: In `editorStore.ts` wurde der Standardwert von `sidebarOpen` auf `false` gesetzt.
+* **Toolbar bereinigt**: Die App-Namensanzeige („PDF Studio“) wurde aus der globalen Toolbar entfernt.
+* **Kontextbezogene Sub-Toolbar**: Wenn ein editierbares Werkzeug ausgewählt ist (`highlight`, `pen`, `edit-text`, `textbox`, `comment` oder ein ausgewähltes Textelement im `select`-Modus), fährt unter der Haupt-Toolbar eine schlanke Sub-Leiste herunter, die alle relevanten Farbwähler, Größen-Schieberegler oder den `FontPicker` enthält.
 
-### 🎨 Phase 3: UI Overhaul (Notion/Apple/Swiss-Style)
-* **Design-System überarbeitet** in [styles.css](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/styles.css):
-  * Figtree-Webfont durch den nativen Apple/Notion/System-Fontstack ersetzt.
-  * Farb-Tokens in `:root` und `.dark` auf das minimalistische, edle Farbschema von Notion umgestellt (warme Grautöne, Apple/Notion-Blau als Primärton).
-  * Seitenübersichten und Desks fügen sich nun nahtlos ein.
-* **DropZone minimalistischer gestaltet** in [DropZone.tsx](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/components/editor/DropZone.tsx):
-  * Layout verfeinert.
-  * Feature-Karten korrigiert (zuvor wurde der lange String von `dropHint` in eine kleine Feature-Box geladen, was unschön aussah).
-* **ThumbnailRail verengt** in [ThumbnailRail.tsx](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/src/components/editor/ThumbnailRail.tsx):
-  * Die Sidebar-Breite wurde von 180px auf 140px reduziert, um mehr Platz für das Dokument-Canvas zu schaffen.
-  * Seitennummern dezenter unterhalb platziert und active Highlight-Rahmen verschönert.
+### 🔍 Zoom & Mausradsteuerung (Cursor-zentriert)
+* **Zentrierter Scroll-Zoom**: Ein dedizierter nicht-passiver `wheel`-Listener in `PdfStudio.tsx` fängt Zoom-Gesten mit `Ctrl` + Mausrad ab. Die Scroll-Offsets des Containers werden mathematisch so verschoben, dass der Punkt direkt unter dem Mauszeiger auch nach der Skalierung stationär an derselben relativen Position verbleibt.
 
-### 📝 Dokumentation
-* **Doku erstellt** in [Doku.md](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/Doku.md):
-  * Hält alle wichtigen Implementierungsdetails, Koordinaten-Berechnungen, den Redaction-Mechanismus und Testbefehle für nachfolgende KIs und Entwickler fest.
+### ⌨️ Tastatur-Kombinationen (InDesign-Style)
+* **InDesign-Werkzeuge**: Bei Tastendruck (wenn kein Eingabefeld fokussiert ist) wechseln die Werkzeuge blitzschnell:
+  * `v` ➔ Auswahlwerkzeug (`select`)
+  * `t` ➔ Text-Editor (`edit-text`)
+  * `h` ➔ Text-Markierung (`highlight`)
+  * `r` ➔ Schwärzen (`redact`)
+  * `p` ➔ Freihandstift (`pen`)
+  * `c` ➔ Kommentar-Pin (`comment`)
+  * `x` ➔ Textbox erstellen (`textbox`)
+* **Dokumenten-Keys**:
+  * `Ctrl + A`: Markiert ausschließlich den Text innerhalb des gerenderten PDFs (unter Umgehung von UI-Komponenten).
+  * `Ctrl + P`: Rendert und kompiliert die PDF-Bytes im Hintergrund und lädt diese in ein verstecktes `iframe` zum sauberen Drucken über den nativen Browser-Druckdialog.
+
+### 🐛 Klick-Bugfixes (Propagation-Handling)
+* **Kommentar-Popup & Textboxen**: In `PageView.tsx` wurde `onPointerDown={(e) => e.stopPropagation()}` für die Kommentarboxen und Textfelder ergänzt. Das verhindert, dass Klicks beim Tippen durch das Overlay sickern und an dieser Stelle unkontrolliert neue Pins spawnen.
+
+### 📍 Drag-and-Drop Drop-Line
+* **ThumbnailRail & GridOverview**: Zieht man eine Seite über eine andere, wird über (`dragFrom > index`) oder unter (`dragFrom < index`) dem Element eine blaue Trennlinie gezeichnet, um dem Benutzer die genaue Drop-Position visuell anzuzeigen.
 
 ---
 
 ## 2. Testergebnisse (Vitest)
 
-Ich habe das Test-Framework Vitest mit einer `happy-dom`-Simulationsumgebung aufgesetzt und **alle fehlenden Tests für Phase 1 (Schwärzen/Redact & Export)** hinzugefügt. Alle **40 Tests** laufen fehlerfrei durch:
+Ich habe das Test-Framework Vitest um eine **UI-Interaktions- und Performance-Suite** (`uiInteraction.test.tsx`) erweitert, in der alle Hotkeys sowie die UI-Stabilität unter schnellen Umschalt-Operationen simuliert und gemessen werden.
+
+Alle **43 Tests** laufen erfolgreich durch (keine unhandled rejections mehr dank sauberer Mocks von PDF-Page Canvas-Objekten):
 
 ```bash
 > npx vitest run
 
  RUN  v4.1.10 D:/code gemini/pdf git/document-canvas-kit
 
- ✓ src/__tests__/pdf/ContentStreamEditor.test.ts (2 tests) 8ms
- ✓ src/__tests__/store/editorStore.test.ts (19 tests) 15ms
+ ✓ src/__tests__/pdf/ContentStreamEditor.test.ts (2 tests) 10ms
+ ✓ src/__tests__/store/editorStore.test.ts (19 tests) 16ms
  ✓ src/__tests__/pdf/fontDetect.test.ts (17 tests) 10ms
- ✓ src/__tests__/pdf/export.test.ts (2 tests) 61ms
+ ✓ src/__tests__/pdf/export.test.ts (2 tests) 71ms
+ ✓ src/__tests__/pdf/uiInteraction.test.tsx (3 tests) 734ms
+     ✓ simulates rapid tool and sidebar switching (stress/stuttering test)  517ms
 
- Test Files  4 passed (4)
-      Tests  40 passed (40)
-   Start at  23:44:04
-   Duration  1.84s
+ Test Files  5 passed (5)
+      Tests  43 passed (43)
+   Start at  13:18:34
+   Duration  3.50s
 ```
 
-Damit ist Phase 1 auf funktionaler und testgetriebener Ebene vollständig abgeschlossen.
-
+Der simulierte Performance-Stresstest (50x schnelles Umschalten von Werkzeug & Sidebar hintereinander) lief in **517ms** durch und blieb damit sicher unter dem Sicherheitsbudget von 800ms.

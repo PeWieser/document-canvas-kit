@@ -169,6 +169,66 @@ export function PdfStudio() {
     setTimeout(() => useEditor.getState().closeDoc(), 50);
   }, [t]);
 
+  const handlePrint = useCallback(async () => {
+    const tid = toast.loading(t("preparingPrint") || "Preparing print...");
+    try {
+      const bytes = await buildBytes();
+      if (!bytes) {
+        toast.dismiss(tid);
+        return;
+      }
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        toast.dismiss(tid);
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        }, 2000);
+      };
+    } catch (e) {
+      console.error(e);
+      toast.dismiss(tid);
+      toast.error(t("printFail") || "Print failed");
+    }
+  }, [buildBytes, t]);
+
+  const selectAllPDFText = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    const textLayers = document.querySelectorAll(".pdf-text-layer");
+    if (textLayers.length === 0) return;
+    const firstLayer = textLayers[0];
+    const lastLayer = textLayers[textLayers.length - 1];
+    
+    let firstNode = firstLayer.firstChild;
+    while (firstNode && firstNode.nodeType !== Node.TEXT_NODE && firstNode.firstChild) {
+      firstNode = firstNode.firstChild;
+    }
+    let lastNode = lastLayer.lastChild;
+    while (lastNode && lastNode.nodeType !== Node.TEXT_NODE && lastNode.lastChild) {
+      lastNode = lastNode.lastChild;
+    }
+    
+    if (firstNode && lastNode) {
+      const range = document.createRange();
+      range.setStart(firstNode, 0);
+      range.setEnd(lastNode, lastNode.textContent?.length || 0);
+      selection.addRange(range);
+    } else {
+      const range = document.createRange();
+      range.setStartBefore(firstLayer);
+      range.setEndAfter(lastLayer);
+      selection.addRange(range);
+    }
+  }, []);
+
   const jumpTo = useCallback(
     (index: number) => {
       const clamped = Math.max(0, Math.min(pageOrder.length - 1, index));
@@ -282,6 +342,46 @@ export function PdfStudio() {
     };
   }, [doc, pageOrder, viewMode, setCurrentPage]);
 
+  // smooth scroll zoom zentriert auf Cursor
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const zoomFactor = 1.08;
+        const oldZoom = useEditor.getState().zoom;
+        let newZoom = oldZoom;
+        if (e.deltaY < 0) {
+          newZoom = Math.min(6, oldZoom * zoomFactor);
+        } else {
+          newZoom = Math.max(0.1, oldZoom / zoomFactor);
+        }
+        if (Math.abs(newZoom - oldZoom) > 0.001) {
+          const rect = el.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          const docX = el.scrollLeft + mouseX;
+          const docY = el.scrollTop + mouseY;
+
+          const ratio = newZoom / oldZoom;
+          const targetLeft = docX * ratio - mouseX;
+          const targetTop = docY * ratio - mouseY;
+
+          useEditor.setState({ zoom: newZoom, viewMode: "custom" });
+
+          requestAnimationFrame(() => {
+            el.scrollLeft = targetLeft;
+            el.scrollTop = targetTop;
+          });
+        }
+      }
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+
   // keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -293,6 +393,16 @@ export function PdfStudio() {
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleSave();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        handlePrint();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAllPDFText();
         return;
       }
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -331,8 +441,8 @@ export function PdfStudio() {
         v: "select",
         h: "highlight",
         r: "redact",
-        e: "edit-text",
-        t: "textbox",
+        t: "edit-text",
+        x: "textbox",
         p: "pen",
         c: "comment",
       };
@@ -341,7 +451,7 @@ export function PdfStudio() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleSave, undo, redo, setZoom, select, setGridOpen, selectedId, removeAnnotation, setTool]);
+  }, [handleSave, handlePrint, selectAllPDFText, undo, redo, setZoom, select, setGridOpen, selectedId, removeAnnotation, setTool]);
 
   if (!originalBytes) {
     return (

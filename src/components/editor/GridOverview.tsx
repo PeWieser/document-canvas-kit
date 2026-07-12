@@ -64,6 +64,15 @@ export function GridOverview({
             )}
             title={t("reorderHint")}
           >
+            {/* Drop indicator line */}
+            {dragOver === index && dragFrom !== null && dragFrom !== index && (
+              <div
+                className={cn(
+                  "absolute top-0 bottom-0 w-1 bg-primary rounded-full z-50",
+                  dragFrom < index ? "right-0 translate-x-2" : "left-0 -translate-x-2"
+                )}
+              />
+            )}
             <PageThumb doc={doc} pageId={pageId} width={220} />
             <div className="mt-1.5 text-center font-mono text-xs text-muted-foreground">
               {index + 1}

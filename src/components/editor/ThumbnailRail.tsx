@@ -66,6 +66,15 @@ export function ThumbnailRail({
             )}
             title={t("reorderHint")}
           >
+            {/* Drop indicator line */}
+            {dragOver === index && dragFrom !== null && dragFrom !== index && (
+              <div
+                className={cn(
+                  "absolute left-0 right-0 h-1 bg-primary rounded-full z-50",
+                  dragFrom < index ? "bottom-0 translate-y-1.5" : "top-0 -translate-y-1.5"
+                )}
+              />
+            )}
             <div
               className={cn(
                 "relative flex-1 w-full rounded-md border bg-background overflow-hidden transition-all duration-200 shadow-2xs",

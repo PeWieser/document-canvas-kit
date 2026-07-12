@@ -720,6 +720,7 @@ function AnnoView({
           background: anno.kind === "textReplace" ? "white" : undefined,
         }}
         onClick={onSelect}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <textarea
           value={anno.text}
@@ -888,7 +889,11 @@ function CommentPin({
         <MessageSquare className="h-4 w-4" />
       </button>
       {selected && (
-        <div className="absolute left-8 top-0 z-20 w-64 rounded-lg border bg-popover p-3 text-popover-foreground shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="absolute left-8 top-0 z-20 w-64 rounded-lg border bg-popover p-3 text-popover-foreground shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <textarea
             autoFocus
             value={anno.text}

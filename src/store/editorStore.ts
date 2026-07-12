@@ -97,7 +97,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   zoom: 1.15,
   viewMode: "fit-width",
   estimateSize: null,
-  sidebarOpen: true,
+  sidebarOpen: false,
   commentsPanelOpen: false,
   currentPage: 0,
   selectedId: null,
