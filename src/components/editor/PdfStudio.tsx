@@ -256,6 +256,9 @@ export function PdfStudio() {
 
   // measure container
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("vite_chunk_reloaded");
+    }
     const el = scrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {

@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import "../lib/i18n"; // Static import to prevent Vite from code-splitting i18n into a separate fragile chunk
 
 function NotFoundComponent() {
   return (
@@ -44,9 +45,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
       msg.includes("Importing a module script failed") ||
       msg.includes("dynamically imported module")
     ) {
-      if (!sessionStorage.getItem("vite_chunk_reloaded")) {
-        sessionStorage.setItem("vite_chunk_reloaded", "true");
-        window.location.reload();
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("chunk-reload")) {
+        url.searchParams.set("chunk-reload", "1");
+        window.location.replace(url.toString());
         return;
       }
     }
@@ -137,10 +139,6 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-
-  useEffect(() => {
-    sessionStorage.removeItem("vite_chunk_reloaded");
-  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
