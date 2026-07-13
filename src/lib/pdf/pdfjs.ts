@@ -1,9 +1,13 @@
 import "./polyfill";
 import * as pdfjsLib from "pdfjs-dist";
-// Vite resolves this to a hashed URL for the worker bundle.
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+if (typeof window !== "undefined") {
+  import("pdfjs-dist/build/pdf.worker.min.mjs?url").then((m) => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = m.default;
+  }).catch((err) => {
+    console.error("Failed to load PDF worker:", err);
+  });
+}
 
 export { pdfjsLib };
 export type PdfDocumentProxy = pdfjsLib.PDFDocumentProxy;

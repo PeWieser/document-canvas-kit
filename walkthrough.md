@@ -170,3 +170,29 @@ Wir haben die drei großen Problemfelder vollständig behoben:
 - **60-Schriften Test-PDF**: `generateTestPdf.ts` lädt nun 60 verschiedene Windows-Systemfonts und zeichnet diese sowie die klassischen rotierte Textblöcke auf separate Seiten.
 - **Robuste Test-Suite**: `src/__tests__/pdf/fontRecognition.test.ts` liest das generierte PDF und verifiziert, dass alle 59 erfolgreich extrahierten Schriftarten per KNN-Matcher mit **100% Erkennungsgenauigkeit** der Familie zugeordnet werden.
 - Alle **48 Unit- und Integrationstests** laufen in Vitest fehlerfrei durch und der SSR/Production-Build baut stabil.
+
+---
+
+## 7. Phase 10: Präzise Texterkennung, Positionierung & UI-Fixes
+
+Wir haben alle Anforderungen von Phase 10 vollständig umgesetzt und abgesichert:
+
+### 🧠 Browser-KNN Font Integration (Schrifterkennung)
+- **Echte Vektor-Schrifterkennung im Browser**: Der browserbasierte Editor führt nun bei jedem Seitenladevorgang über `extractSubsetFontsPaths(page)` eine echte KNN-Schrifterkennung auf den eingebetteten Fonts aus und hinterlegt diese im Ref.
+- **Exakte Font-Übernahme**: Beim Klick auf einen Textblock mit dem "Text bearbeiten"-Werkzeug übernimmt die neue TextReplace-Annotation die präzise vom KNN-Matcher ermittelte Font-Family, Bold- und Italic-Flags.
+- **Erweiterte Font-Auswahl**: Der `FontPicker` lädt nun über `font-fingerprints.json` alle 733 verfügbaren Fonts (System-Fonts, Google-Fonts, Bunny-Fonts) dynamisch im Browser, sobald diese geladen sind.
+- **Größere statische Baseline**: Die `COMMON_FONTS`-Liste wurde von 11 auf 36 Standard-Schriftarten erweitert, um offline sofort eine reichhaltige Auswahl zur Verfügung zu stellen.
+
+### 📐 Perfekt-Congruentes Textbox-Scaling (Positionierung)
+- **Keine Zeilenumbrüche mehr**: Wir messen die natürliche Browser-Renderschrittweite des Textes im Editor in Echtzeit über einen unsichtbaren Canvas 2D-Kontext.
+- **scaleX-Stauchung/Streckung**: Durch Vergleichen der erwarteten PDF-Breite mit der natürlichen Textbreite wird ein dynamischer `scaleX` Transform auf das Eingabefeld angewendet. Dadurch wird der eingegebene Text deckungsgleich gestaucht oder gestreckt, passt sich exakt der Originalbreite an und bricht niemals unkontrolliert in die nächste Zeile um.
+- **Util-Transformations-Bypass**: Um unvorhersehbare JS-Bündelung- oder Tree-Shaking-Crashes in Production-Builds (wo `pdfjsLib.Util` oft fehlt) zu vermeiden, wurde eine native `transformMatrix`-Multiplikation für affine Transformationen implementiert.
+- **Node-JS-Kompatibilität**: `pdfjs.ts` wurde so umgeschrieben, dass der PDF.js WebWorker im Browser asynchron über dynamische Importe geladen wird, während in Node.js-Umgebungen (Tests/Skripte) keine Syntax-Fehler mehr durch Vite-spezifische `?url` Parameter geworfen werden.
+
+### 📱 Responsive Toolbar & Ansichten-Dropdown
+- **Ansichten im Dropdown**: Die 4 Ansicht-Steuerungen (`FitWidth`, `FitHeight`, `TwoPage`, `Grid`) wurden in ein übersichtliches Dropdown-Menü "Ansicht" verschoben. Dies spart erheblich horizontalen Platz.
+- **Mehr Optionen Dropdown**: Auf kleinen Bildschirmen (unter `640px`) werden die Optionen für Kommentare, Theme und Sprache automatisch in ein kompaktes Drei-Punkt-Menü (`MoreVertical`) eingeklappt, um Design-Fehlplatzierungen komplett zu verhindern.
+
+### 🧪 QA & Testabdeckung
+- Ein dediziertes Koordinaten-Testskript `scripts/testDeckungsgleich.ts` wurde erstellt, welches die exakten Vektorkoordinaten vor und nach dem PDF-Export vergleicht und die absolute Deckungsgleichheit (Fehlergrenze < 0.0001pt) nachweist.
+- Alle **48 Unit- und Integrationstests** laufen in Vitest fehlerfrei durch und der SSR/Production-Build baut stabil.

@@ -92,12 +92,13 @@ The UI lives inside `src/components/editor/`:
 
 To render the transparent text layer spans in perfect congruency with the underlying PDF canvas (especially for rotated text):
 
-1. **Combine Matrices**: The viewport matrix and the text item's matrix are combined: `tx = pdfjsLib.Util.transform(viewport.transform, item.transform)`.
+1. **Combine Matrices**: The viewport matrix and the text item's matrix are combined: `tx = transformMatrix(viewport.transform, item.transform)` (using custom affine matrix multiplication helper to avoid ESM/Node bundler dependency on `pdfjsLib.Util.transform`).
 2. **Screen Font Height**: Computed via the hypotenuse of the vertical components: $H_{\text{font}} = \sqrt{tx_2^2 + tx_3^2}$.
 3. **Screen Rotation Angle**: Computed via `angle = Math.atan2(tx[1], tx[0])`.
 4. **Positioning**: The span is placed at `left: tx[4]` and `top: tx[5] - fontHeight`.
 5. **Horizontal Scaling**: Since browser system font rendering dimensions can differ slightly from the PDF's embedded metrics, a horizontal scaling factor is applied: `scaleX = span.offsetWidth > 0 ? (item.width * zoom) / span.offsetWidth : 1`.
 6. **CSS Transform**: Set dynamically as `transform: rotate(${angle}rad) scaleX(${scaleX})` with `transform-origin: left bottom` to align perfectly.
+7. **Text Replacement Scaling (1:1 Congruency)**: For replacement textareas, the text width is measured in real-time using a 2D canvas context. A horizontal `scaleX` scaling factor is dynamically calculated (`scaleX = expectedWidth / naturalWidth`) and applied to the text box to stretch or compress the replacement text, guaranteeing that the letters align perfectly with the original PDF layout and never wrap.
 
 ### 4.2 Select Mode Pointer-Events Model
 

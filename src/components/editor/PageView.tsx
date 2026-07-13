@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
+import { extractSubsetFontsPaths } from "@/lib/pdf/fontVectorMatch";
+
 interface TextItem {
   str: string;
   transform: number[];
@@ -70,6 +72,17 @@ function mul(a: number[], b: number[]): number[] {
   ];
 }
 
+function transformMatrix(a: number[], b: number[]): number[] {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
 /** Detect raster image placements (PDF-space rects) via the operator list. */
 async function detectImages(page: any): Promise<Rect[]> {
   try {
@@ -119,6 +132,7 @@ export function PageView({ doc, pageId }: Props) {
   const [items, setItems] = useState<TextItem[]>([]);
   const [imageRects, setImageRects] = useState<Rect[]>([]);
   const fontRealNames = useRef<Record<string, string>>({});
+  const fontMappingRef = useRef<Record<string, any>>({});
   const replaceRectRef = useRef<Rect | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string | null>(null);
 
@@ -184,6 +198,15 @@ export function PageView({ doc, pageId }: Props) {
         }
       }
       fontRealNames.current = names;
+
+      // Extract subset fonts and run KNN matching
+      try {
+        const mapping = await extractSubsetFontsPaths(page);
+        fontMappingRef.current = mapping;
+      } catch (err) {
+        console.warn("Failed to extract subset fonts paths:", err);
+      }
+
       // detect images (only needed for the select tool, but cheap to keep ready)
       const imgs = await detectImages(page);
       if (!cancelled) setImageRects(imgs);
@@ -201,7 +224,7 @@ export function PageView({ doc, pageId }: Props) {
       const idx = Number(span.dataset.i);
       const item = items[idx];
       if (!item) continue;
-      const tx = pdfjsLib.Util.transform(
+      const tx = transformMatrix(
         (viewport as unknown as { transform: number[] }).transform,
         item.transform,
       );
@@ -402,7 +425,7 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     const item = items[idx];
     if (!vp || !item) return;
-    const tx = pdfjsLib.Util.transform(
+    const tx = transformMatrix(
       (viewport as unknown as { transform: number[] }).transform,
       item.transform,
     );
@@ -415,10 +438,17 @@ export function PageView({ doc, pageId }: Props) {
 
     const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
     const resolved = resolvePDFCoreFontName(realName);
-    if (resolved.family) {
-      void loadWebFont(resolved.family);
-      setDefaultFontFamily(resolved.family);
-      import("sonner").then((m) => m.toast.success(`Erkannt: ${resolved.family}`));
+    
+    // Check if we have a KNN matched font from extractSubsetFontsPaths
+    const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
+    const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : resolved.family;
+    const isBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : resolved.isBold;
+    const isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
+
+    if (matchedFamily) {
+      void loadWebFont(matchedFamily);
+      setDefaultFontFamily(matchedFamily);
+      import("sonner").then((m) => m.toast.success(`Erkannt: ${matchedFamily}`));
     }
 
     addAnnotation({
@@ -429,9 +459,9 @@ export function PageView({ doc, pageId }: Props) {
       text: item.str,
       fontSize: Math.hypot(item.transform[2], item.transform[3]),
       color: "#111111",
-      fontFamily: resolved.family,
-      bold: resolved.isBold,
-      italic: resolved.isItalic,
+      fontFamily: matchedFamily,
+      bold: isBold,
+      italic: isItalic,
       transform: item.transform,
       width: item.width * Math.hypot(item.transform[0], item.transform[1]),
     } as Annotation);
@@ -746,6 +776,27 @@ function toastCopied() {
   import("sonner").then((m) => m.toast.success("✓")).catch(() => {});
 }
 
+let canvasContext: CanvasRenderingContext2D | null = null;
+function getTextWidth(text: string, font: string): number {
+  if (typeof document === "undefined") return 0;
+  if (!canvasContext) {
+    try {
+      const canvas = document.createElement("canvas");
+      canvasContext = canvas.getContext("2d");
+    } catch (e) {
+      // Ignored in test environments
+    }
+  }
+  if (canvasContext && typeof canvasContext.measureText === "function") {
+    canvasContext.font = font;
+    return canvasContext.measureText(text).width;
+  }
+  // Robust fallback for test environments without full canvas context support
+  const match = font.match(/(\d+)px/);
+  const fontSize = match ? Number(match[1]) : 14;
+  return fontSize * 0.6 * text.length;
+}
+
 // ---- individual annotation rendering ----
 function AnnoView({
   anno,
@@ -890,11 +941,11 @@ function AnnoView({
 
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
     const tx = anno.transform
-      ? pdfjsLib.Util.transform(
+      ? transformMatrix(
           (vp as unknown as { transform: number[] }).transform,
           anno.transform,
         )
-      : pdfjsLib.Util.transform((vp as unknown as { transform: number[] }).transform, [
+      : transformMatrix((vp as unknown as { transform: number[] }).transform, [
           1,
           0,
           0,
@@ -913,6 +964,17 @@ function AnnoView({
     const annoWidth = anno.kind === "textReplace" ? (anno.width ?? 0) : anno.w;
     const width = annoWidth * Math.hypot(tx[0], tx[1]);
 
+    const family = cssFontStack(anno.fontFamily || "");
+    
+    // For textReplace annotations, measure text to apply scaleX compression/stretching
+    let scaleX = 1;
+    let naturalWidth = width;
+    if (anno.kind === "textReplace") {
+      const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
+      naturalWidth = getTextWidth(anno.text, fontSpec);
+      scaleX = naturalWidth > 0 && width > 0 ? width / naturalWidth : 1;
+    }
+
     const s = {
       left: `${left}px`,
       top: `${top}px`,
@@ -921,7 +983,6 @@ function AnnoView({
     const transformString = anno.transform ? `rotate(${angle}rad)` : undefined;
     const transformOriginString = anno.transform ? "0 0" : undefined;
 
-    const family = cssFontStack(anno.fontFamily || "");
     return (
       <div
         className={cn(
@@ -971,6 +1032,10 @@ function AnnoView({
             border: "none",
             height: "auto",
             overflow: "visible",
+            // Apply scaleX to fit text replace perfectly
+            width: anno.kind === "textReplace" ? `${naturalWidth}px` : "100%",
+            transform: anno.kind === "textReplace" ? `scaleX(${scaleX})` : undefined,
+            transformOrigin: anno.kind === "textReplace" ? "top left" : undefined,
           }}
         />
         {selected && (

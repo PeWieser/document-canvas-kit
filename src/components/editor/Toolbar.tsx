@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessagesSquare,
+  MoreVertical,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -188,43 +189,57 @@ export function Toolbar({
           </div>
 
           {/* CENTER: view + page navigation */}
-          <div className="flex items-center justify-center gap-1">
-            <TBtn
-              title={t("fitWidth")}
-              active={viewMode === "fit-width"}
-              onClick={() => setViewMode("fit-width")}
-            >
-              <StretchHorizontal className="h-4 w-4" />
-            </TBtn>
-            <TBtn
-              title={t("fitHeight")}
-              active={viewMode === "fit-height"}
-              onClick={() => setViewMode("fit-height")}
-            >
-              <StretchVertical className="h-4 w-4" />
-            </TBtn>
-            <TBtn
-              title={t("twoPage")}
-              active={viewMode === "two-page"}
-              onClick={() => setViewMode("two-page")}
-            >
-              <BookOpen className="h-4 w-4" />
-            </TBtn>
-            <TBtn title={t("gridView")} onClick={() => setGridOpen(true)}>
-              <LayoutGrid className="h-4 w-4" />
-            </TBtn>
+          <div className="flex items-center justify-center gap-1 min-w-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-toolbar-accent focus:outline-none border border-toolbar-accent/30 cursor-pointer"
+                  title={t("view") || "Ansicht"}
+                >
+                  {viewMode === "fit-width" && <StretchHorizontal className="h-3.5 w-3.5" />}
+                  {viewMode === "fit-height" && <StretchVertical className="h-3.5 w-3.5" />}
+                  {viewMode === "two-page" && <BookOpen className="h-3.5 w-3.5" />}
+                  {viewMode === "custom" && <ZoomIn className="h-3.5 w-3.5" />}
+                  <span className="hidden md:inline font-medium">
+                    {viewMode === "fit-width" && t("fitWidth")}
+                    {viewMode === "fit-height" && t("fitHeight")}
+                    {viewMode === "two-page" && t("twoPage")}
+                    {viewMode === "custom" && (t("customView") || "Zoom")}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-48">
+                <DropdownMenuItem onClick={() => setViewMode("fit-width")} className={cn(viewMode === "fit-width" && "bg-accent")}>
+                  <StretchHorizontal className="mr-2 h-4 w-4" />
+                  <span>{t("fitWidth")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setViewMode("fit-height")} className={cn(viewMode === "fit-height" && "bg-accent")}>
+                  <StretchVertical className="mr-2 h-4 w-4" />
+                  <span>{t("fitHeight")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setViewMode("two-page")} className={cn(viewMode === "two-page" && "bg-accent")}>
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  <span>{t("twoPage")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setGridOpen(true)}>
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  <span>{t("gridView")}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-            <Divider />
+            <Divider className="hidden sm:block" />
 
             <TBtn title={t("zoomOut")} onClick={() => setZoom(zoom - 0.15)}>
               <ZoomOut className="h-4 w-4" />
             </TBtn>
-            <span className="w-12 text-center font-mono text-xs">{Math.round(zoom * 100)}%</span>
+            <span className="w-10 text-center font-mono text-xs hidden sm:inline">{Math.round(zoom * 100)}%</span>
             <TBtn title={t("zoomIn")} onClick={() => setZoom(zoom + 0.15)}>
               <ZoomIn className="h-4 w-4" />
             </TBtn>
 
-            <Divider />
+            <Divider className="hidden sm:block" />
 
             <TBtn
               title={t("prevPage")}
@@ -257,27 +272,58 @@ export function Toolbar({
             <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
               <Redo2 className="h-4 w-4" />
             </TBtn>
-            <TBtn
-              title={t("toggleComments")}
-              active={commentsPanelOpen}
-              onClick={toggleCommentsPanel}
-            >
-              <MessagesSquare className="h-4 w-4" />
-            </TBtn>
-            <TBtn title={t("theme")} onClick={onToggleTheme}>
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </TBtn>
-            <button
-              onClick={() => setLang(lang === "de" ? "en" : "de")}
-              className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70"
-              title={t("language")}
-            >
-              {lang}
-            </button>
+
+            {/* Desktop Settings */}
+            <div className="hidden sm:flex items-center gap-1">
+              <TBtn
+                title={t("toggleComments")}
+                active={commentsPanelOpen}
+                onClick={toggleCommentsPanel}
+              >
+                <MessagesSquare className="h-4 w-4" />
+              </TBtn>
+              <TBtn title={t("theme")} onClick={onToggleTheme}>
+                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </TBtn>
+              <button
+                onClick={() => setLang(lang === "de" ? "en" : "de")}
+                className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70 cursor-pointer"
+                title={t("language")}
+              >
+                {lang}
+              </button>
+            </div>
+
+            {/* Mobile / Compact Settings Dropdown */}
+            <div className="sm:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="rounded-md p-1.5 hover:bg-toolbar-accent cursor-pointer" title={t("tools")}>
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={toggleCommentsPanel} className={cn(commentsPanelOpen && "bg-accent")}>
+                    <MessagesSquare className="mr-2 h-4 w-4" />
+                    <span>{t("comments")}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onToggleTheme}>
+                    {dark ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                    <span>{t("theme")}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setLang(lang === "de" ? "en" : "de")}>
+                    <span className="mr-2 font-mono text-[10px] uppercase bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-bold">{lang}</span>
+                    <span>{t("language")}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
             <button
               onClick={onExport}
               disabled={exporting}
-              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 cursor-pointer"
             >
               {exporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
