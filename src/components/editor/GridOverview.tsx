@@ -42,19 +42,27 @@ export function GridOverview({
             onDragStart={() => setDragFrom(index)}
             onDragOver={(e) => {
               e.preventDefault();
-              setDragOver(index);
               const rect = e.currentTarget.getBoundingClientRect();
               const dx = e.clientX - (rect.left + rect.width / 2);
               const dy = e.clientY - (rect.top + rect.height / 2);
 
               // Compare normalized distances to determine if it is a horizontal or vertical drag-over
               const isHorizontal = Math.abs(dx * rect.height) > Math.abs(dy * rect.width);
+              let target: "before" | "after";
+              let side: "left" | "right" | "top" | "bottom";
+
               if (isHorizontal) {
-                setDropTarget(dx < 0 ? "before" : "after");
-                setDropSide(dx < 0 ? "left" : "right");
+                target = dx < 0 ? "before" : "after";
+                side = dx < 0 ? "left" : "right";
               } else {
-                setDropTarget(dy < 0 ? "before" : "after");
-                setDropSide(dy < 0 ? "top" : "bottom");
+                target = dy < 0 ? "before" : "after";
+                side = dy < 0 ? "top" : "bottom";
+              }
+
+              if (dragOver !== index || dropTarget !== target || dropSide !== side) {
+                setDragOver(index);
+                setDropTarget(target);
+                setDropSide(side);
               }
             }}
             onDrop={() => {
@@ -94,10 +102,12 @@ export function GridOverview({
               dragFrom !== null &&
               dragFrom !== index &&
               dropTarget !== null &&
-              dropSide !== null && (
+              dropSide !== null &&
+              !(dragFrom === index - 1 && dropTarget === "before") &&
+              !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute z-50 bg-primary rounded-full",
+                    "absolute z-50 bg-primary rounded-full pointer-events-none",
                     dropSide === "left" || dropSide === "right"
                       ? "top-0 bottom-0 w-1"
                       : "left-0 right-0 h-1",

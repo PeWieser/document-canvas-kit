@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Bold, Italic } from "lucide-react";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
@@ -20,17 +21,27 @@ export function FontPicker() {
   const selectedId = useEditor((s) => s.selectedId);
   const annotations = useEditor((s) => s.annotations);
   const updateAnnotation = useEditor((s) => s.updateAnnotation);
+  const fingerprints = useEditor((s) => s.fingerprints);
 
   const anno = annotations.find((a) => a.id === selectedId);
 
   // Only render for text-carrying annotations.
   if (!anno || (anno.kind !== "textReplace" && anno.kind !== "textbox")) return null;
 
-  // Font family dropdown: detected font first, then common list.
-  const families =
-    anno.fontFamily && !COMMON_FONTS.includes(anno.fontFamily)
-      ? [anno.fontFamily, ...COMMON_FONTS]
-      : COMMON_FONTS;
+  // Font family dropdown: combine COMMON_FONTS and all loaded fingerprints dynamically
+  const families = useMemo(() => {
+    const list = new Set(COMMON_FONTS);
+    for (const fp of fingerprints) {
+      if (fp.family) {
+        list.add(fp.family);
+      }
+    }
+    const sorted = Array.from(list).sort();
+    if (anno.fontFamily && !sorted.includes(anno.fontFamily)) {
+      return [anno.fontFamily, ...sorted];
+    }
+    return sorted;
+  }, [fingerprints, anno.fontFamily]);
 
   const patch = (p: Record<string, unknown>) => updateAnnotation(anno.id, p as never);
 

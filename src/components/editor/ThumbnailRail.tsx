@@ -39,7 +39,7 @@ export function ThumbnailRail({
         <span>{t("pages")}</span>
         <span className="font-mono text-xs">{pageOrder.length}</span>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto px-2 pt-1.5 pb-4 scrollbar-thin">
+      <div className="flex-1 space-y-3 overflow-y-auto px-2 pt-3 pb-4 scrollbar-thin">
         {pageOrder.map((pageId, index) => (
           <div
             key={pageId}
@@ -48,10 +48,12 @@ export function ThumbnailRail({
             onDragStart={() => setDragFrom(index)}
             onDragOver={(e) => {
               e.preventDefault();
-              setDragOver(index);
               const rect = e.currentTarget.getBoundingClientRect();
-              const isBefore = e.clientY < rect.top + rect.height / 2;
-              setDropTarget(isBefore ? "before" : "after");
+              const targetPos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+              if (dragOver !== index || dropTarget !== targetPos) {
+                setDragOver(index);
+                setDropTarget(targetPos);
+              }
             }}
             onDrop={() => {
               if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
@@ -85,10 +87,12 @@ export function ThumbnailRail({
             {dragOver === index &&
               dragFrom !== null &&
               dragFrom !== index &&
-              dropTarget !== null && (
+              dropTarget !== null &&
+              !(dragFrom === index - 1 && dropTarget === "before") &&
+              !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute left-0 right-0 h-1 bg-primary rounded-full z-50",
+                    "absolute left-0 right-0 h-1 bg-primary rounded-full z-50 pointer-events-none",
                     dropTarget === "before" ? "top-0 -translate-y-1.5" : "bottom-0 translate-y-1.5",
                   )}
                 />

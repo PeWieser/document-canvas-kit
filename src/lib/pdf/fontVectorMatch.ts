@@ -70,6 +70,8 @@ export function parseFingerprintsJson(data: any): FontFingerprint[] {
   return result;
 }
 
+import { useEditor } from "../../store/editorStore";
+
 // Automatically load fingerprints in Node.js / Test environment
 if (typeof window === "undefined" || (typeof process !== "undefined" && process.versions?.node)) {
   Promise.resolve().then(async () => {
@@ -96,6 +98,24 @@ if (typeof window === "undefined" || (typeof process !== "undefined" && process.
       // Ignored
     }
   });
+}
+
+// Browser environment: fetch fingerprints dynamically from public folder
+if (typeof window !== "undefined") {
+  fetch("/font-fingerprints.json")
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      const parsed = parseFingerprintsJson(data);
+      registerFingerprints(parsed); // Register in the matching global state
+      useEditor.getState().setFingerprints(parsed); // Sync to Zustand store for reactive UI
+      console.log(`[fontVectorMatch] Loaded ${parsed.length} font fingerprints in browser.`);
+    })
+    .catch((err) => {
+      console.warn("[fontVectorMatch] Failed to load fingerprints JSON in browser:", err);
+    });
 }
 
 // ==========================================

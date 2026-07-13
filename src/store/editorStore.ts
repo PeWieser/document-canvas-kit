@@ -34,10 +34,11 @@ interface EditorState {
   currentPage: number; // display index of the active page
   selectedId: string | null;
   gridOpen: boolean;
+  fingerprints: any[];
+  setFingerprints: (fps: any[]) => void;
 
   past: Snapshot[];
   future: Snapshot[];
-
   loadDoc: (
     fileName: string,
     bytes: Uint8Array,
@@ -105,6 +106,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   currentPage: 0,
   selectedId: null,
   gridOpen: false,
+  fingerprints: [],
+  setFingerprints: (fps) => set({ fingerprints: fps }),
 
   past: [],
   future: [],
