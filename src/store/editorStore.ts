@@ -178,9 +178,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: [...s.past, snap(s)],
       future: [],
       dirty: true,
-      annotations: s.annotations.map((a) =>
-        a.id === id ? ({ ...a, ...patch } as Annotation) : a,
-      ),
+      annotations: s.annotations.map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a)),
     });
   },
 

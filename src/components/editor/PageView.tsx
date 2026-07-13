@@ -7,12 +7,7 @@ import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
 import type { Annotation, Rect } from "@/lib/pdf/types";
 import { resolvePDFCoreFontName, loadWebFont, cssFontStack } from "@/lib/pdf/fontDetect";
-import {
-  screenRect,
-  pdfPoint,
-  rectFromPdfPoints,
-  type Viewport,
-} from "@/lib/pdf/screen";
+import { screenRect, pdfPoint, rectFromPdfPoints, type Viewport } from "@/lib/pdf/screen";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -257,7 +252,16 @@ export function PageView({ doc, pageId }: Props) {
         select(existing.id);
         return;
       }
-      addAnnotation({ id: uid(), kind: "comment", page: pageId, x: px, y: py, text: "", replies: [], resolved: false } as Annotation);
+      addAnnotation({
+        id: uid(),
+        kind: "comment",
+        page: pageId,
+        x: px,
+        y: py,
+        text: "",
+        replies: [],
+        resolved: false,
+      } as Annotation);
       return;
     }
     if (tool === "textbox") {
@@ -284,7 +288,7 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     if (!vp) return;
     const [sx, sy] = localXY(e);
-    
+
     if (tool === "select") {
       const img = imageRectAt(sx, sy);
       if (img) {
@@ -296,7 +300,11 @@ export function PageView({ doc, pageId }: Props) {
           el.style.pointerEvents = "none";
           const hit = document.elementFromPoint(e.clientX, e.clientY);
           el.style.pointerEvents = "auto";
-          if (hit && hit.tagName.toLowerCase() === "span" && hit.parentElement?.classList.contains("pdf-text-layer")) {
+          if (
+            hit &&
+            hit.tagName.toLowerCase() === "span" &&
+            hit.parentElement?.classList.contains("pdf-text-layer")
+          ) {
             setHoverCursor("text");
           } else {
             setHoverCursor(null);
@@ -325,7 +333,14 @@ export function PageView({ doc, pageId }: Props) {
     if (tool === "pen" && penPtsRef.current.length > 1) {
       const smoothed = smooth(penPtsRef.current);
       const pts = smoothed.map((p) => pdfPoint(p[0], p[1], vp));
-      addAnnotation({ id: uid(), kind: "pen", page: pageId, points: pts, color, size: penSize } as Annotation);
+      addAnnotation({
+        id: uid(),
+        kind: "pen",
+        page: pageId,
+        points: pts,
+        color,
+        size: penSize,
+      } as Annotation);
       penPtsRef.current = [];
       setPenScreen([]);
       return;
@@ -334,7 +349,13 @@ export function PageView({ doc, pageId }: Props) {
       if (tool === "redact") {
         addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: draft } as Annotation);
       } else if (tool === "highlight") {
-        addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects: [draft], color: highlightColor } as Annotation);
+        addAnnotation({
+          id: uid(),
+          kind: "highlight",
+          page: pageId,
+          rects: [draft],
+          color: highlightColor,
+        } as Annotation);
       }
     }
     setDraft(null);
@@ -363,7 +384,13 @@ export function PageView({ doc, pageId }: Props) {
           addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: r } as Annotation);
         }
       } else {
-        addAnnotation({ id: uid(), kind: "highlight", page: pageId, rects, color: highlightColor } as Annotation);
+        addAnnotation({
+          id: uid(),
+          kind: "highlight",
+          page: pageId,
+          rects,
+          color: highlightColor,
+        } as Annotation);
       }
       sel.removeAllRanges();
     }
@@ -383,7 +410,7 @@ export function PageView({ doc, pageId }: Props) {
     const left = tx[4];
     const top = tx[5] - fontHeight;
     const p1 = pdfPoint(left, top, vp);
-    const p2 = pdfPoint(left + item.width * zoom, top + fontHeight, vp);
+    const p2 = pdfPoint(left + item.width * Math.hypot(tx[0], tx[1]), top + fontHeight, vp);
     const rect = rectFromPdfPoints(p1, p2);
 
     const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
@@ -406,7 +433,7 @@ export function PageView({ doc, pageId }: Props) {
       bold: resolved.isBold,
       italic: resolved.isItalic,
       transform: item.transform,
-      width: item.width,
+      width: item.width * Math.hypot(item.transform[0], item.transform[1]),
     } as Annotation);
   };
 
@@ -465,7 +492,12 @@ export function PageView({ doc, pageId }: Props) {
           if (cr.width < 1 || cr.height < 1) continue;
           const p1 = pdfPoint(cr.left - base.left, cr.top - base.top, vp);
           const p2 = pdfPoint(cr.right - base.left, cr.bottom - base.top, vp);
-          addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: rectFromPdfPoints(p1, p2) } as Annotation);
+          addAnnotation({
+            id: uid(),
+            kind: "redact",
+            page: pageId,
+            rect: rectFromPdfPoints(p1, p2),
+          } as Annotation);
           any = true;
         }
       }
@@ -476,7 +508,12 @@ export function PageView({ doc, pageId }: Props) {
     }
     // 2) Fallback: redact the image under the cursor, or a small default box.
     const img = imageRectAt(pt[0], pt[1]);
-    const rect = img ?? { x: pdfPoint(pt[0], pt[1], vp)[0] - 40, y: pdfPoint(pt[0], pt[1], vp)[1] - 8, w: 80, h: 16 };
+    const rect = img ?? {
+      x: pdfPoint(pt[0], pt[1], vp)[0] - 40,
+      y: pdfPoint(pt[0], pt[1], vp)[1] - 8,
+      w: 80,
+      h: 16,
+    };
     addAnnotation({ id: uid(), kind: "redact", page: pageId, rect } as Annotation);
   };
 
@@ -501,15 +538,23 @@ export function PageView({ doc, pageId }: Props) {
     if (!rect) return;
     const reader = new FileReader();
     reader.onload = () => {
-      addAnnotation({ id: uid(), kind: "image", page: pageId, rect, dataUrl: String(reader.result) } as Annotation);
+      addAnnotation({
+        id: uid(),
+        kind: "image",
+        page: pageId,
+        rect,
+        dataUrl: String(reader.result),
+      } as Annotation);
     };
     reader.readAsDataURL(file);
   };
 
-  const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact" || tool === "select";
+  const textInteractive =
+    tool === "highlight" || tool === "edit-text" || tool === "redact" || tool === "select";
   // Overlay handles pointer events for drawing tools and comment placement.
   // select tool also needs overlay to be interactive for existing annotation drag/resize handles.
-  const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment" || tool === "select";
+  const overlayInteractive =
+    tool === "pen" || tool === "textbox" || tool === "comment" || tool === "select";
 
   const cursor =
     hoverCursor && tool === "select"
@@ -570,7 +615,7 @@ export function PageView({ doc, pageId }: Props) {
                     "absolute border border-dashed transition-all",
                     isSelected
                       ? "border-primary ring-2 ring-primary/30 z-20"
-                      : "border-transparent hover:border-primary/40 cursor-pointer z-10"
+                      : "border-transparent hover:border-primary/40 cursor-pointer z-10",
                   )}
                   style={{ ...s, pointerEvents: "auto" }}
                   onClick={(e) => {
@@ -615,7 +660,10 @@ export function PageView({ doc, pageId }: Props) {
           {/* overlay (annotations + creation) */}
           <div
             className="absolute inset-0"
-            style={{ pointerEvents: tool === "select" ? "none" : (overlayInteractive ? "auto" : "none"), cursor }}
+            style={{
+              pointerEvents: tool === "select" ? "none" : overlayInteractive ? "auto" : "none",
+              cursor,
+            }}
             onPointerDown={onOverlayPointerDown}
             onPointerMove={onOverlayPointerMove}
             onPointerUp={onOverlayPointerUp}
@@ -639,10 +687,16 @@ export function PageView({ doc, pageId }: Props) {
 
             {viewport && draft && (
               <div
-                className={cn("absolute border-2", tool === "redact" ? "bg-black/80 border-destructive" : "border-primary")}
+                className={cn(
+                  "absolute border-2",
+                  tool === "redact" ? "bg-black/80 border-destructive" : "border-primary",
+                )}
                 style={{
                   ...screenRect(draft, viewport),
-                  background: tool === "highlight" ? `color-mix(in srgb, ${highlightColor} 45%, transparent)` : undefined,
+                  background:
+                    tool === "highlight"
+                      ? `color-mix(in srgb, ${highlightColor} 45%, transparent)`
+                      : undefined,
                 }}
               />
             )}
@@ -650,7 +704,9 @@ export function PageView({ doc, pageId }: Props) {
             {penScreen.length > 1 && (
               <svg className="absolute inset-0 h-full w-full pointer-events-none">
                 <path
-                  d={strokeToPath(getStroke(penScreen, { size: penSize * zoom, thinning: 0.5, streamline: 0.5 }))}
+                  d={strokeToPath(
+                    getStroke(penScreen, { size: penSize * zoom, thinning: 0.5, streamline: 0.5 }),
+                  )}
                   fill={color}
                 />
               </svg>
@@ -665,7 +721,10 @@ export function PageView({ doc, pageId }: Props) {
             const pt = menuPtRef.current;
             if (!pt || !viewport) return;
             const base = wrapRef.current!.getBoundingClientRect();
-            const el = document.elementFromPoint(base.left + pt[0], base.top + pt[1]) as HTMLElement | null;
+            const el = document.elementFromPoint(
+              base.left + pt[0],
+              base.top + pt[1],
+            ) as HTMLElement | null;
             const di = el?.dataset?.i;
             if (di != null) replaceSpan(Number(di));
           }}
@@ -743,7 +802,13 @@ function AnnoView({
         className={cn("absolute bg-black", selected && "ring-2 ring-destructive")}
         style={{ ...s, pointerEvents: selectable ? "auto" : "none" }}
       >
-        {selected && <DeleteBtn rect={{ left: 0, top: 0, width: s.width, height: s.height }} onRemove={onRemove} inner />}
+        {selected && (
+          <DeleteBtn
+            rect={{ left: 0, top: 0, width: s.width, height: s.height }}
+            onRemove={onRemove}
+            inner
+          />
+        )}
       </div>
     );
   }
@@ -763,7 +828,13 @@ function AnnoView({
               onMove={(dxS, dyS) => {
                 const p0 = vp.convertToPdfPoint(0, 0);
                 const p1 = vp.convertToPdfPoint(dxS, dyS);
-                onUpdate({ rect: { ...anno.rect, x: anno.rect.x + (p1[0] - p0[0]), y: anno.rect.y + (p1[1] - p0[1]) } } as any);
+                onUpdate({
+                  rect: {
+                    ...anno.rect,
+                    x: anno.rect.x + (p1[0] - p0[0]),
+                    y: anno.rect.y + (p1[1] - p0[1]),
+                  },
+                } as any);
               }}
             />
             <ResizeHandle
@@ -772,10 +843,21 @@ function AnnoView({
                 const p1 = vp.convertToPdfPoint(dxS, dyS);
                 const dw = p1[0] - p0[0];
                 const dh = p1[1] - p0[1];
-                onUpdate({ rect: { x: anno.rect.x, y: anno.rect.y - -dh < 0 ? anno.rect.y : anno.rect.y - -dh, w: Math.max(10, anno.rect.w + dw), h: Math.max(10, anno.rect.h - dh) } } as any);
+                onUpdate({
+                  rect: {
+                    x: anno.rect.x,
+                    y: anno.rect.y - -dh < 0 ? anno.rect.y : anno.rect.y - -dh,
+                    w: Math.max(10, anno.rect.w + dw),
+                    h: Math.max(10, anno.rect.h - dh),
+                  },
+                } as any);
               }}
             />
-            <DeleteBtn rect={{ left: 0, top: 0, width: s.width, height: s.height }} onRemove={onRemove} inner />
+            <DeleteBtn
+              rect={{ left: 0, top: 0, width: s.width, height: s.height }}
+              onRemove={onRemove}
+              inner
+            />
           </>
         )}
       </div>
@@ -790,7 +872,9 @@ function AnnoView({
     return (
       <svg className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}>
         <path
-          d={strokeToPath(getStroke(pts, { size: anno.size * zoom, thinning: 0.5, streamline: 0.5 }))}
+          d={strokeToPath(
+            getStroke(pts, { size: anno.size * zoom, thinning: 0.5, streamline: 0.5 }),
+          )}
           fill={anno.color}
           onClick={selectable ? onSelect : undefined}
           style={{ pointerEvents: selectable ? "auto" : "none" }}
@@ -805,43 +889,51 @@ function AnnoView({
   }
 
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
-    const rect: Rect =
-      anno.kind === "textReplace" ? anno.rect : { x: anno.x, y: anno.y - anno.h, w: anno.w, h: anno.h };
-    let s: any = screenRect(rect, vp);
-    let transformString: string | undefined = undefined;
-    let transformOriginString: string | undefined = undefined;
+    const tx = anno.transform
+      ? pdfjsLib.Util.transform(
+          (vp as unknown as { transform: number[] }).transform,
+          anno.transform,
+        )
+      : pdfjsLib.Util.transform((vp as unknown as { transform: number[] }).transform, [
+          1,
+          0,
+          0,
+          1,
+          anno.x,
+          anno.y,
+        ]);
 
-    if (anno.kind === "textReplace" && anno.transform && anno.width !== undefined) {
-      const tx = pdfjsLib.Util.transform(
-        (vp as unknown as { transform: number[] }).transform,
-        anno.transform,
-      );
-      const fontHeight = Math.hypot(tx[2], tx[3]);
-      const angle = Math.atan2(tx[1], tx[0]);
-      const left = tx[4];
-      const top = tx[5] - fontHeight;
-      const width = anno.width * zoom;
-      const height = fontHeight;
+    const fontHeight = anno.transform
+      ? Math.hypot(tx[2], tx[3])
+      : anno.fontSize * Math.hypot(tx[2], tx[3]);
 
-      s = {
-        left: `${left}px`,
-        top: `${top}px`,
-        width: `${width}px`,
-        height: `${height}px`,
-      };
-      transformString = `rotate(${angle}rad)`;
-      transformOriginString = "0 0";
-    }
+    const left = tx[4];
+    const top = anno.transform ? tx[5] - fontHeight : tx[5];
+    const angle = Math.atan2(tx[1], tx[0]);
+    const annoWidth = anno.kind === "textReplace" ? (anno.width ?? 0) : anno.w;
+    const width = annoWidth * Math.hypot(tx[0], tx[1]);
+
+    const s = {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+    };
+    const transformString = anno.transform ? `rotate(${angle}rad)` : undefined;
+    const transformOriginString = anno.transform ? "0 0" : undefined;
 
     const family = cssFontStack(anno.fontFamily || "");
     return (
       <div
-        className={cn("absolute group", selected ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-primary/50")}
+        className={cn(
+          "absolute group",
+          selected ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-primary/50",
+        )}
         style={{
           ...s,
           transform: transformString,
           transformOrigin: transformOriginString,
-          minHeight: anno.kind === "textbox" ? 20 : undefined,
+          minHeight: `${fontHeight}px`,
+          height: "auto",
           pointerEvents: selectable || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
@@ -858,11 +950,17 @@ function AnnoView({
             el.style.height = `${el.scrollHeight}px`;
             onUpdate({ text: el.value } as any);
           }}
+          ref={(el) => {
+            if (el) {
+              el.style.height = "auto";
+              el.style.height = `${el.scrollHeight}px`;
+            }
+          }}
           onFocus={onSelect}
           placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
-          className="h-full w-full resize-none overflow-hidden bg-transparent outline-none"
+          className="w-full resize-none overflow-visible bg-transparent outline-none"
           style={{
-            fontSize: anno.fontSize * zoom,
+            fontSize: fontHeight,
             color: anno.color,
             fontFamily: family,
             fontWeight: anno.bold ? 700 : 400,
@@ -871,6 +969,8 @@ function AnnoView({
             padding: 0,
             margin: 0,
             border: "none",
+            height: "auto",
+            overflow: "visible",
           }}
         />
         {selected && (
@@ -899,6 +999,20 @@ function AnnoView({
                 }
               }}
             />
+            {anno.kind === "textbox" && (
+              <ResizeHandle
+                onResize={(dxS, dyS) => {
+                  const p0 = vp.convertToPdfPoint(0, 0);
+                  const p1 = vp.convertToPdfPoint(dxS, dyS);
+                  const dw = p1[0] - p0[0];
+                  const dh = p1[1] - p0[1];
+                  onUpdate({
+                    w: Math.max(20, anno.w + dw),
+                    h: Math.max(20, anno.h - dh),
+                  } as any);
+                }}
+              />
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -916,7 +1030,19 @@ function AnnoView({
 
   if (anno.kind === "comment") {
     const p = vp.convertToViewportPoint(anno.x, anno.y);
-    return <CommentPin anno={anno} vp={vp} left={p[0]} top={p[1]} selected={selected} onSelect={onSelect} onUpdate={onUpdate} onRemove={onRemove} t={t} />;
+    return (
+      <CommentPin
+        anno={anno}
+        vp={vp}
+        left={p[0]}
+        top={p[1]}
+        selected={selected}
+        onSelect={onSelect}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        t={t}
+      />
+    );
   }
 
   return null;
@@ -938,7 +1064,9 @@ function DeleteBtn({
         onRemove();
       }}
       className="absolute z-10 rounded-full bg-destructive p-0.5 text-destructive-foreground"
-      style={inner ? { right: -8, top: -8 } : { left: rect.left + rect.width - 8, top: rect.top - 8 }}
+      style={
+        inner ? { right: -8, top: -8 } : { left: rect.left + rect.width - 8, top: rect.top - 8 }
+      }
     >
       <X className="h-3 w-3" />
     </button>
@@ -1086,7 +1214,9 @@ function CommentPin({
             <button
               onClick={() => {
                 if (!replyText.trim()) return;
-                onUpdate({ replies: [...anno.replies, { id: uid(), text: replyText, ts: Date.now() }] });
+                onUpdate({
+                  replies: [...anno.replies, { id: uid(), text: replyText, ts: Date.now() }],
+                });
                 setReplyText("");
               }}
               className="rounded bg-primary px-2 text-xs text-primary-foreground"
@@ -1095,7 +1225,10 @@ function CommentPin({
             </button>
           </div>
           <div className="mt-2 flex justify-between">
-            <button onClick={() => onUpdate({ resolved: !anno.resolved })} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => onUpdate({ resolved: !anno.resolved })}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
               <Check className="h-3 w-3" />
               {anno.resolved ? t("reopen") : t("resolve")}
             </button>

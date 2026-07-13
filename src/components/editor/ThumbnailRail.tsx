@@ -22,6 +22,7 @@ export function ThumbnailRail({
   const deletePage = useEditor((s) => s.deletePage);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
 
   // Keep the active thumbnail focused (scrolled to the top when possible).
@@ -38,7 +39,7 @@ export function ThumbnailRail({
         <span>{t("pages")}</span>
         <span className="font-mono text-xs">{pageOrder.length}</span>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-4 scrollbar-thin">
+      <div className="flex-1 space-y-3 overflow-y-auto px-2 pt-1.5 pb-4 scrollbar-thin">
         {pageOrder.map((pageId, index) => (
           <div
             key={pageId}
@@ -48,39 +49,56 @@ export function ThumbnailRail({
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(index);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const isBefore = e.clientY < rect.top + rect.height / 2;
+              setDropTarget(isBefore ? "before" : "after");
             }}
             onDrop={() => {
-              if (dragFrom !== null && dragFrom !== index) reorderPages(dragFrom, index);
+              if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
+                let targetIndex = dragFrom;
+                if (index < dragFrom) {
+                  targetIndex = dropTarget === "before" ? index : index + 1;
+                } else if (index > dragFrom) {
+                  targetIndex = dropTarget === "before" ? index - 1 : index;
+                }
+                if (targetIndex !== dragFrom) {
+                  reorderPages(dragFrom, targetIndex);
+                }
+              }
               setDragFrom(null);
               setDragOver(null);
+              setDropTarget(null);
             }}
             onDragEnd={() => {
               setDragFrom(null);
               setDragOver(null);
+              setDropTarget(null);
             }}
             onClick={() => onJump(index)}
             className={cn(
               "group relative flex cursor-pointer flex-col items-center gap-1.5 rounded-lg p-1.5 transition duration-200",
-              dragOver === index && dragFrom !== null && "bg-accent/40",
-              activeIndex === index ? "bg-accent/30" : "hover:bg-accent/15"
+              activeIndex === index ? "bg-accent/30" : "hover:bg-accent/15",
             )}
             title={t("reorderHint")}
           >
             {/* Drop indicator line */}
-            {dragOver === index && dragFrom !== null && dragFrom !== index && (
-              <div
-                className={cn(
-                  "absolute left-0 right-0 h-1 bg-primary rounded-full z-50",
-                  dragFrom < index ? "bottom-0 translate-y-1.5" : "top-0 -translate-y-1.5"
-                )}
-              />
-            )}
+            {dragOver === index &&
+              dragFrom !== null &&
+              dragFrom !== index &&
+              dropTarget !== null && (
+                <div
+                  className={cn(
+                    "absolute left-0 right-0 h-1 bg-primary rounded-full z-50",
+                    dropTarget === "before" ? "top-0 -translate-y-1.5" : "bottom-0 translate-y-1.5",
+                  )}
+                />
+              )}
             <div
               className={cn(
                 "relative flex-1 w-full rounded-md border bg-background overflow-hidden transition-all duration-200 shadow-2xs",
-                activeIndex === index 
-                  ? "border-primary ring-1 ring-primary/45 shadow-xs" 
-                  : "border-border/80 group-hover:border-primary/30"
+                activeIndex === index
+                  ? "border-primary ring-1 ring-primary/45 shadow-xs"
+                  : "border-border/80 group-hover:border-primary/30",
               )}
             >
               <PageThumb doc={doc} pageId={pageId} />
@@ -97,12 +115,14 @@ export function ThumbnailRail({
                 </button>
               )}
             </div>
-            
+
             {/* Subtle, small page index badge at bottom */}
-            <span className={cn(
-              "text-[10px] font-mono transition-colors duration-200",
-              activeIndex === index ? "text-primary font-bold" : "text-muted-foreground"
-            )}>
+            <span
+              className={cn(
+                "text-[10px] font-mono transition-colors duration-200",
+                activeIndex === index ? "text-primary font-bold" : "text-muted-foreground",
+              )}
+            >
               {index + 1}
             </span>
           </div>

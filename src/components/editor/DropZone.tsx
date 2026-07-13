@@ -37,9 +37,9 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           }}
           className={cn(
             "group relative cursor-pointer rounded-xl border border-border bg-card p-10 text-center transition-all duration-250 shadow-sm",
-            over 
-              ? "border-primary bg-primary/5 ring-1 ring-primary/30" 
-              : "hover:border-primary/40 hover:shadow-md"
+            over
+              ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+              : "hover:border-primary/40 hover:shadow-md",
           )}
         >
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">

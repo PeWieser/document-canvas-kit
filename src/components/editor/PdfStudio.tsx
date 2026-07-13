@@ -87,7 +87,11 @@ export function PdfStudio() {
 
   const buildBytes = useCallback(async () => {
     if (!originalBytes) return null;
-    return exportPdf(originalBytes, useEditor.getState().pageOrder, useEditor.getState().annotations);
+    return exportPdf(
+      originalBytes,
+      useEditor.getState().pageOrder,
+      useEditor.getState().annotations,
+    );
   }, [originalBytes]);
 
   const handleExport = useCallback(async () => {
@@ -206,7 +210,7 @@ export function PdfStudio() {
     if (textLayers.length === 0) return;
     const firstLayer = textLayers[0];
     const lastLayer = textLayers[textLayers.length - 1];
-    
+
     let firstNode = firstLayer.firstChild;
     while (firstNode && firstNode.nodeType !== Node.TEXT_NODE && firstNode.firstChild) {
       firstNode = firstNode.firstChild;
@@ -215,7 +219,7 @@ export function PdfStudio() {
     while (lastNode && lastNode.nodeType !== Node.TEXT_NODE && lastNode.lastChild) {
       lastNode = lastNode.lastChild;
     }
-    
+
     if (firstNode && lastNode) {
       const range = document.createRange();
       range.setStart(firstNode, 0);
@@ -454,7 +458,19 @@ export function PdfStudio() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleSave, handlePrint, selectAllPDFText, undo, redo, setZoom, select, setGridOpen, selectedId, removeAnnotation, setTool]);
+  }, [
+    handleSave,
+    handlePrint,
+    selectAllPDFText,
+    undo,
+    redo,
+    setZoom,
+    select,
+    setGridOpen,
+    selectedId,
+    removeAnnotation,
+    setTool,
+  ]);
 
   if (!originalBytes) {
     return (
@@ -492,11 +508,7 @@ export function PdfStudio() {
       />
       <div className="flex min-h-0 flex-1">
         {doc && <ThumbnailRail doc={doc} activeIndex={currentPage} onJump={jumpTo} />}
-        <main
-          ref={scrollRef}
-          className="flex-1 overflow-auto bg-desk"
-          onClick={() => select(null)}
-        >
+        <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
           {!doc && !error && (
             <div className="p-8 text-center text-muted-foreground">{t("loading")}</div>

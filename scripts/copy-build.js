@@ -1,8 +1,8 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-const srcDir = path.resolve('.output/public');
-const destDir = path.resolve('dist');
+const srcDir = path.resolve(".output/public");
+const destDir = path.resolve("dist");
 
 try {
   if (fs.existsSync(srcDir)) {
@@ -12,10 +12,12 @@ try {
     }
     // Copy .output/public to dist
     fs.cpSync(srcDir, destDir, { recursive: true });
-    console.log('Successfully copied .output/public to dist for Cloudflare deployment compatibility.');
+    console.log(
+      "Successfully copied .output/public to dist for Cloudflare deployment compatibility.",
+    );
   } else {
-    console.warn('.output/public does not exist. Skipping copy.');
+    console.warn(".output/public does not exist. Skipping copy.");
   }
 } catch (err) {
-  console.error('Failed to copy build assets:', err);
+  console.error("Failed to copy build assets:", err);
 }

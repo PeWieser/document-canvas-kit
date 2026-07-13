@@ -52,7 +52,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         return;
       }
     }
-    
+
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 

@@ -55,7 +55,16 @@ interface Props {
   onToggleTheme: () => void;
 }
 
-export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting, dark, onToggleTheme }: Props) {
+export function Toolbar({
+  onOpen,
+  onExport,
+  onSave,
+  onSaveAs,
+  onQuit,
+  exporting,
+  dark,
+  onToggleTheme,
+}: Props) {
   const { t, lang, setLang } = useI18n();
   const tool = useEditor((s) => s.tool);
   const setTool = useEditor((s) => s.setTool);
@@ -86,7 +95,8 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
   const annotations = useEditor((s) => s.annotations);
 
   const selectedAnno = annotations.find((a) => a.id === selectedId);
-  const hasTextSelected = selectedAnno && (selectedAnno.kind === "textbox" || selectedAnno.kind === "textReplace");
+  const hasTextSelected =
+    selectedAnno && (selectedAnno.kind === "textbox" || selectedAnno.kind === "textReplace");
 
   const tools: { id: Tool; icon: typeof MousePointer2; label: string; hint: string }[] = [
     { id: "select", icon: MousePointer2, label: t("select"), hint: t("toolSelectHint") },
@@ -119,8 +129,15 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 px-2 py-1.5">
           {/* LEFT: brand + menus */}
           <div className="flex min-w-0 items-center gap-1">
-            <TBtn title={sidebarOpen ? t("collapseSidebar") : t("expandSidebar")} onClick={toggleSidebar}>
-              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            <TBtn
+              title={sidebarOpen ? t("collapseSidebar") : t("expandSidebar")}
+              onClick={toggleSidebar}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-4 w-4" />
+              ) : (
+                <PanelLeftOpen className="h-4 w-4" />
+              )}
             </TBtn>
 
             <DropdownMenu>
@@ -170,89 +187,126 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
             )}
           </div>
 
-        {/* CENTER: view + page navigation */}
-        <div className="flex items-center justify-center gap-1">
-          <TBtn title={t("fitWidth")} active={viewMode === "fit-width"} onClick={() => setViewMode("fit-width")}>
-            <StretchHorizontal className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("fitHeight")} active={viewMode === "fit-height"} onClick={() => setViewMode("fit-height")}>
-            <StretchVertical className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("twoPage")} active={viewMode === "two-page"} onClick={() => setViewMode("two-page")}>
-            <BookOpen className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("gridView")} onClick={() => setGridOpen(true)}>
-            <LayoutGrid className="h-4 w-4" />
-          </TBtn>
+          {/* CENTER: view + page navigation */}
+          <div className="flex items-center justify-center gap-1">
+            <TBtn
+              title={t("fitWidth")}
+              active={viewMode === "fit-width"}
+              onClick={() => setViewMode("fit-width")}
+            >
+              <StretchHorizontal className="h-4 w-4" />
+            </TBtn>
+            <TBtn
+              title={t("fitHeight")}
+              active={viewMode === "fit-height"}
+              onClick={() => setViewMode("fit-height")}
+            >
+              <StretchVertical className="h-4 w-4" />
+            </TBtn>
+            <TBtn
+              title={t("twoPage")}
+              active={viewMode === "two-page"}
+              onClick={() => setViewMode("two-page")}
+            >
+              <BookOpen className="h-4 w-4" />
+            </TBtn>
+            <TBtn title={t("gridView")} onClick={() => setGridOpen(true)}>
+              <LayoutGrid className="h-4 w-4" />
+            </TBtn>
 
-          <Divider />
+            <Divider />
 
-          <TBtn title={t("zoomOut")} onClick={() => setZoom(zoom - 0.15)}>
-            <ZoomOut className="h-4 w-4" />
-          </TBtn>
-          <span className="w-12 text-center font-mono text-xs">{Math.round(zoom * 100)}%</span>
-          <TBtn title={t("zoomIn")} onClick={() => setZoom(zoom + 0.15)}>
-            <ZoomIn className="h-4 w-4" />
-          </TBtn>
+            <TBtn title={t("zoomOut")} onClick={() => setZoom(zoom - 0.15)}>
+              <ZoomOut className="h-4 w-4" />
+            </TBtn>
+            <span className="w-12 text-center font-mono text-xs">{Math.round(zoom * 100)}%</span>
+            <TBtn title={t("zoomIn")} onClick={() => setZoom(zoom + 0.15)}>
+              <ZoomIn className="h-4 w-4" />
+            </TBtn>
 
-          <Divider />
+            <Divider />
 
-          <TBtn title={t("prevPage")} onClick={() => jumpTo(currentPage - 1)} disabled={currentPage <= 0}>
-            <ChevronLeft className="h-4 w-4" />
-          </TBtn>
-          <PageInput current={currentPage} total={numPages} onGo={jumpTo} label={t("goToPage")} of={t("of")} />
-          <TBtn title={t("nextPage")} onClick={() => jumpTo(currentPage + 1)} disabled={currentPage >= numPages - 1}>
-            <ChevronRight className="h-4 w-4" />
-          </TBtn>
+            <TBtn
+              title={t("prevPage")}
+              onClick={() => jumpTo(currentPage - 1)}
+              disabled={currentPage <= 0}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </TBtn>
+            <PageInput
+              current={currentPage}
+              total={numPages}
+              onGo={jumpTo}
+              label={t("goToPage")}
+              of={t("of")}
+            />
+            <TBtn
+              title={t("nextPage")}
+              onClick={() => jumpTo(currentPage + 1)}
+              disabled={currentPage >= numPages - 1}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </TBtn>
+          </div>
+
+          {/* RIGHT */}
+          <div className="flex items-center gap-1">
+            <TBtn title={t("undo")} onClick={undo} disabled={past === 0}>
+              <Undo2 className="h-4 w-4" />
+            </TBtn>
+            <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
+              <Redo2 className="h-4 w-4" />
+            </TBtn>
+            <TBtn
+              title={t("toggleComments")}
+              active={commentsPanelOpen}
+              onClick={toggleCommentsPanel}
+            >
+              <MessagesSquare className="h-4 w-4" />
+            </TBtn>
+            <TBtn title={t("theme")} onClick={onToggleTheme}>
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </TBtn>
+            <button
+              onClick={() => setLang(lang === "de" ? "en" : "de")}
+              className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70"
+              title={t("language")}
+            >
+              {lang}
+            </button>
+            <button
+              onClick={onExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="hidden lg:inline">{exporting ? t("exporting") : t("download")}</span>
+            </button>
+          </div>
         </div>
-
-        {/* RIGHT */}
-        <div className="flex items-center gap-1">
-          <TBtn title={t("undo")} onClick={undo} disabled={past === 0}>
-            <Undo2 className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
-            <Redo2 className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("toggleComments")} active={commentsPanelOpen} onClick={toggleCommentsPanel}>
-            <MessagesSquare className="h-4 w-4" />
-          </TBtn>
-          <TBtn title={t("theme")} onClick={onToggleTheme}>
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </TBtn>
-          <button
-            onClick={() => setLang(lang === "de" ? "en" : "de")}
-            className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70"
-            title={t("language")}
-          >
-            {lang}
-          </button>
-          <button
-            onClick={onExport}
-            disabled={exporting}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            <span className="hidden lg:inline">{exporting ? t("exporting") : t("download")}</span>
-          </button>
-        </div>
-      </div>
-      {/* Sub-Toolbar Row */}
-      {showSubToolbar && (
+        {/* Sub-Toolbar Row */}
+        {showSubToolbar && (
           <div className="flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150">
             <div className="flex items-center gap-4">
               <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
                 {activeTool?.label || t("tools")} Settings:
               </span>
-              
+
               {tool === "highlight" && (
                 <SwatchRow colors={HL_COLORS} value={highlightColor} onChange={setHighlightColor} />
               )}
-              
-              {(tool === "pen" || tool === "textbox" || tool === "edit-text" || (tool === "select" && hasTextSelected)) && (
+
+              {(tool === "pen" ||
+                tool === "textbox" ||
+                tool === "edit-text" ||
+                (tool === "select" && hasTextSelected)) && (
                 <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
               )}
-              
+
               {tool === "pen" && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">{t("penSize")}:</span>
@@ -268,10 +322,12 @@ export function Toolbar({ onOpen, onExport, onSave, onSaveAs, onQuit, exporting,
                   <span className="font-mono text-[10px]">{penSize}px</span>
                 </div>
               )}
-              
-              {(tool === "textbox" || tool === "edit-text" || (tool === "select" && hasTextSelected)) && <FontPicker />}
+
+              {(tool === "textbox" ||
+                tool === "edit-text" ||
+                (tool === "select" && hasTextSelected)) && <FontPicker />}
             </div>
-            
+
             {tool === "comment" && (
               <div className="text-muted-foreground flex items-center gap-2 text-[11px]">
                 <span>{t("toolCommentHint")}</span>

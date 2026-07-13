@@ -76,12 +76,26 @@ describe("Font Integration in UI", () => {
 
     const mockDoc = {
       getPage: vi.fn().mockResolvedValue({
-        getViewport: vi.fn().mockReturnValue({ width: 600, height: 800, transform: [1, 0, 0, 1, 0, 0], convertToPdfPoint: vi.fn().mockReturnValue([0, 0]), convertToViewportPoint: vi.fn().mockReturnValue([0, 0]) }),
+        getViewport: vi
+          .fn()
+          .mockReturnValue({
+            width: 600,
+            height: 800,
+            transform: [1, 0, 0, 1, 0, 0],
+            convertToPdfPoint: vi.fn().mockReturnValue([0, 0]),
+            convertToViewportPoint: vi.fn().mockReturnValue([0, 0]),
+          }),
         render: vi.fn().mockReturnValue({ promise: Promise.resolve() }),
         getTextContent: vi.fn().mockResolvedValue({
           items: [
-            { str: "Hello", transform: [12, 0, 0, 12, 10, 10], width: 50, height: 12, fontName: "g1" }
-          ]
+            {
+              str: "Hello",
+              transform: [12, 0, 0, 12, 10, 10],
+              width: 50,
+              height: 12,
+              fontName: "g1",
+            },
+          ],
         }),
         commonObjs: {
           get: vi.fn().mockReturnValue({ name: "ABCDEF+Arial-BoldMT" }),
@@ -94,13 +108,13 @@ describe("Font Integration in UI", () => {
       root.render(
         <I18nProvider>
           <PageView doc={mockDoc as any} pageId={0} />
-        </I18nProvider>
+        </I18nProvider>,
       );
     });
 
     // Wait for async effects (render, getTextContent)
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
     // The text layer should have rendered our "Hello" item
@@ -115,7 +129,7 @@ describe("Font Integration in UI", () => {
 
     // It should have resolved "Arial" and set it as default
     expect(useEditor.getState().defaultFontFamily).toBe("Arial");
-    
+
     // Check that a new annotation was added
     const annos = useEditor.getState().annotations;
     expect(annos.length).toBe(1);

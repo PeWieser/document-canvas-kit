@@ -38,7 +38,10 @@ export function TwoPageView({
   const rightId = rightIndex < pageOrder.length ? pageOrder[rightIndex] : null;
 
   return (
-    <div className="relative flex min-h-full items-center justify-center p-8" onClick={onSelectClear}>
+    <div
+      className="relative flex min-h-full items-center justify-center p-8"
+      onClick={onSelectClear}
+    >
       <button
         onClick={() => go(-1)}
         disabled={leftIndex <= 0}

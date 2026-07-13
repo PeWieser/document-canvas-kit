@@ -11,20 +11,21 @@ PDF Studio wird direkt auf dem bestehenden Stack (TanStack Start + Cloudflare + 
 > [!CAUTION]
 > **Folgende Dateien werden NICHT verändert** – sie steuern Lovable, den SSR-Build und das Cloudflare-Deployment:
 >
-> | Datei | Grund |
-> |---|---|
-> | `vite.config.ts` | Lovable-eigene Konfiguration (`@lovable.dev/vite-tanstack-config`), beinhaltet Nitro/Cloudflare-Target |
-> | `server.ts` | SSR-Entry-Point für Cloudflare Workers |
-> | `start.ts` | TanStack Start Middleware |
-> | `router.tsx` | Router-Initialisierung |
-> | `routeTree.gen.ts` | Auto-generiert |
-> | `routes/__root.tsx` | Root-Shell mit `<HeadContent>`, `<Scripts>`, SEO-Meta |
-> | `routes/index.tsx` | Route-Definition (dynamischer Import von PdfStudio) |
-> | `.lovable/` | Lovable Projekt-Konfiguration |
-> | `package.json` (scripts) | Build-Scripts bleiben unverändert |
-> | `components.json` | shadcn/ui Konfiguration |
+> | Datei                    | Grund                                                                                                  |
+> | ------------------------ | ------------------------------------------------------------------------------------------------------ |
+> | `vite.config.ts`         | Lovable-eigene Konfiguration (`@lovable.dev/vite-tanstack-config`), beinhaltet Nitro/Cloudflare-Target |
+> | `server.ts`              | SSR-Entry-Point für Cloudflare Workers                                                                 |
+> | `start.ts`               | TanStack Start Middleware                                                                              |
+> | `router.tsx`             | Router-Initialisierung                                                                                 |
+> | `routeTree.gen.ts`       | Auto-generiert                                                                                         |
+> | `routes/__root.tsx`      | Root-Shell mit `<HeadContent>`, `<Scripts>`, SEO-Meta                                                  |
+> | `routes/index.tsx`       | Route-Definition (dynamischer Import von PdfStudio)                                                    |
+> | `.lovable/`              | Lovable Projekt-Konfiguration                                                                          |
+> | `package.json` (scripts) | Build-Scripts bleiben unverändert                                                                      |
+> | `components.json`        | shadcn/ui Konfiguration                                                                                |
 >
 > **Alle Änderungen finden nur in diesen Bereichen statt:**
+>
 > - `src/components/editor/*.tsx` (Editor-Komponenten)
 > - `src/lib/pdf/*.ts` (PDF-Kernlogik)
 > - `src/store/editorStore.ts` (Zustand)
@@ -141,6 +142,7 @@ if (tool === "comment") {
 #### [NEW] `src/components/editor/CommentsPanel.tsx`
 
 Rechte Seitenleiste für Kommentar-Übersicht:
+
 - Auflistung aller Kommentare, gruppiert nach Seite
 - Status-Badge: ● grün (resolved) / ○ grau (open)
 - Klick → springt zur Seite und selektiert den Kommentar
@@ -203,15 +205,18 @@ Ziel: Cleanes, funktionales Design – hell & dunkel. Notion-/Apple-Ästhetik. N
 Vollständige Überarbeitung der CSS Custom Properties:
 
 **Heller Modus**:
+
 - Warmes Weiß (`#fafaf9`), steingraue Ränder (`#e7e5e4`), dezente Schatten
 - Toolbar/Sidebar: `#f5f5f4` – kaum von der Seite unterscheidbar, kein starker Kontrast
 - Akzentfarbe: Blau `#2563eb`
 
 **Dunkler Modus** (`.dark`):
+
 - Schiefergrau (`#1c1917`), warme Kontraste
 - Dokument-Canvas bleibt weiß (PDF wird immer hell dargestellt)
 
 **Typografie**: System-Font-Stack für die UI selbst:
+
 ```css
 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 ```
@@ -231,18 +236,22 @@ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 ### 4.1 Vitest (Unit-Tests)
 
 #### [NEW] `src/__tests__/pdf/ContentStreamEditor.test.ts`
+
 - Tokenizer: Bekannter Byte-Stream → korrekte Token-Typen
 - Redact-Filter: Zeichen in Box → entfernt, Zeichen außerhalb → bleibt
 
 #### [NEW] `src/__tests__/pdf/export.test.ts`
+
 - Minimal-PDF + Highlight → exportiertes PDF enthält Highlight-Rect
 - Redact → geschwärzter Text fehlt im exportierten Stream
 
 #### [NEW] `src/__tests__/pdf/fontDetect.test.ts`
+
 - `"ABCDEF+Arial-BoldMT"` → `{ family: "Arial", isBold: true, isItalic: false }`
 - Unbekannter Name → Helvetica-Fallback
 
 #### [NEW] `src/__tests__/store/editorStore.test.ts`
+
 - Annotations hinzufügen, updaten, entfernen
 - 3x Undo → leerer Zustand; 3x Redo → alle 3 Annotations zurück
 - `reorderPages` / `deletePage` korrekt
@@ -250,19 +259,20 @@ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 ### 4.2 Playwright (E2E-Tests)
 
 #### [NEW] `e2e/fixtures/sample.pdf`
+
 Test-PDF mit bekanntem Text („Geheime Information", „Öffentlicher Text"), einem Bild und verschiedenen Schriften.
 
 #### [NEW] `e2e/tests/`
 
-| Test | Prüft |
-|---|---|
-| `open-file.spec.ts` | PDF-Upload via Drop-Zone → Seiten werden gerendert |
-| `redact.spec.ts` | Text auswählen → Schwärzen → Export → Text physisch entfernt |
-| `highlight.spec.ts` | Text markieren → Export → Highlight-Rect im PDF |
-| `comment.spec.ts` | Pin setzen → Klick öffnet Popup (kein neuer Pin!) → Antwort hinzufügen |
-| `edit-text.spec.ts` | Text anklicken → ersetzen → Export → neuer Text im PDF |
-| `undo-redo.spec.ts` | Annotation → Strg+Z → weg → Strg+Y → zurück |
-| `save-export.spec.ts` | Export → heruntergeladene Datei ist valides PDF |
+| Test                  | Prüft                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| `open-file.spec.ts`   | PDF-Upload via Drop-Zone → Seiten werden gerendert                     |
+| `redact.spec.ts`      | Text auswählen → Schwärzen → Export → Text physisch entfernt           |
+| `highlight.spec.ts`   | Text markieren → Export → Highlight-Rect im PDF                        |
+| `comment.spec.ts`     | Pin setzen → Klick öffnet Popup (kein neuer Pin!) → Antwort hinzufügen |
+| `edit-text.spec.ts`   | Text anklicken → ersetzen → Export → neuer Text im PDF                 |
+| `undo-redo.spec.ts`   | Annotation → Strg+Z → weg → Strg+Y → zurück                            |
+| `save-export.spec.ts` | Export → heruntergeladene Datei ist valides PDF                        |
 
 ---
 
@@ -272,6 +282,7 @@ Test-PDF mit bekanntem Text („Geheime Information", „Öffentlicher Text"), e
 > Diese Phase wird **separat** und **erst nach Abschluss aller obigen Phasen** umgesetzt. Sie erfordert eine Framework-Umstellung (TanStack Start → reine Vite SPA) und ist nicht Lovable/Cloudflare-kompatibel. Der Web-Branch bleibt parallel bestehen.
 
 Inhalte dieser Phase (zusammengefasst):
+
 1. Neuer Git-Branch `desktop`
 2. `vite.config.ts` durch Standard-Vite-Config ersetzen (nur auf diesem Branch)
 3. TanStack Start SSR-Server entfernen → Client-only SPA
@@ -300,10 +311,12 @@ Inhalte dieser Phase (zusammengefasst):
 ## Verifikationsplan
 
 ### Automatisiert
+
 - `npx vitest run` – Unit-Tests für PDF-Kernlogik und Store
 - `npx playwright test` – E2E-Tests im Browser (Workflow: Laden → Bearbeiten → Schwärzen → Exportieren → Validieren)
 
 ### Manuell
+
 - PDF mit Umlauten, Bildern und verschiedenen Schriften bearbeiten und exportieren
 - Export-PDF in Adobe Acrobat / Firefox / Chrome öffnen: Schwärzung korrekt? Kommentare sichtbar?
 - Internetverbindung trennen → bereits gecachte Fonts weiterhin verfügbar?

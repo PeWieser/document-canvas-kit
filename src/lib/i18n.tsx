@@ -65,7 +65,8 @@ const de: Dict = {
   quit: "Beenden",
   quitConfirm: "Es gibt ungespeicherte Änderungen. Trotzdem beenden?",
   saved: "Gespeichert",
-  saveUnsupported: "Direktes Speichern wird von diesem Browser nicht unterstützt – als Kopie heruntergeladen.",
+  saveUnsupported:
+    "Direktes Speichern wird von diesem Browser nicht unterstützt – als Kopie heruntergeladen.",
   fitHeight: "Höhe anpassen",
   twoPage: "Doppelseite",
   singlePage: "Einzelseite",
@@ -219,10 +220,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     setLangState(l);
     if (typeof window !== "undefined") localStorage.setItem("pdfstudio-lang", l);
   }, []);
-  const t = useCallback(
-    (key: keyof typeof de) => dicts[lang][key] ?? String(key),
-    [lang],
-  );
+  const t = useCallback((key: keyof typeof de) => dicts[lang][key] ?? String(key), [lang]);
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
 }
 

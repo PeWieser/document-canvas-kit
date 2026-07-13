@@ -21,6 +21,8 @@ export function GridOverview({
   const deletePage = useEditor((s) => s.deletePage);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
+  const [dropSide, setDropSide] = useState<"left" | "right" | "top" | "bottom" | null>(null);
 
   if (!open) return null;
 
@@ -28,10 +30,7 @@ export function GridOverview({
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur">
       <div className="flex items-center justify-between border-b px-5 py-3">
         <h2 className="text-lg font-semibold">{t("gridView")}</h2>
-        <button
-          onClick={() => setGridOpen(false)}
-          className="rounded-md p-2 hover:bg-muted"
-        >
+        <button onClick={() => setGridOpen(false)} className="rounded-md p-2 hover:bg-muted">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -44,35 +43,71 @@ export function GridOverview({
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(index);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const dx = e.clientX - (rect.left + rect.width / 2);
+              const dy = e.clientY - (rect.top + rect.height / 2);
+
+              // Compare normalized distances to determine if it is a horizontal or vertical drag-over
+              const isHorizontal = Math.abs(dx * rect.height) > Math.abs(dy * rect.width);
+              if (isHorizontal) {
+                setDropTarget(dx < 0 ? "before" : "after");
+                setDropSide(dx < 0 ? "left" : "right");
+              } else {
+                setDropTarget(dy < 0 ? "before" : "after");
+                setDropSide(dy < 0 ? "top" : "bottom");
+              }
             }}
             onDrop={() => {
-              if (dragFrom !== null && dragFrom !== index) reorderPages(dragFrom, index);
+              if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
+                let targetIndex = dragFrom;
+                if (index < dragFrom) {
+                  targetIndex = dropTarget === "before" ? index : index + 1;
+                } else if (index > dragFrom) {
+                  targetIndex = dropTarget === "before" ? index - 1 : index;
+                }
+                if (targetIndex !== dragFrom) {
+                  reorderPages(dragFrom, targetIndex);
+                }
+              }
               setDragFrom(null);
               setDragOver(null);
+              setDropTarget(null);
+              setDropSide(null);
             }}
             onDragEnd={() => {
               setDragFrom(null);
               setDragOver(null);
+              setDropTarget(null);
+              setDropSide(null);
             }}
             onClick={() => {
               onJump(index);
               setGridOpen(false);
             }}
             className={cn(
-              "group relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition hover:shadow-md",
-              dragOver === index && dragFrom !== null ? "border-primary" : "border-border",
+              "group relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition hover:shadow-md border-border",
             )}
             title={t("reorderHint")}
           >
             {/* Drop indicator line */}
-            {dragOver === index && dragFrom !== null && dragFrom !== index && (
-              <div
-                className={cn(
-                  "absolute top-0 bottom-0 w-1 bg-primary rounded-full z-50",
-                  dragFrom < index ? "right-0 translate-x-2" : "left-0 -translate-x-2"
-                )}
-              />
-            )}
+            {dragOver === index &&
+              dragFrom !== null &&
+              dragFrom !== index &&
+              dropTarget !== null &&
+              dropSide !== null && (
+                <div
+                  className={cn(
+                    "absolute z-50 bg-primary rounded-full",
+                    dropSide === "left" || dropSide === "right"
+                      ? "top-0 bottom-0 w-1"
+                      : "left-0 right-0 h-1",
+                    dropSide === "left" && "left-0 -translate-x-2",
+                    dropSide === "right" && "right-0 translate-x-2",
+                    dropSide === "top" && "top-0 -translate-y-2",
+                    dropSide === "bottom" && "bottom-0 translate-y-2",
+                  )}
+                />
+              )}
             <PageThumb doc={doc} pageId={pageId} width={220} />
             <div className="mt-1.5 text-center font-mono text-xs text-muted-foreground">
               {index + 1}

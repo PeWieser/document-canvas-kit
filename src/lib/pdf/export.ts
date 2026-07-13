@@ -137,13 +137,7 @@ function makeFontResolver(outDoc: PDFDocument, helvetica: Record<string, PDFFont
     }
     // Fallback: closest Helvetica variant.
     const fb =
-      bold && italic
-        ? helvetica.bi
-        : bold
-          ? helvetica.b
-          : italic
-            ? helvetica.i
-            : helvetica.r;
+      bold && italic ? helvetica.bi : bold ? helvetica.b : italic ? helvetica.i : helvetica.r;
     cache.set(key, fb);
     return fb;
   };
@@ -246,7 +240,15 @@ export async function exportPdf(
         drawWrappedText(page, font, a.text, x, y, a.fontSize, hexToRgb(a.color), angle);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
-        drawWrappedText(page, font, a.text, a.x, a.y - a.fontSize * 0.8, a.fontSize, hexToRgb(a.color));
+        drawWrappedText(
+          page,
+          font,
+          a.text,
+          a.x,
+          a.y - a.fontSize * 0.8,
+          a.fontSize,
+          hexToRgb(a.color),
+        );
       } else if (a.kind === "image") {
         try {
           const img = await embedImage(outDoc, a.dataUrl);

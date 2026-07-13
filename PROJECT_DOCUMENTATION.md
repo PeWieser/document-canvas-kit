@@ -8,15 +8,17 @@ This documentation serves as a comprehensive guide and onboarding manual for dev
 
 The project is built around a modern, performant React stack designed for edge deployments.
 
-> **CRITICAL RESTRICTION**: 
+> **CRITICAL RESTRICTION**:
 > The build and deployment infrastructure is strictly managed by **Lovable** and targets **Cloudflare** via Nitro.
 > Do **NOT** modify the following files unless specifically requested:
+>
 > - `vite.config.ts` (Uses `@lovable.dev/vite-tanstack-config` which injects SSR/Nitro plugins)
 > - `src/server.ts` & `src/start.ts` (SSR / Edge Worker entry points)
 > - `src/router.tsx` & `src/routeTree.gen.ts` (TanStack Router configuration)
 > - `.lovable/` & `.wrangler/` (Configuration for Lovable and Cloudflare)
 
 ### Dependencies
+
 - **Framework**: React 19 + TanStack Start (SSR)
 - **Routing**: `@tanstack/react-router`
 - **State Management**: Zustand v5
@@ -31,6 +33,7 @@ The project is built around a modern, performant React stack designed for edge d
 The application state is entirely managed by a single Zustand store: `useEditor`.
 
 ### Key Responsibilities:
+
 - **File Management**: Keeps references to `originalBytes`, `fileHandle` (File System Access API), and tracks the `dirty` state.
 - **Tools & UI Modes**: Tracks the active `tool` (`select`, `highlight`, `redact`, `edit-text`, `textbox`, `pen`, `comment`), `zoom` level, and `viewMode` (`fit-width`, `two-page`, etc.).
 - **Annotation Data**: All user overlays (highlights, redactions, drawn paths, textboxes, and comments) are stored in the `annotations` array. Each annotation strictly uses **PDF coordinate space** (points, bottom-left origin).
@@ -47,12 +50,15 @@ To ensure annotations stay perfectly aligned regardless of zoom level or display
 - **Conversion Methods**: `pdfPoint(screenX, screenY, viewport)` and `screenRect(pdfRect, viewport)` map coordinates back and forth using the current PDF.js `Viewport` transform matrix.
 
 ### 3.1 Text Rotation and Matrix Transformations
+
 Text elements in PDFs often carry complex transformation matrices that handle rotation, scale, and skewing. The matrix is represented as an array of six numbers `[a, b, c, d, tx, ty]`:
+
 - `a` and `b` determine horizontal scaling and rotation: $a = \text{scaleX} \cdot \cos(\theta)$, $b = \text{scaleX} \cdot \sin(\theta)$
 - `c` and `d` determine vertical scaling and rotation: $c = \text{scaleY} \cdot -\sin(\theta)$, $d = \text{scaleY} \cdot \cos(\theta)$
 - `tx` and `ty` determine translation (X and Y position in PDF points)
 
 To accurately compute character-level bounds for rotated text blocks:
+
 1. **Scale Factor (X-Axis)**: calculated as $s_x = \sqrt{a^2 + b^2}$.
 2. **Angle of Rotation ($\theta$)**: calculated as $\theta = \text{atan2}(b, a)$.
 3. **Trigonometric Components**: $\cos(\theta) = a / s_x$, $\sin(\theta) = b / s_x$ (if $s_x > 0$, else defaults to $\cos(\theta) = 1, \sin(\theta) = 0$).
@@ -67,7 +73,7 @@ To accurately compute character-level bounds for rotated text blocks:
    - $x_{\text{max}} = \max(x_0, x_1, x_0 + h_x, x_1 + h_x)$
    - $y_{\text{min}} = \min(y_0, y_1, y_0 + h_y, y_1 + h_y)$
    - $y_{\text{max}} = \max(y_0, y_1, y_0 + h_y, y_1 + h_y)$
-This ensures mathematically precise overlap checking during redaction and replacement.
+     This ensures mathematically precise overlap checking during redaction and replacement.
 
 ---
 
@@ -83,7 +89,9 @@ The UI lives inside `src/components/editor/`:
   - Manages pointer events (`onPointerDown`, `onPointerMove`) to draw highlights, redaction boxes, and pens in real-time, mapping screen movements to PDF space.
 
 ### 4.1 UI Viewport CSS-Transforms for Text Layers
+
 To render the transparent text layer spans in perfect congruency with the underlying PDF canvas (especially for rotated text):
+
 1. **Combine Matrices**: The viewport matrix and the text item's matrix are combined: `tx = pdfjsLib.Util.transform(viewport.transform, item.transform)`.
 2. **Screen Font Height**: Computed via the hypotenuse of the vertical components: $H_{\text{font}} = \sqrt{tx_2^2 + tx_3^2}$.
 3. **Screen Rotation Angle**: Computed via `angle = Math.atan2(tx[1], tx[0])`.
@@ -92,7 +100,9 @@ To render the transparent text layer spans in perfect congruency with the underl
 6. **CSS Transform**: Set dynamically as `transform: rotate(${angle}rad) scaleX(${scaleX})` with `transform-origin: left bottom` to align perfectly.
 
 ### 4.2 Select Mode Pointer-Events Model
+
 To support text selection and interaction under overlapping overlay divs:
+
 - **Overlay Layer**: Placed on top of the text layer to capture pen, comment, and shape annotations.
 - **Dynamic Pointer-Events Bypass**: In `select` or `edit-text` modes, pointer events are dynamically routed. On hover/move over the empty background, `pointerEvents` is temporarily toggled to `"none"` on the overlay, a `document.elementFromPoint` hit-test is performed to detect if the cursor is over a text layer span, and then `pointerEvents` is restored to `"auto"`.
 - If a text span is detected, the cursor changes to `text`, allowing the user to select, highlight, or copy the underlying text seamlessly.
@@ -102,6 +112,7 @@ To support text selection and interaction under overlapping overlay divs:
 ## 5. Advanced PDF Manipulation Tools
 
 ### 5.1 Real Redaction (`ContentStreamEditor.ts`)
+
 Standard PDF editors often "redact" by just drawing a black box over the text, which allows users to easily copy-paste the hidden text underneath. This project implements **True Redaction**:
 
 1. When exporting (`export.ts`), the system identifies all `RedactAnno` and `TextReplaceAnno` areas.
@@ -112,6 +123,7 @@ Standard PDF editors often "redact" by just drawing a black box over the text, w
 6. A black rectangle is then drawn over the redacted area using `pdf-lib`.
 
 ### 5.2 Text Replacement & Font Resolution
+
 Users can select existing PDF text and replace it.
 
 1. The underlying original text is physically deleted using the exact same algorithm as Redaction (see above).
@@ -123,6 +135,7 @@ Users can select existing PDF text and replace it.
 7. If a font cannot be fetched, it safely falls back to standard Helvetica (`StandardFonts.Helvetica`).
 
 ### 5.3 Highlighting, Drawing & Image Overlays
+
 - **Highlights**: `pdf-lib` draws a rectangle with the selected color and a 40% opacity.
 - **Pen Tool**: Uses `perfect-freehand` for smooth stroke generation in the UI. On export, the stored PDF-space points are drawn as vector line segments using `page.drawLine`.
 - **Images**: Automatically detected via PDF.js operator lists (`detectImages()`). Users can move them. The export system embeds the replacement Base64 PNG/JPG using `pdf-lib` and draws it at the new coordinates.
@@ -141,4 +154,4 @@ Users can select existing PDF text and replace it.
 - **Sub-Agents**: Specific tasks (like Font-QA or Bug-Fixing) should leverage `Vitest` and `happy-dom` (`vitest.config.ts`) to simulate edge cases and font-matching thresholds.
 - **Internationalization**: Handled by `src/lib/i18n.tsx`. Use `useI18n().t('key')` for all user-facing strings.
 
-*End of Document. Read this file fully before starting any task on PDF Studio.*
+_End of Document. Read this file fully before starting any task on PDF Studio._

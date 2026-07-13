@@ -6,27 +6,30 @@ import opentype from 'opentype.js';
 const __dirname = import.meta.dirname;
 
 const FONTS_TO_FETCH = [
-  'Roboto',
-  'Lato',
-  'Open Sans',
-  'Montserrat',
-  'Oswald',
-  'Source Sans Pro',
-  'Ubuntu',
-  'Merriweather',
-  'Playfair Display',
-  'Nunito',
-  'Raleway',
-  'PT Sans'
+  // Sans-serif
+  'Roboto', 'Lato', 'Open Sans', 'Montserrat', 'Oswald', 'Source Sans Pro',
+  'Ubuntu', 'Nunito', 'Raleway', 'PT Sans', 'Inter', 'Poppins', 'Noto Sans',
+  'Work Sans', 'Fira Sans', 'Quicksand', 'Mulish', 'Barlow', 'Kanit', 'Rubik',
+  'Dm Sans', 'Cabin', 'Karla', 'Arimo', 'Oxygen', 'Hind', 'Josefin Sans',
+  'Libre Franklin', 'Questrial', 'Manrope', 'Dosis',
+  // Serif
+  'Merriweather', 'Playfair Display', 'PT Serif', 'Lora', 'Roboto Slab',
+  'Noto Serif', 'Crimson Text', 'Libre Baskerville', 'EB Garamond',
+  'Arvo', 'Bitter', 'Cardo', 'Domine', 'Cormorant Garamond',
+  // Monospace
+  'Inconsolata', 'Source Code Pro', 'Fira Code', 'Roboto Mono', 'Ubuntu Mono',
+  'Courier Prime', 'Space Mono'
 ];
 
 const GLYPHS = ['e', 'a', 'o', 'g', 'A'];
 const TEMP_DIR = path.join(__dirname, '..', 'temp_fonts');
 const OUT_FILE = path.join(__dirname, '..', 'public', 'font-fingerprints.json');
 
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1';
+
 function downloadString(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         return downloadString(response.headers.location).then(resolve).catch(reject);
       }
@@ -42,7 +45,7 @@ function downloadString(url) {
 
 function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         return downloadFile(response.headers.location, dest).then(resolve).catch(reject);
       }
@@ -113,23 +116,30 @@ async function processFonts() {
 
   const fingerprints = {};
 
+  // 1. Download and parse web fonts (Google Fonts served via Bunny Fonts)
   for (const fontName of FONTS_TO_FETCH) {
-    const fontFile = path.join(TEMP_DIR, `${fontName.replace(/ /g, '_')}.ttf`);
+    const fontFile = path.join(TEMP_DIR, `${fontName.replace(/ /g, '_')}.woff`);
     console.log(`Processing ${fontName}...`);
     try {
       if (!fs.existsSync(fontFile)) {
-        console.log(`Fetching CSS for ${fontName}...`);
-        const cssUrl = `https://fonts.googleapis.com/css2?family=${fontName.replace(/ /g, '+')}`;
+        console.log(`Fetching CSS from Bunny Fonts for ${fontName}...`);
+        const cssUrl = `https://fonts.bunny.net/css?family=${fontName.replace(/ /g, '+')}`;
         const cssContent = await downloadString(cssUrl);
         
-        const urlMatch = cssContent.match(/url\((https:\/\/[^)]+\.ttf)\)/);
+        let urlMatch = cssContent.match(/url\((https:\/\/[^)]+\.woff)\)/);
         if (!urlMatch) {
-            throw new Error('Could not find TTF url in CSS');
+          urlMatch = cssContent.match(/url\((https:\/\/[^)]+)\)/);
+        }
+        if (!urlMatch) {
+            throw new Error('Could not find font URL in CSS');
         }
         
-        const ttfUrl = urlMatch[1];
-        console.log(`Downloading ${fontName} TTF...`);
-        await downloadFile(ttfUrl, fontFile);
+        let fontUrl = urlMatch[1];
+        if (fontUrl.startsWith("'") || fontUrl.startsWith('"')) {
+          fontUrl = fontUrl.slice(1, -1);
+        }
+        console.log(`Downloading ${fontName} font file...`);
+        await downloadFile(fontUrl, fontFile);
       }
       
       const fontBuffer = fs.readFileSync(fontFile);
@@ -168,13 +178,99 @@ async function processFonts() {
     }
   }
 
+  // 2. Crawl Windows system fonts if on Windows
+  if (process.platform === 'win32') {
+    const winFontsDir = 'C:\\Windows\\Fonts';
+    if (fs.existsSync(winFontsDir)) {
+      console.log('Crawling Windows system fonts...');
+      try {
+        const files = fs.readdirSync(winFontsDir);
+        for (const file of files) {
+          if (file.toLowerCase().endsWith('.ttf')) {
+            const fontPath = path.join(winFontsDir, file);
+            try {
+              const fontBuffer = fs.readFileSync(fontPath);
+              const font = opentype.parse(
+                fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+              );
+              
+              const platformNames = font.names.windows || font.names.macintosh;
+              const fontFamily = platformNames 
+                ? (platformNames.fontFamily ? (platformNames.fontFamily.en || Object.values(platformNames.fontFamily)[0]) : null) 
+                : null;
+              const fontSubfamily = platformNames 
+                ? (platformNames.fontSubfamily ? (platformNames.fontSubfamily.en || Object.values(platformNames.fontSubfamily)[0]) : '') 
+                : '';
+              
+              if (fontFamily) {
+                let fullName = fontFamily;
+                if (fontSubfamily && fontSubfamily.toLowerCase() !== 'regular') {
+                  fullName = `${fontFamily} ${fontSubfamily}`;
+                }
+                
+                // Skip if already processed
+                if (fingerprints[fullName]) {
+                  continue;
+                }
+                
+                console.log(`Processing local Windows font: ${fullName} (${file})...`);
+                fingerprints[fullName] = {};
+                let successCount = 0;
+                
+                for (const char of GLYPHS) {
+                  try {
+                    const glyph = font.charToGlyph(char);
+                    const pathObj = glyph.getPath();
+                    const bbox = glyph.getBoundingBox();
+                    const width = bbox.x2 - bbox.x1;
+                    const height = bbox.y2 - bbox.y1;
+                    
+                    let ratio = 0;
+                    let relArea = 0;
+                    let commandsCount = pathObj.commands.length;
+                    
+                    if (width > 0 && height > 0) {
+                      ratio = parseFloat((width / height).toFixed(4));
+                      const boundingBoxArea = width * height;
+                      const area = calculatePathArea(pathObj.commands);
+                      relArea = parseFloat((area / boundingBoxArea).toFixed(4));
+                    }
+                    
+                    fingerprints[fullName][char] = {
+                      r: ratio,
+                      a: relArea,
+                      c: commandsCount
+                    };
+                    successCount++;
+                  } catch {
+                    // skip character if not found in font
+                  }
+                }
+                
+                if (successCount === 0) {
+                  delete fingerprints[fullName];
+                } else {
+                  console.log(`Successfully processed local Windows font: ${fullName}`);
+                }
+              }
+            } catch {
+              // skip unreadable font files
+            }
+          }
+        }
+      } catch (dirErr) {
+        console.error('Error listing Windows fonts directory:', dirErr);
+      }
+    }
+  }
+
   // Ensure public dir exists
   const publicDir = path.dirname(OUT_FILE);
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
   }
 
-  fs.writeFileSync(OUT_FILE, JSON.stringify(fingerprints));
+  fs.writeFileSync(OUT_FILE, JSON.stringify(fingerprints, null, 2));
   console.log(`Fingerprints written to ${OUT_FILE}`);
 }
 

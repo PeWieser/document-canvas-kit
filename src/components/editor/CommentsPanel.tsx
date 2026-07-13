@@ -93,10 +93,16 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
                     <span
                       className={cn(
                         "flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-                        c.resolved ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground",
+                        c.resolved
+                          ? "bg-emerald-500 text-white"
+                          : "bg-primary text-primary-foreground",
                       )}
                     >
-                      {c.resolved ? <Check className="h-2.5 w-2.5" /> : <MessageSquare className="h-2.5 w-2.5" />}
+                      {c.resolved ? (
+                        <Check className="h-2.5 w-2.5" />
+                      ) : (
+                        <MessageSquare className="h-2.5 w-2.5" />
+                      )}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm">
                       {c.text || <span className="text-muted-foreground">…</span>}
@@ -104,9 +110,7 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   </div>
                   <div className="mt-1 pl-5 text-xs text-muted-foreground">
-                    {c.replies.length > 0
-                      ? `${c.replies.length} ${t("reply")}`
-                      : t("noReplies")}
+                    {c.replies.length > 0 ? `${c.replies.length} ${t("reply")}` : t("noReplies")}
                   </div>
                 </button>
               ))}

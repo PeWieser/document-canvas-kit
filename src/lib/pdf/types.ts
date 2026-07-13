@@ -8,14 +8,7 @@ export interface Rect {
   h: number;
 }
 
-export type Tool =
-  | "select"
-  | "highlight"
-  | "redact"
-  | "edit-text"
-  | "textbox"
-  | "pen"
-  | "comment";
+export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment";
 
 export type ViewMode = "fit-width" | "fit-height" | "two-page" | "custom";
 
@@ -104,10 +97,4 @@ export interface ImageAnno {
 }
 
 export type Annotation =
-  | HighlightAnno
-  | RedactAnno
-  | TextReplaceAnno
-  | TextboxAnno
-  | PenAnno
-  | CommentAnno
-  | ImageAnno;
+  HighlightAnno | RedactAnno | TextReplaceAnno | TextboxAnno | PenAnno | CommentAnno | ImageAnno;
