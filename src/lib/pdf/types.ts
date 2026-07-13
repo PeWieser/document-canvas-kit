@@ -47,6 +47,8 @@ export interface TextReplaceAnno {
   fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
+  transform?: number[];
+  width?: number;
 }
 
 export interface TextboxAnno {

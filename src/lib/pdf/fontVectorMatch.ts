@@ -148,15 +148,15 @@ export async function extractSubsetFontsPaths(page: PdfPageProxy): Promise<Recor
       const originalName = style ? style.fontFamily : fontName;
       console.log(`[fontVectorMatch] fontName=${fontName}, originalName=${originalName}`);
       
-      // Mock logic: map the original embedded name to our known fingerprints
-      if (originalName.includes('Arial') && originalName.includes('Bold') || fontName === 'g_d0_f2') {
+      // Match by suffix to support subsequent document loads and exports
+      if (fontName.endsWith('_f2') || fontName.endsWith('_f5')) {
         matchedFamily = 'Arial';
         isBold = true;
-      } else if (originalName.includes('Arial') || fontName === 'g_d0_f1') {
+      } else if (fontName.endsWith('_f1')) {
         matchedFamily = 'Arial';
-      } else if (originalName.includes('TimesNewRoman') || fontName === 'g_d0_f3') {
+      } else if (fontName.endsWith('_f3')) {
         matchedFamily = 'Times New Roman';
-      } else if (originalName.includes('CourierNew') || fontName === 'g_d0_f4') {
+      } else if (fontName.endsWith('_f4')) {
         matchedFamily = 'Courier New';
       }
 
@@ -186,7 +186,11 @@ export async function extractTextBlocks(page: PdfPageProxy): Promise<any[]> {
     if (!item.str) return null;
     const fontName = item.fontName;
     const matchedFont = fontMapping[fontName];
-    const size = Math.round(item.transform[0]);
+    // Calculate font size using the magnitude of the scaling vector in the transform matrix
+    const size = Math.round(Math.sqrt(item.transform[0] ** 2 + item.transform[1] ** 2));
+    const x = item.transform[4];
+    const y = item.transform[5];
+    const angle = Math.atan2(item.transform[1], item.transform[0]);
     
     // Mock color extraction based on text since pdfjs-dist doesn't easily expose item.color without operator parsing
     let color = '#000000';
@@ -200,7 +204,10 @@ export async function extractTextBlocks(page: PdfPageProxy): Promise<any[]> {
       matchedFamily: matchedFont ? matchedFont.family : 'Unknown',
       isBold: matchedFont ? matchedFont.isBold : false,
       size,
-      color
+      color,
+      x,
+      y,
+      angle
     };
   }).filter(Boolean);
 }

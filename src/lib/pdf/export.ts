@@ -10,6 +10,7 @@ import {
   type PDFRawStream,
   type PDFRef,
   type PDFFont,
+  radians,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
@@ -86,13 +87,24 @@ function drawWrappedText(
   baselineTop: number,
   fontSize: number,
   color: ReturnType<typeof rgb>,
+  angleRad: number = 0,
 ) {
   const lines = sanitize(text).split("\n");
   const lineHeight = fontSize * 1.2;
-  let y = baselineTop;
-  for (const line of lines) {
-    page.drawText(line, { x, y, size: fontSize, font, color });
-    y -= lineHeight;
+  const sin = Math.sin(angleRad);
+  const cos = Math.cos(angleRad);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lx = x + i * lineHeight * sin;
+    const ly = baselineTop - i * lineHeight * cos;
+    page.drawText(line, {
+      x: lx,
+      y: ly,
+      size: fontSize,
+      font,
+      color,
+      rotate: radians(angleRad),
+    });
   }
 }
 
@@ -228,7 +240,10 @@ export async function exportPdf(
         });
       } else if (a.kind === "textReplace") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
-        drawWrappedText(page, font, a.text, a.rect.x, a.rect.y + a.rect.h * 0.18, a.fontSize, hexToRgb(a.color));
+        const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
+        const x = a.transform ? a.transform[4] : a.rect.x;
+        const y = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
+        drawWrappedText(page, font, a.text, x, y, a.fontSize, hexToRgb(a.color), angle);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
         drawWrappedText(page, font, a.text, a.x, a.y - a.fontSize * 0.8, a.fontSize, hexToRgb(a.color));

@@ -400,11 +400,13 @@ export function PageView({ doc, pageId }: Props) {
       page: pageId,
       rect,
       text: item.str,
-      fontSize: Math.max(6, rect.h * 0.82),
+      fontSize: Math.hypot(item.transform[2], item.transform[3]),
       color: "#111111",
       fontFamily: resolved.family,
       bold: resolved.isBold,
       italic: resolved.isItalic,
+      transform: item.transform,
+      width: item.width,
     } as Annotation);
   };
 
@@ -504,7 +506,7 @@ export function PageView({ doc, pageId }: Props) {
     reader.readAsDataURL(file);
   };
 
-  const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact";
+  const textInteractive = tool === "highlight" || tool === "edit-text" || tool === "redact" || tool === "select";
   // Overlay handles pointer events for drawing tools and comment placement.
   // select tool also needs overlay to be interactive for existing annotation drag/resize handles.
   const overlayInteractive = tool === "pen" || tool === "textbox" || tool === "comment" || tool === "select";
@@ -560,19 +562,60 @@ export function PageView({ doc, pageId }: Props) {
             viewport &&
             imageRects.map((r, i) => {
               const s = screenRect(r, viewport);
+              const isSelected = selectedId === `img-${i}`;
               return (
                 <div
                   key={`img-${i}`}
-                  className="pointer-events-none absolute border border-dashed border-primary/40"
-                  style={{ ...s }}
-                />
+                  className={cn(
+                    "absolute border border-dashed transition-all",
+                    isSelected
+                      ? "border-primary ring-2 ring-primary/30 z-20"
+                      : "border-transparent hover:border-primary/40 cursor-pointer z-10"
+                  )}
+                  style={{ ...s, pointerEvents: "auto" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    select(`img-${i}`);
+                  }}
+                >
+                  {isSelected && (
+                    <div
+                      className="absolute right-0 top-0 -translate-y-full flex gap-1 bg-background border shadow-md rounded-md p-1 z-30"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => {
+                          replaceRectRef.current = r;
+                          replaceInputRef.current?.click();
+                        }}
+                        className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 font-medium cursor-pointer"
+                      >
+                        {t("ctxReplaceImage") || "Ersetzen"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          addAnnotation({
+                            id: uid(),
+                            kind: "redact",
+                            page: pageId,
+                            rect: r,
+                          } as Annotation);
+                          select(null);
+                        }}
+                        className="text-xs px-2 py-1 bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 font-medium cursor-pointer"
+                      >
+                        {t("delete") || "Löschen"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
 
           {/* overlay (annotations + creation) */}
           <div
             className="absolute inset-0"
-            style={{ pointerEvents: overlayInteractive ? "auto" : "none", cursor }}
+            style={{ pointerEvents: tool === "select" ? "none" : (overlayInteractive ? "auto" : "none"), cursor }}
             onPointerDown={onOverlayPointerDown}
             onPointerMove={onOverlayPointerMove}
             onPointerUp={onOverlayPointerUp}
@@ -764,14 +807,41 @@ function AnnoView({
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
     const rect: Rect =
       anno.kind === "textReplace" ? anno.rect : { x: anno.x, y: anno.y - anno.h, w: anno.w, h: anno.h };
-    const s = screenRect(rect, vp);
+    let s: any = screenRect(rect, vp);
+    let transformString: string | undefined = undefined;
+    let transformOriginString: string | undefined = undefined;
+
+    if (anno.kind === "textReplace" && anno.transform && anno.width !== undefined) {
+      const tx = pdfjsLib.Util.transform(
+        (vp as unknown as { transform: number[] }).transform,
+        anno.transform,
+      );
+      const fontHeight = Math.hypot(tx[2], tx[3]);
+      const angle = Math.atan2(tx[1], tx[0]);
+      const left = tx[4];
+      const top = tx[5] - fontHeight;
+      const width = anno.width * zoom;
+      const height = fontHeight;
+
+      s = {
+        left: `${left}px`,
+        top: `${top}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+      };
+      transformString = `rotate(${angle}rad)`;
+      transformOriginString = "0 0";
+    }
+
     const family = cssFontStack(anno.fontFamily || "");
     return (
       <div
         className={cn("absolute group", selected ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-primary/50")}
         style={{
           ...s,
-          minHeight: 20,
+          transform: transformString,
+          transformOrigin: transformOriginString,
+          minHeight: anno.kind === "textbox" ? 20 : undefined,
           pointerEvents: selectable || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
@@ -790,13 +860,17 @@ function AnnoView({
           }}
           onFocus={onSelect}
           placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
-          className="h-full w-full resize-none overflow-hidden bg-transparent p-0 leading-tight outline-none"
+          className="h-full w-full resize-none overflow-hidden bg-transparent outline-none"
           style={{
             fontSize: anno.fontSize * zoom,
             color: anno.color,
             fontFamily: family,
             fontWeight: anno.bold ? 700 : 400,
             fontStyle: anno.italic ? "italic" : "normal",
+            lineHeight: 1,
+            padding: 0,
+            margin: 0,
+            border: "none",
           }}
         />
         {selected && (
@@ -810,7 +884,18 @@ function AnnoView({
                 if (anno.kind === "textbox") {
                   onUpdate({ x: anno.x + dx, y: anno.y + dy } as any);
                 } else {
-                  onUpdate({ rect: { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy } } as any);
+                  const nextRect = { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy };
+                  const nextTransform = anno.transform
+                    ? [
+                        anno.transform[0],
+                        anno.transform[1],
+                        anno.transform[2],
+                        anno.transform[3],
+                        anno.transform[4] + dx,
+                        anno.transform[5] + dy,
+                      ]
+                    : undefined;
+                  onUpdate({ rect: nextRect, transform: nextTransform } as any);
                 }
               }}
             />

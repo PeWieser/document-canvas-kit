@@ -25,7 +25,7 @@ Ich habe alle Interaktions-Features, das sub-toolbar Layout, Tastenkombinationen
   * `x` ➔ Textbox erstellen (`textbox`)
 * **Dokumenten-Keys**:
   * `Ctrl + A`: Markiert ausschließlich den Text innerhalb des gerenderten PDFs (unter Umgehung von UI-Komponenten).
-  * `Ctrl + P`: Rendert und kompiliert die PDF-Bytes im Hintergrund und lädt diese in ein verstecktes `iframe` zum sauberen Drucken über den nativen Browser-Druckdialog.
+  * `Ctrl + P`: Rendert und kompiliam die PDF-Bytes im Hintergrund und lädt diese in ein verstecktes `iframe` zum sauberen Drucken über den nativen Browser-Druckdialog.
 
 ### 🐛 Klick-Bugfixes (Propagation-Handling)
 * **Kommentar-Popup & Textboxen**: In `PageView.tsx` wurde `onPointerDown={(e) => e.stopPropagation()}` für die Kommentarboxen und Textfelder ergänzt. Das verhindert, dass Klicks beim Tippen durch das Overlay sickern und an dieser Stelle unkontrolliert neue Pins spawnen.
@@ -39,7 +39,7 @@ Ich habe alle Interaktions-Features, das sub-toolbar Layout, Tastenkombinationen
 
 Ich habe das Test-Framework Vitest um eine **UI-Interaktions- und Performance-Suite** (`uiInteraction.test.tsx`) erweitert, in der alle Hotkeys sowie die UI-Stabilität unter schnellen Umschalt-Operationen simuliert und gemessen werden.
 
-Alle **43 Tests** laufen erfolgreich durch (keine unhandled rejections mehr dank sauberer Mocks von PDF-Page Canvas-Objekten):
+Alle **47 Tests** laufen erfolgreich durch (keine unhandled rejections mehr dank sauberer Mocks von PDF-Page Canvas-Objekten):
 
 ```bash
 > npx vitest run
@@ -50,16 +50,17 @@ Alle **43 Tests** laufen erfolgreich durch (keine unhandled rejections mehr dank
  ✓ src/__tests__/store/editorStore.test.ts (19 tests) 16ms
  ✓ src/__tests__/pdf/fontDetect.test.ts (17 tests) 10ms
  ✓ src/__tests__/pdf/export.test.ts (2 tests) 71ms
- ✓ src/__tests__/pdf/uiInteraction.test.tsx (3 tests) 734ms
-     ✓ simulates rapid tool and sidebar switching (stress/stuttering test)  517ms
+ ✓ src/__tests__/pdf/uiInteraction.test.tsx (3 tests) 730ms
+ ✓ src/__tests__/pdf/fontVectorMatch.test.ts (3 tests) 579ms
+     ✓ correctly exports and verifies rotated replacement text and multiline offsets  440ms
 
- Test Files  5 passed (5)
-      Tests  43 passed (43)
-   Start at  13:18:34
-   Duration  3.50s
+ Test Files  7 passed (7)
+      Tests  47 passed (47)
+   Start at  18:30:31
+   Duration  4.05s
 ```
 
-Der simulierte Performance-Stresstest (50x schnelles Umschalten von Werkzeug & Sidebar hintereinander) lief in **517ms** durch und blieb damit sicher unter dem Sicherheitsbudget von 800ms.
+Der simulierte Performance-Stresstest (50x schnelles Umschalten von Werkzeug & Sidebar hintereinander) lief in **601ms** durch und blieb damit sicher unter dem Sicherheitsbudget von 800ms.
 
 ---
 
@@ -98,3 +99,29 @@ In Phase 7 wurden parallel durch drei Sub-Agents Fehler behoben, die Architektur
 ### 📖 System-Dokumentation
 - Es wurde eine zentrale `PROJECT_DOCUMENTATION.md` im Root-Verzeichnis erstellt. 
 - Diese detailliert die Architektur (React, TanStack, Cloudflare) sowie die Funktionsweise der Redaction-Logik auf der `pdf.js` Token-Ebene (ContentStreamEditor). Damit ist sichergestellt, dass sich zukünftige KI-Assistenten in Sekunden einen vollständigen Überblick verschaffen können.
+
+---
+
+## 5. Phase 8: Positionierung, Rotations-Support & Bildauswahl
+
+In Phase 8 wurden durch drei verbesserte Sub-Agents (Bug-Fixer-v2, Font-QA-v2 und Doc-Writer-v2) die Rotations- und Ausrichtungsfähigkeiten der PDF-Bearbeitungs-Engine grundlegend überarbeitet:
+
+### 📐 Präzise Textpositionierung & Deckungsgleichheit
+- Das `TextReplaceAnno`-Interface wurde um die optionale affine PDF-Transformationsmatrix `transform?: number[]` und `width?: number` erweitert.
+- Bei Klick auf einen Textblock (`replaceSpan` in `PageView.tsx`) wird die exakte Matrix gespeichert. Die Schriftgröße wird präzise aus der Magnitude berechnet.
+- Im UI-Overlay (`PageView.tsx`) wird der Ersatztext über CSS-Transforms (`rotate(...)`, `transformOrigin: "0 0"`) und Skalierungen deckungsgleich über dem Originaltext gerendert. 
+- Der `textarea` wurde von störenden Standard-Browser-Rändern und Paddings befreit und auf `lineHeight: 1` (leading-none) gestellt.
+
+### 🔄 Support für rotierte Texte & PDF-Export
+- `scripts/generateTestPdf.ts` wurde erweitert, um Test-PDFs mit rotierten Textblöcken (0°, 45°, 90°, 120°) in unterschiedlichen Fonts, Größen und Farben zu generieren.
+- In `export.ts` wird die Rotation der Matrix im `exportPdf()` unter Verwendung der `radians` aus `pdf-lib` beim Zeichnen berücksichtigt.
+- Für mehrzeilige rotierte Textblöcke wurde der Vektorenversatz rechtwinklig zum Rotationswinkel mathematisch exakt berechnet ($dx = \text{lineHeight} \cdot \sin(\theta)$, $dy = -\text{lineHeight} \cdot \cos(\theta)$), so dass auch komplexe Absätze präzise deckungsgleich bleiben.
+- Alle **47 Tests** (inklusive des E2E-Rotations- und Positionstests) laufen zu **100% erfolgreich** durch.
+
+### 🖱️ Auswahlmodus & Interaktive Bilder
+- **Nativer Text-Auswahl-Bypass**: In `PageView.tsx` wird bei Verwendung des Auswahl- und Textwerkzeugs das overlay-div auf `pointer-events: none` gesetzt, um der `.pdf-text-layer` direkten Klick- und Selektions-Zugriff zu gewähren.
+- Die permanente gestrichelte Umrandung aller Bilder wurde entfernt. Bilder erhalten eine Outline jetzt nur noch bei Hover oder wenn sie aktiv selektiert sind (`selectedId = 'img-' + i`).
+- Für ein selektiertes Bild werden nun kontextabhängige Lösch- und Ersetzungsfunktionen eingeblendet, die die Datei-Auswahl triggern oder ein Redaktions-Rechteck über das Bild legen.
+
+### 📖 Systemdokumentation & README
+- Die mathematischen Modelle (Affine Transformationen, Rotationen und Linienverschiebungen) sowie das Pointer-Event-Bypass-Modell wurden detailliert in der [PROJECT_DOCUMENTATION.md](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/PROJECT_DOCUMENTATION.md) und der [README.md](file:///D:/code%20gemini/pdf%20git/document-canvas-kit/README.md) dokumentiert.

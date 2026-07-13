@@ -46,6 +46,29 @@ To ensure annotations stay perfectly aligned regardless of zoom level or display
 - **Screen Space (Browser)**: Origin `(0,0)` is at the **top-left**. Y-axis increases downwards.
 - **Conversion Methods**: `pdfPoint(screenX, screenY, viewport)` and `screenRect(pdfRect, viewport)` map coordinates back and forth using the current PDF.js `Viewport` transform matrix.
 
+### 3.1 Text Rotation and Matrix Transformations
+Text elements in PDFs often carry complex transformation matrices that handle rotation, scale, and skewing. The matrix is represented as an array of six numbers `[a, b, c, d, tx, ty]`:
+- `a` and `b` determine horizontal scaling and rotation: $a = \text{scaleX} \cdot \cos(\theta)$, $b = \text{scaleX} \cdot \sin(\theta)$
+- `c` and `d` determine vertical scaling and rotation: $c = \text{scaleY} \cdot -\sin(\theta)$, $d = \text{scaleY} \cdot \cos(\theta)$
+- `tx` and `ty` determine translation (X and Y position in PDF points)
+
+To accurately compute character-level bounds for rotated text blocks:
+1. **Scale Factor (X-Axis)**: calculated as $s_x = \sqrt{a^2 + b^2}$.
+2. **Angle of Rotation ($\theta$)**: calculated as $\theta = \text{atan2}(b, a)$.
+3. **Trigonometric Components**: $\cos(\theta) = a / s_x$, $\sin(\theta) = b / s_x$ (if $s_x > 0$, else defaults to $\cos(\theta) = 1, \sin(\theta) = 0$).
+4. **Baseline Points**: For a glyph at offset fraction `frac` within an item of width $W$:
+   - Offset start $x_{\text{off0}} = \text{frac}_{\text{before}} \cdot W$
+   - Offset end $x_{\text{off1}} = \text{frac}_{\text{end}} \cdot W$
+   - $x_0 = tx + x_{\text{off0}} \cdot \cos(\theta)$, $y_0 = ty + x_{\text{off0}} \cdot \sin(\theta)$
+   - $x_1 = tx + x_{\text{off1}} \cdot \cos(\theta)$, $y_1 = ty + x_{\text{off1}} \cdot \sin(\theta)$
+5. **Height Direction**: Extracted from the vertical transformation components: $h_x = c$, $h_y = d$.
+6. **Bounding Box**: Calculated as:
+   - $x_{\text{min}} = \min(x_0, x_1, x_0 + h_x, x_1 + h_x)$
+   - $x_{\text{max}} = \max(x_0, x_1, x_0 + h_x, x_1 + h_x)$
+   - $y_{\text{min}} = \min(y_0, y_1, y_0 + h_y, y_1 + h_y)$
+   - $y_{\text{max}} = \max(y_0, y_1, y_0 + h_y, y_1 + h_y)$
+This ensures mathematically precise overlap checking during redaction and replacement.
+
 ---
 
 ## 4. UI Architecture & View Layer
@@ -58,6 +81,21 @@ The UI lives inside `src/components/editor/`:
   - Renders a `<canvas>` using `pdfjs-dist`.
   - Creates a transparent HTML DOM overlay to enable native text selection.
   - Manages pointer events (`onPointerDown`, `onPointerMove`) to draw highlights, redaction boxes, and pens in real-time, mapping screen movements to PDF space.
+
+### 4.1 UI Viewport CSS-Transforms for Text Layers
+To render the transparent text layer spans in perfect congruency with the underlying PDF canvas (especially for rotated text):
+1. **Combine Matrices**: The viewport matrix and the text item's matrix are combined: `tx = pdfjsLib.Util.transform(viewport.transform, item.transform)`.
+2. **Screen Font Height**: Computed via the hypotenuse of the vertical components: $H_{\text{font}} = \sqrt{tx_2^2 + tx_3^2}$.
+3. **Screen Rotation Angle**: Computed via `angle = Math.atan2(tx[1], tx[0])`.
+4. **Positioning**: The span is placed at `left: tx[4]` and `top: tx[5] - fontHeight`.
+5. **Horizontal Scaling**: Since browser system font rendering dimensions can differ slightly from the PDF's embedded metrics, a horizontal scaling factor is applied: `scaleX = span.offsetWidth > 0 ? (item.width * zoom) / span.offsetWidth : 1`.
+6. **CSS Transform**: Set dynamically as `transform: rotate(${angle}rad) scaleX(${scaleX})` with `transform-origin: left bottom` to align perfectly.
+
+### 4.2 Select Mode Pointer-Events Model
+To support text selection and interaction under overlapping overlay divs:
+- **Overlay Layer**: Placed on top of the text layer to capture pen, comment, and shape annotations.
+- **Dynamic Pointer-Events Bypass**: In `select` or `edit-text` modes, pointer events are dynamically routed. On hover/move over the empty background, `pointerEvents` is temporarily toggled to `"none"` on the overlay, a `document.elementFromPoint` hit-test is performed to detect if the cursor is over a text layer span, and then `pointerEvents` is restored to `"auto"`.
+- If a text span is detected, the cursor changes to `text`, allowing the user to select, highlight, or copy the underlying text seamlessly.
 
 ---
 
@@ -81,12 +119,19 @@ Users can select existing PDF text and replace it.
 3. **Font Detection** (`fontDetect.ts`): The system parses the internal PDF font name (e.g., stripping subset prefixes like `ABCDEF+Helvetica-Bold`) to determine the closest standard web font.
 4. **Font Fetching**: `getFontBytes()` asynchronously downloads the TrueType (`.ttf`) file for that font from Google Fonts (via Bunny Fonts proxy).
 5. **Embedding**: `fontkit` embeds the downloaded TTF into the PDF via `pdf-lib` so the final output contains the correct vector font, ensuring it looks identical on any device.
-6. If a font cannot be fetched, it safely falls back to standard Helvetica (`StandardFonts.Helvetica`).
+6. **Matrix & Width Integration**: `TextReplaceAnno` has been extended to include `transform?: number[]` and `width?: number`. These store the original text block's rotation/scale matrix and physical width, allowing the replacement text to be drawn with the exact same angle and size constraints upon export.
+7. If a font cannot be fetched, it safely falls back to standard Helvetica (`StandardFonts.Helvetica`).
 
 ### 5.3 Highlighting, Drawing & Image Overlays
 - **Highlights**: `pdf-lib` draws a rectangle with the selected color and a 40% opacity.
 - **Pen Tool**: Uses `perfect-freehand` for smooth stroke generation in the UI. On export, the stored PDF-space points are drawn as vector line segments using `page.drawLine`.
 - **Images**: Automatically detected via PDF.js operator lists (`detectImages()`). Users can move them. The export system embeds the replacement Base64 PNG/JPG using `pdf-lib` and draws it at the new coordinates.
+- **Image Selection & Interaction Pattern**:
+  - In `select` mode, hovering over an image renders a dashed outline (`border border-dashed border-primary/40`).
+  - Clicking on the image selects it, displaying a solid primary border (`ring-2 ring-primary`) along with action controls:
+    - **MoveHandle**: Allows the user to drag and reposition the image.
+    - **ResizeHandle**: Allows the user to scale the image dimensions.
+    - **DeleteBtn**: Allows the user to physically delete the image annotation.
 
 ---
 

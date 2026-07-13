@@ -177,7 +177,7 @@ export function PdfStudio() {
         toast.dismiss(tid);
         return;
       }
-      const blob = new Blob([bytes], { type: "application/pdf" });
+      const blob = new Blob([bytes as any], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const iframe = document.createElement("iframe");
       iframe.style.display = "none";

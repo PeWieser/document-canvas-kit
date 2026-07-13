@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
@@ -51,6 +51,43 @@ async function main() {
   drawLine('Times New Roman Regular, blue, size 14', 'TimesNewRoman', 14, rgb(0, 0, 1));
   drawLine('Courier New Regular, green, size 18', 'CourierNew', 18, rgb(0, 0.5, 0));
   drawLine('A mix of characters to test subsetting: ABCXYZ abcxyz 123890', 'Arial', 12, rgb(0,0,0));
+
+  // Draw rotated text blocks
+  page.drawText('Rotated 0 degrees, black, size 12', {
+    x: 50,
+    y: 200,
+    size: 12,
+    font: loadedFonts['Arial'],
+    color: rgb(0, 0, 0),
+    rotate: degrees(0),
+  });
+
+  page.drawText('Rotated 45 degrees, red, size 14', {
+    x: 100,
+    y: 180,
+    size: 14,
+    font: loadedFonts['Arial-Bold'],
+    color: rgb(1, 0, 0),
+    rotate: degrees(45),
+  });
+
+  page.drawText('Rotated 90 degrees, blue, size 16', {
+    x: 150,
+    y: 160,
+    size: 16,
+    font: loadedFonts['TimesNewRoman'],
+    color: rgb(0, 0, 1),
+    rotate: degrees(90),
+  });
+
+  page.drawText('Rotated 120 degrees, green, size 18', {
+    x: 200,
+    y: 140,
+    size: 18,
+    font: loadedFonts['CourierNew'],
+    color: rgb(0, 0.5, 0),
+    rotate: degrees(120),
+  });
 
   const outBytes = await pdfDoc.save();
   const outPath = path.join(__dirname, '../public/test-fonts.pdf');
