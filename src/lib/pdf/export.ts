@@ -115,14 +115,32 @@ export interface ExportProgress {
 /** Resolve (and cache) an embedded pdf-lib font for a given family/style. */
 function makeFontResolver(outDoc: PDFDocument, helvetica: Record<string, PDFFont>) {
   const cache = new Map<string, PDFFont>();
+  const bytesCache = new Map<string, PDFFont>(); // keyed by byte-identity
+
   return async function resolve(
     family: string | undefined,
     bold?: boolean,
     italic?: boolean,
+    originalBytes?: Uint8Array,
   ): Promise<PDFFont> {
+    // 1) Original embedded font bytes → identical metrics (deckungsgleich).
+    if (originalBytes && originalBytes.length > 4) {
+      const key = `bytes:${originalBytes.byteLength}:${originalBytes[0]}:${originalBytes[originalBytes.length - 1]}`;
+      const hit = bytesCache.get(key);
+      if (hit) return hit;
+      try {
+        const embedded = await outDoc.embedFont(originalBytes, { subset: true });
+        bytesCache.set(key, embedded);
+        return embedded;
+      } catch (e) {
+        console.warn("original font embed failed, falling back", e);
+      }
+    }
+
     const key = `${family || ""}|${bold ? 1 : 0}|${italic ? 1 : 0}`;
     if (cache.has(key)) return cache.get(key)!;
-    // Try to embed the real web font for a 1:1 look.
+
+    // 2) Web font (Bunny) fallback.
     if (family) {
       try {
         const bytes = await getFontBytes(family, bold, italic);
@@ -135,7 +153,7 @@ function makeFontResolver(outDoc: PDFDocument, helvetica: Record<string, PDFFont
         console.warn("font embed failed for", family, e);
       }
     }
-    // Fallback: closest Helvetica variant.
+    // 3) Fallback: closest Helvetica variant.
     const fb =
       bold && italic ? helvetica.bi : bold ? helvetica.b : italic ? helvetica.i : helvetica.r;
     cache.set(key, fb);
@@ -233,7 +251,7 @@ export async function exportPdf(
           color: rgb(0, 0, 0),
         });
       } else if (a.kind === "textReplace") {
-        const font = await resolveFont(a.fontFamily, a.bold, a.italic);
+        const font = await resolveFont(a.fontFamily, a.bold, a.italic, a.originalFontBytes);
         const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
         const x = a.transform ? a.transform[4] : a.rect.x;
         const y = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
