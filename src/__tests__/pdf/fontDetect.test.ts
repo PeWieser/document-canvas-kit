@@ -1,86 +1,67 @@
 /**
- * Unit-Tests für fontDetect.ts
- *
- * Testet resolvePDFCoreFontName mit realen PostScript-Namen aus PDFs.
+ * Extended matrix tests for resolvePDFCoreFontName.
+ * Ensures every common PostScript naming convention resolves correctly.
  */
 import { describe, it, expect } from "vitest";
 import { resolvePDFCoreFontName, cssFontStack, COMMON_FONTS } from "../../lib/pdf/fontDetect";
 
-describe("resolvePDFCoreFontName", () => {
-  // --- Subset-prefix stripping ---
-  it("strips 6-char subset prefix (ABCDEF+)", () => {
-    const r = resolvePDFCoreFontName("ABCDEF+Arial-BoldMT");
-    expect(r.family).toBe("Arial");
-    expect(r.isBold).toBe(true);
-    expect(r.isItalic).toBe(false);
-  });
+interface Row {
+  input: string;
+  family: string;
+  bold: boolean;
+  italic: boolean;
+}
 
-  it("strips subset prefix from Times New Roman bold italic", () => {
-    const r = resolvePDFCoreFontName("XYZABC+TimesNewRomanPS-BoldItalicMT");
-    expect(r.family).toBe("Times New Roman");
-    expect(r.isBold).toBe(true);
-    expect(r.isItalic).toBe(true);
-  });
+const cases: Row[] = [
+  // Subset prefixes
+  { input: "ABCDEF+Arial-BoldMT", family: "Arial", bold: true, italic: false },
+  { input: "XYZABC+TimesNewRomanPS-BoldItalicMT", family: "Times New Roman", bold: true, italic: true },
+  { input: "AAAAAA+Calibri", family: "Calibri", bold: false, italic: false },
 
-  // --- Direct psNameMap matches ---
-  it("resolves ArialMT → Arial", () => {
-    const r = resolvePDFCoreFontName("ArialMT");
-    expect(r.family).toBe("Arial");
-    expect(r.isBold).toBe(false);
-    expect(r.isItalic).toBe(false);
-  });
+  // Direct psNameMap
+  { input: "ArialMT", family: "Arial", bold: false, italic: false },
+  { input: "Arial-ItalicMT", family: "Arial", bold: false, italic: true },
+  { input: "TimesNewRomanPSMT", family: "Times New Roman", bold: false, italic: false },
+  { input: "Calibri-Bold", family: "Calibri", bold: true, italic: false },
+  { input: "Verdana-BoldItalic", family: "Verdana", bold: true, italic: true },
+  { input: "CourierNewPSMT", family: "Courier New", bold: false, italic: false },
 
-  it("resolves Arial-ItalicMT → Arial italic", () => {
-    const r = resolvePDFCoreFontName("Arial-ItalicMT");
-    expect(r.family).toBe("Arial");
-    expect(r.isItalic).toBe(true);
-  });
+  // Weight suffixes
+  { input: "Roboto-SemiBold", family: "Roboto", bold: true, italic: false },
+  { input: "Roboto-DemiBold", family: "Roboto", bold: true, italic: false },
+  { input: "Roboto-ExtraBold", family: "Roboto", bold: true, italic: false },
+  { input: "Roboto-Black", family: "Roboto", bold: true, italic: false },
+  { input: "Roboto-Heavy", family: "Roboto", bold: true, italic: false },
+  { input: "Roboto-Light", family: "Roboto", bold: false, italic: false },
+  { input: "Roboto-Thin", family: "Roboto", bold: false, italic: false },
+  { input: "Roboto-Medium", family: "Roboto", bold: false, italic: false },
 
-  it("resolves TimesNewRomanPSMT → Times New Roman", () => {
-    const r = resolvePDFCoreFontName("TimesNewRomanPSMT");
-    expect(r.family).toBe("Times New Roman");
-  });
+  // Italic variants
+  { input: "OpenSans-Oblique", family: "Open Sans", bold: false, italic: true },
+  { input: "OpenSans-SemiBoldItalic", family: "Open Sans", bold: true, italic: true },
 
-  it("resolves Calibri-Bold → Calibri bold", () => {
-    const r = resolvePDFCoreFontName("Calibri-Bold");
-    expect(r.family).toBe("Calibri");
-    expect(r.isBold).toBe(true);
-  });
+  // Comma style ("Family,Bold")
+  { input: "Helvetica,Bold", family: "Helvetica", bold: true, italic: false },
+  { input: "MyFont,BoldItalic", family: "MyFont", bold: true, italic: true },
 
-  it("resolves Verdana-BoldItalic → Verdana bold+italic", () => {
-    const r = resolvePDFCoreFontName("Verdana-BoldItalic");
-    expect(r.family).toBe("Verdana");
-    expect(r.isBold).toBe(true);
-    expect(r.isItalic).toBe(true);
-  });
+  // CamelCase fallback + style stripping
+  { input: "MyCustomFont", family: "My Custom Font", bold: false, italic: false },
+  { input: "MyCustomFont-BoldOblique", family: "My Custom Font", bold: true, italic: true },
 
-  it("resolves CourierNewPSMT → Courier New", () => {
-    const r = resolvePDFCoreFontName("CourierNewPSMT");
-    expect(r.family).toBe("Courier New");
-  });
+  // CID/generic fallbacks
+  { input: "", family: "Helvetica", bold: false, italic: false },
+  { input: "f1", family: "Helvetica", bold: false, italic: false },
+  { input: "g2", family: "Helvetica", bold: false, italic: false },
+  { input: "TTF4t00", family: "Helvetica", bold: false, italic: false },
+  { input: "g_d0_f1", family: "Helvetica", bold: false, italic: false },
+];
 
-  // --- CamelCase splitting (fallback) ---
-  it("splits unknown camelCase name gracefully", () => {
-    const r = resolvePDFCoreFontName("MyCustomFont");
-    expect(r.family).toBe("My Custom Font");
-  });
-
-  // --- Fallback to Helvetica ---
-  it("falls back to Helvetica for empty input", () => {
-    const r = resolvePDFCoreFontName("");
-    expect(r.family).toBe("Helvetica");
-    expect(r.isBold).toBe(false);
-    expect(r.isItalic).toBe(false);
-  });
-
-  it("falls back to Helvetica for purely numeric CID name", () => {
-    const r = resolvePDFCoreFontName("f1");
-    expect(r.family).toBe("Helvetica");
-  });
-
-  it("falls back to Helvetica for short letter+number CID", () => {
-    const r = resolvePDFCoreFontName("g2");
-    expect(r.family).toBe("Helvetica");
+describe("resolvePDFCoreFontName – matrix", () => {
+  it.each(cases)("$input → $family (bold=$bold italic=$italic)", (row) => {
+    const r = resolvePDFCoreFontName(row.input);
+    expect(r.family).toBe(row.family);
+    expect(r.isBold).toBe(row.bold);
+    expect(r.isItalic).toBe(row.italic);
   });
 });
 
@@ -88,11 +69,9 @@ describe("cssFontStack", () => {
   it("wraps known family in quotes with fallbacks", () => {
     expect(cssFontStack("Arial")).toBe('"Arial", Helvetica, Arial, sans-serif');
   });
-
   it("returns plain fallback for empty input", () => {
     expect(cssFontStack("")).toBe("Helvetica, Arial, sans-serif");
   });
-
   it("returns plain fallback for generic 'sans-serif'", () => {
     expect(cssFontStack("sans-serif")).toBe("Helvetica, Arial, sans-serif");
   });
@@ -102,7 +81,6 @@ describe("COMMON_FONTS", () => {
   it("contains at least 5 entries", () => {
     expect(COMMON_FONTS.length).toBeGreaterThanOrEqual(5);
   });
-
   it("contains Arial and Helvetica", () => {
     expect(COMMON_FONTS).toContain("Arial");
     expect(COMMON_FONTS).toContain("Helvetica");
