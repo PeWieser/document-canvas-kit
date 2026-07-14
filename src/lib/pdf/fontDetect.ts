@@ -293,8 +293,13 @@ export function resolvePDFCoreFontName(fontName: string): ResolvedFont {
     .replace(/\s+/g, " ")
     .trim();
 
-  // CID / purely numeric / empty names → safe default with a warning.
-  if (!cleanName || /^\d+$/.test(cleanName) || /^[A-Za-z]{1,2}\d+$/.test(cleanName)) {
+  // CID / purely numeric / empty names / alphanumeric subset names (e.g. TTF4t00, g_d0_f1) → safe default.
+  if (
+    !cleanName ||
+    /^\d+$/.test(cleanName) ||
+    /^[A-Za-z]{1,3}\d+[A-Za-z0-9]*$/.test(cleanName) ||
+    /^[a-z]_[a-z]\d+_[a-z]\d+$/.test(cleanName)
+  ) {
     if (fontName) console.warn("Unresolved font name, falling back to Helvetica:", fontName);
     return { family: "Helvetica", isBold, isItalic };
   }

@@ -1,5 +1,6 @@
 import { PdfPageProxy } from "./pdfjs";
 import { loadWebFont, resolvePDFCoreFontName } from "./fontDetect";
+// @ts-ignore
 import * as opentype from "opentype.js";
 
 // ==========================================

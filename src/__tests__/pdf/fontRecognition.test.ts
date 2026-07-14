@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+// @ts-ignore
 import opentype from 'opentype.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { 

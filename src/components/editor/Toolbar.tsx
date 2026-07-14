@@ -456,8 +456,8 @@ function TBtn({
   );
 }
 
-function Divider() {
-  return <div className="mx-1 h-6 w-px bg-toolbar-accent/60" />;
+function Divider({ className }: { className?: string }) {
+  return <div className={cn("mx-1 h-6 w-px bg-toolbar-accent/60", className)} />;
 }
 
 function SwatchRow({

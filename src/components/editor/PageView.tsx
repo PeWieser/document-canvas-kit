@@ -5,7 +5,7 @@ import type { PdfDocumentProxy, PdfPageProxy } from "@/lib/pdf/pdfjs";
 import { pdfjsLib } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
-import type { Annotation, Rect } from "@/lib/pdf/types";
+import type { Annotation, Rect, TextReplaceAnno, TextboxAnno } from "@/lib/pdf/types";
 import { resolvePDFCoreFontName, loadWebFont, cssFontStack } from "@/lib/pdf/fontDetect";
 import { screenRect, pdfPoint, rectFromPdfPoints, type Viewport } from "@/lib/pdf/screen";
 import {
@@ -81,6 +81,36 @@ function transformMatrix(a: number[], b: number[]): number[] {
     a[0] * b[4] + a[2] * b[5] + a[4],
     a[1] * b[4] + a[3] * b[5] + a[5],
   ];
+}
+
+function getBoundingBoxInPdfSpace(A: number[], width: number): Rect {
+  const scaleX = Math.hypot(A[0], A[1]);
+  const cosAngle = scaleX > 0 ? A[0] / scaleX : 1;
+  const sinAngle = scaleX > 0 ? A[1] / scaleX : 0;
+
+  const x_bl = A[4];
+  const y_bl = A[5];
+
+  const x_br = A[4] + width * cosAngle;
+  const y_br = A[5] + width * sinAngle;
+
+  const x_tl = A[4] + A[2];
+  const y_tl = A[5] + A[3];
+
+  const x_tr = A[4] + width * cosAngle + A[2];
+  const y_tr = A[5] + width * sinAngle + A[3];
+
+  const x_min = Math.min(x_bl, x_br, x_tl, x_tr);
+  const y_min = Math.min(y_bl, y_br, y_tl, y_tr);
+  const x_max = Math.max(x_bl, x_br, x_tl, x_tr);
+  const y_max = Math.max(y_bl, y_br, y_tl, y_tr);
+
+  return {
+    x: x_min,
+    y: y_min,
+    w: x_max - x_min,
+    h: y_max - y_min,
+  };
 }
 
 /** Detect raster image placements (PDF-space rects) via the operator list. */
@@ -183,25 +213,6 @@ export function PageView({ doc, pageId }: Props) {
           });
       }
       setItems(its);
-      // resolve real font names (subset PS names) for style detection
-      const names: Record<string, string> = {};
-      for (const fn of new Set(its.map((x) => x.fontName).filter(Boolean) as string[])) {
-        try {
-          const f = page.commonObjs.get(fn);
-          if (f?.name) names[fn] = f.name as string;
-        } catch {
-          /* not available */
-        }
-      }
-      fontRealNames.current = names;
-
-      // Extract subset fonts and run KNN matching
-      try {
-        const mapping = await extractSubsetFontsPaths(page);
-        fontMappingRef.current = mapping;
-      } catch (err) {
-        console.warn("Failed to extract subset fonts paths:", err);
-      }
 
       // detect images (only needed for the select tool, but cheap to keep ready)
       const imgs = await detectImages(page);
@@ -231,7 +242,28 @@ export function PageView({ doc, pageId }: Props) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       renderTask = pdfPage.render({ canvasContext: ctx, viewport: vp });
-      renderTask.promise.catch((err: any) => {
+      renderTask.promise.then(async () => {
+        // Run KNN matching and resolve PostScript font names once after the first render
+        if (Object.keys(fontMappingRef.current).length === 0) {
+          try {
+            const mapping = await extractSubsetFontsPaths(pdfPage);
+            fontMappingRef.current = mapping;
+
+            const names: Record<string, string> = {};
+            for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
+              try {
+                const f = pdfPage.commonObjs.get(fn);
+                if (f?.name) names[fn] = f.name as string;
+              } catch {
+                /* not available */
+              }
+            }
+            fontRealNames.current = names;
+          } catch (err) {
+            console.warn("Failed to extract subset fonts after render:", err);
+          }
+        }
+      }).catch((err: any) => {
         // ignore cancellation/rendering errors
       });
     }
@@ -241,7 +273,7 @@ export function PageView({ doc, pageId }: Props) {
         renderTask.cancel();
       }
     };
-  }, [pdfPage, zoom]);
+  }, [pdfPage, zoom, items]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -452,16 +484,7 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     const item = items[idx];
     if (!vp || !item) return;
-    const tx = transformMatrix(
-      (viewport as unknown as { transform: number[] }).transform,
-      item.transform,
-    );
-    const fontHeight = Math.hypot(tx[2], tx[3]);
-    const left = tx[4];
-    const top = tx[5] - fontHeight;
-    const p1 = pdfPoint(left, top, vp);
-    const p2 = pdfPoint(left + item.width * Math.hypot(tx[0], tx[1]), top + fontHeight, vp);
-    const rect = rectFromPdfPoints(p1, p2);
+    const rect = getBoundingBoxInPdfSpace(item.transform, item.width);
 
     const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
     const resolved = resolvePDFCoreFontName(realName);
@@ -967,32 +990,37 @@ function AnnoView({
   }
 
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
-    const tx = anno.transform
+    const transform = anno.kind === "textReplace" ? (anno as TextReplaceAnno).transform : undefined;
+    const annoWidth = anno.kind === "textReplace" ? (anno as TextReplaceAnno).width : undefined;
+    const textboxX = anno.kind === "textbox" ? (anno as TextboxAnno).x : 0;
+    const textboxY = anno.kind === "textbox" ? (anno as TextboxAnno).y : 0;
+
+    const tx = transform
       ? transformMatrix(
           (vp as unknown as { transform: number[] }).transform,
-          anno.transform,
+          transform,
         )
       : transformMatrix((vp as unknown as { transform: number[] }).transform, [
           1,
           0,
           0,
           1,
-          anno.x,
-          anno.y,
+          textboxX,
+          textboxY,
         ]);
 
-    const fontHeight = anno.transform
+    const fontHeight = transform
       ? Math.hypot(tx[2], tx[3])
       : anno.fontSize * Math.hypot(tx[2], tx[3]);
 
     const left = tx[4];
-    const top = anno.transform ? tx[5] - fontHeight : tx[5];
+    const top = transform ? tx[5] - fontHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const width = anno.kind === "textReplace"
-      ? (anno.transform
-          ? (anno.width ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(anno.transform[0], anno.transform[1])
-          : (anno.width ?? 0) * zoom)
-      : anno.w * Math.hypot(tx[0], tx[1]);
+      ? (transform
+          ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1])
+          : (annoWidth ?? 0) * zoom)
+      : (anno as TextboxAnno).w * Math.hypot(tx[0], tx[1]);
 
     const family = cssFontStack(anno.fontFamily || "");
     
@@ -1010,8 +1038,8 @@ function AnnoView({
       top: `${top}px`,
       width: `${width}px`,
     };
-    const transformString = anno.transform ? `rotate(${angle}rad)` : undefined;
-    const transformOriginString = anno.transform ? "0 0" : undefined;
+    const transformString = transform ? `rotate(${angle}rad)` : undefined;
+    const transformOriginString = transform ? "0 0" : undefined;
 
     return (
       <div
@@ -1036,20 +1064,29 @@ function AnnoView({
           value={anno.text}
           onChange={(e) => {
             const el = e.target as HTMLTextAreaElement;
-            // auto-grow the box to fit its content
-            el.style.height = "auto";
-            el.style.height = `${el.scrollHeight}px`;
+            if (anno.kind === "textbox") {
+              // auto-grow the box to fit its content
+              el.style.height = "auto";
+              el.style.height = `${el.scrollHeight}px`;
+            } else {
+              el.style.height = `${fontHeight}px`;
+            }
             onUpdate({ text: el.value } as any);
           }}
           ref={(el) => {
             if (el) {
-              el.style.height = "auto";
-              el.style.height = `${el.scrollHeight}px`;
+              if (anno.kind === "textbox") {
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              } else {
+                el.style.height = `${fontHeight}px`;
+              }
             }
           }}
           onFocus={onSelect}
           placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
-          className="w-full resize-none overflow-visible bg-transparent outline-none"
+          rows={anno.kind === "textReplace" ? 1 : undefined}
+          className="w-full resize-none bg-transparent outline-none"
           style={{
             fontSize: fontHeight,
             color: anno.color,
@@ -1060,8 +1097,9 @@ function AnnoView({
             padding: 0,
             margin: 0,
             border: "none",
-            height: "auto",
-            overflow: "visible",
+            display: "block",
+            overflow: anno.kind === "textReplace" ? "hidden" : "visible",
+            whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
             // Apply scaleX to fit text replace perfectly
             width: anno.kind === "textReplace" ? `${Math.max(8, naturalWidth)}px` : "100%",
             transform: anno.kind === "textReplace" ? `scaleX(${scaleX})` : undefined,
