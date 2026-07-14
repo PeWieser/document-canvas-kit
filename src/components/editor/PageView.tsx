@@ -1033,7 +1033,7 @@ function AnnoView({
             height: "auto",
             overflow: "visible",
             // Apply scaleX to fit text replace perfectly
-            width: anno.kind === "textReplace" ? `${naturalWidth}px` : "100%",
+            width: anno.kind === "textReplace" ? `${Math.max(8, naturalWidth)}px` : "100%",
             transform: anno.kind === "textReplace" ? `scaleX(${scaleX})` : undefined,
             transformOrigin: anno.kind === "textReplace" ? "top left" : undefined,
           }}
