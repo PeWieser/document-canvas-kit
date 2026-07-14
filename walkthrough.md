@@ -196,3 +196,34 @@ Wir haben alle Anforderungen von Phase 10 vollständig umgesetzt und abgesichert
 ### 🧪 QA & Testabdeckung
 - Ein dediziertes Koordinaten-Testskript `scripts/testDeckungsgleich.ts` wurde erstellt, welches die exakten Vektorkoordinaten vor und nach dem PDF-Export vergleicht und die absolute Deckungsgleichheit (Fehlergrenze < 0.0001pt) nachweist.
 - Alle **48 Unit- und Integrationstests** laufen in Vitest fehlerfrei durch und der SSR/Production-Build baut stabil.
+
+---
+
+## 8. Phase 11: Textbox-Positionierung, Erster-Klick-Fix, scaleX-Korrektur & Drag-UX Dead-Zone
+
+Wir haben alle Restarbeiten und verbleibenden Fehler aus Phase 10 vollständig analysiert, behoben und abgesichert:
+
+### ⚡ Erster-Klick-Fehler behoben (Race-Condition Beseitigung)
+- **Problem**: Bei jedem Zoom-Vorgang oder schnellen Tool-Wechsel wurde das `items`-Array kurzzeitig geleert (`setItems([])`) und der Canvas neu gezeichnet. Dadurch kam es bei Klick auf ein Textfeld direkt nach dem Tool-Wechsel zu einer Race-Condition (die Spans waren im DOM noch nicht gerendert oder initialisiert), was stumme Fehler oder "Try again"-Verhalten verursachte.
+- **Lösung**: Die `useEffect`-Aufrufe in `PageView.tsx` wurden sauber separiert:
+  1. Ein **Lade-Effect** (`[doc, pageId]`) liest die Text-Items, Bilder, Font-RealNames und KNN-Font-Mappings genau einmal pro Seite aus.
+  2. Ein **Renderschritt-Effect** (`[pdfPage, zoom]`) kümmert sich ausschließlich um das Skalieren und Neuzeichnen des Canvas bei Zoom-Änderungen. 
+- Das `items`-Array bleibt beim Tool-Wechsel absolut stabil, so dass Klicks ab dem ersten Tastendruck augenblicklich registriert werden.
+
+### 📐 Text-Verzerrungsbug behoben (scaleX-Doppelskalierung)
+- **Problem**: Der Text wurde beim Editieren extrem gestaucht oder in die Breite gezogen.
+- **Ursache**: Die Breite `width` wurde doppelt skaliert: einmal beim Speichern in `replaceSpan` (wo `item.width * Math.hypot(transform[0], transform[1])` berechnet wurde) und ein zweites Mal in `AnnoView` beim Skalieren der UI-Textarea mit der kombinierten Viewport-Transformationsmatrix.
+- **Lösung**: 
+  - `replaceSpan` speichert nun ausschließlich die rohe `item.width` in Punkten (PDF-Space).
+  - In `AnnoView` wird die Zielbreite im Browser-Viewport mathematisch präzise skaliert.
+  - Dadurch passt sich die `scaleX`-Stauchung (Verhältnis zwischen natürlicher Renderschrittweite und Zielbox-Breite) perfekt an. Der Text ist gestochen scharf, deckungsgleich und verzerrungsfrei.
+
+### 🖱️ Drag-and-Drop UX Lücken-Fix (Contiguous Layout)
+- **Problem**: In der Seitenleiste (`ThumbnailRail`) und in der Seitenübersicht (`GridOverview`) gab es beim Ziehen über die Zwischenräume (Gaps) einen forbidden cursor (Kreis mit Strich), da die Gaps keine Drag-Handler besaßen und die Linie wild hin- und hersprang.
+- **Lösung**:
+  - In der Seitenleiste (`ThumbnailRail`) wurden Container-Gaps entfernt. Jede Kachel wurde in ein lückenloses Wrapper-`div` mit `py-1.5` gehüllt, so dass die Interaktionsboxen nahtlos aneinandergrenzen. Die Indikatorlinie wird mittig bei `translate-y-0.5` gezeichnet.
+  - Im Grid (`GridOverview`) wurde `gap-4` entfernt. Jedes Kachelelement wird in einen wrapper-`div` mit `p-2` gehüllt, wodurch die 16px Zwischenräume vollständig aktiv für Drag-Gesten geschaltet werden.
+  - Der standardmäßige Browser-Verbots-Cursor ist restlos beseitigt. Der Drop-Indikator wechselt nun absolut flüssig und exakt bei 50% der Distanz zwischen den visualisierten Seite-Kacheln.
+
+### 🧪 QA & Testergebnisse
+- Alle **48 Unit- und Integrationstests** laufen in Vitest fehlerfrei durch und der SSR/Production-Build baut stabil.

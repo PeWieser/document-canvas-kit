@@ -34,7 +34,7 @@ export function GridOverview({
           <X className="h-5 w-5" />
         </button>
       </div>
-      <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto p-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid flex-1 grid-cols-2 overflow-y-auto p-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {pageOrder.map((pageId, index) => (
           <div
             key={pageId}
@@ -88,14 +88,7 @@ export function GridOverview({
               setDropTarget(null);
               setDropSide(null);
             }}
-            onClick={() => {
-              onJump(index);
-              setGridOpen(false);
-            }}
-            className={cn(
-              "group relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition hover:shadow-md border-border",
-            )}
-            title={t("reorderHint")}
+            className="group relative p-2 outline-none"
           >
             {/* Drop indicator line */}
             {dragOver === index &&
@@ -109,30 +102,41 @@ export function GridOverview({
                   className={cn(
                     "absolute z-50 bg-primary rounded-full pointer-events-none",
                     dropSide === "left" || dropSide === "right"
-                      ? "top-0 bottom-0 w-1"
-                      : "left-0 right-0 h-1",
-                    dropSide === "left" && "left-0 -translate-x-2",
-                    dropSide === "right" && "right-0 translate-x-2",
-                    dropSide === "top" && "top-0 -translate-y-2",
-                    dropSide === "bottom" && "bottom-0 translate-y-2",
+                      ? "top-2 bottom-2 w-1"
+                      : "left-2 right-2 h-1",
+                    dropSide === "left" && "left-0 -translate-x-0.5",
+                    dropSide === "right" && "right-0 translate-x-0.5",
+                    dropSide === "top" && "top-0 -translate-y-0.5",
+                    dropSide === "bottom" && "bottom-0 translate-y-0.5",
                   )}
                 />
               )}
-            <PageThumb doc={doc} pageId={pageId} width={220} />
-            <div className="mt-1.5 text-center font-mono text-xs text-muted-foreground">
-              {index + 1}
+            <div
+              onClick={() => {
+                onJump(index);
+                setGridOpen(false);
+              }}
+              className={cn(
+                "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
+              )}
+              title={t("reorderHint")}
+            >
+              <PageThumb doc={doc} pageId={pageId} width={220} />
+              <div className="mt-1.5 text-center font-mono text-xs text-muted-foreground">
+                {index + 1}
+              </div>
+              {pageOrder.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deletePage(index);
+                  }}
+                  className="absolute right-2 top-2 rounded-md bg-destructive p-1 text-destructive-foreground opacity-0 transition group-hover:opacity-100"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
-            {pageOrder.length > 1 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deletePage(index);
-                }}
-                className="absolute right-2 top-2 rounded-md bg-destructive p-1 text-destructive-foreground opacity-0 transition group-hover:opacity-100"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
           </div>
         ))}
       </div>

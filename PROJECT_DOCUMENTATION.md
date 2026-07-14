@@ -108,6 +108,19 @@ To support text selection and interaction under overlapping overlay divs:
 - **Dynamic Pointer-Events Bypass**: In `select` or `edit-text` modes, pointer events are dynamically routed. On hover/move over the empty background, `pointerEvents` is temporarily toggled to `"none"` on the overlay, a `document.elementFromPoint` hit-test is performed to detect if the cursor is over a text layer span, and then `pointerEvents` is restored to `"auto"`.
 - If a text span is detected, the cursor changes to `text`, allowing the user to select, highlight, or copy the underlying text seamlessly.
 
+### 4.3 Drag-and-Drop Page Reordering (Contiguous Layouts)
+
+To ensure a smooth, gapless drag-and-drop page reordering experience in both `ThumbnailRail` (sidebar) and `GridOverview` (full screen grid):
+
+1. **Outer Drag Wrapper**: Rather than having gaps or margins between draggable elements (which leads to dead zones where the browser displays a forbidden/blocked cursor), draggable elements are wrapped in an outer wrapper `div`.
+2. **Eliminating Dead Zones**:
+   - In the sidebar `ThumbnailRail`, spacing is removed, and wrapper `div`s have a `py-1.5` padding. This makes the outer boundary of adjacent elements meet exactly, leaving zero dead space.
+   - In the full screen `GridOverview`, grid gaps are removed, and wrapper `div`s use `p-2` padding to construct a seamless contiguous matrix.
+3. **Midpoint-Based Drop Swaps (50% rule)**:
+   - For vertical drag-over (`ThumbnailRail`), the cursor `clientY` is compared against the vertical midpoint of the element (`top + height / 2`) to decide whether the page is inserted `before` or `after` the target.
+   - For 2D drag-over (`GridOverview`), normalized cross-multiplication (`Math.abs(dx * rect.height) > Math.abs(dy * rect.width)`) is used to map the pointer to one of four triangular quadrants (left, right, top, bottom), determining both horizontal and vertical insertion sides.
+4. **Centering Drop Indicators**: The visual drop line is absolute positioned and offset by the exact wrapper padding size (e.g., `-translate-y-0.5` or `-translate-x-0.5` representing 2px translates) to render precisely centered in the gap between the visual cards.
+
 ---
 
 ## 5. Advanced PDF Manipulation Tools

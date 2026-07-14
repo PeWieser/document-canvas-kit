@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStroke } from "perfect-freehand";
 import { GripVertical, X, MessageSquare, Check, Move } from "lucide-react";
-import type { PdfDocumentProxy } from "@/lib/pdf/pdfjs";
+import type { PdfDocumentProxy, PdfPageProxy } from "@/lib/pdf/pdfjs";
 import { pdfjsLib } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
@@ -129,6 +129,7 @@ export function PageView({ doc, pageId }: Props) {
   const textLayerRef = useRef<HTMLDivElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
+  const [pdfPage, setPdfPage] = useState<PdfPageProxy | null>(null);
   const [items, setItems] = useState<TextItem[]>([]);
   const [imageRects, setImageRects] = useState<Rect[]>([]);
   const fontRealNames = useRef<Record<string, string>>({});
@@ -154,25 +155,20 @@ export function PageView({ doc, pageId }: Props) {
 
   const pageAnnos = annotations.filter((a) => a.page === pageId);
 
-  // --- render page + text content ---
+  // --- load page data ---
   useEffect(() => {
+    setPdfPage(null);
+    setItems([]);
+    setImageRects([]);
+    fontRealNames.current = {};
+    fontMappingRef.current = {};
+
     let cancelled = false;
     (async () => {
       const page = await doc.getPage(pageId + 1);
-      const vp = page.getViewport({ scale: zoom });
       if (cancelled) return;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(vp.width * dpr);
-      canvas.height = Math.floor(vp.height * dpr);
-      canvas.style.width = `${vp.width}px`;
-      canvas.style.height = `${vp.height}px`;
-      const ctx = canvas.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      await page.render({ canvasContext: ctx, viewport: vp }).promise;
-      if (cancelled) return;
-      setViewport(vp as unknown as Viewport);
+      setPdfPage(page);
+
       const content = await page.getTextContent();
       if (cancelled) return;
       const its: TextItem[] = [];
@@ -214,7 +210,38 @@ export function PageView({ doc, pageId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [doc, pageId, zoom]);
+  }, [doc, pageId]);
+
+  // --- render page ---
+  useEffect(() => {
+    if (!pdfPage) return;
+    let renderTask: any = null;
+
+    const vp = pdfPage.getViewport({ scale: zoom });
+    setViewport(vp as unknown as Viewport);
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(vp.width * dpr);
+      canvas.height = Math.floor(vp.height * dpr);
+      canvas.style.width = `${vp.width}px`;
+      canvas.style.height = `${vp.height}px`;
+      const ctx = canvas.getContext("2d")!;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      renderTask = pdfPage.render({ canvasContext: ctx, viewport: vp });
+      renderTask.promise.catch((err: any) => {
+        // ignore cancellation/rendering errors
+      });
+    }
+
+    return () => {
+      if (renderTask && typeof renderTask.cancel === "function") {
+        renderTask.cancel();
+      }
+    };
+  }, [pdfPage, zoom]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -463,7 +490,7 @@ export function PageView({ doc, pageId }: Props) {
       bold: isBold,
       italic: isItalic,
       transform: item.transform,
-      width: item.width * Math.hypot(item.transform[0], item.transform[1]),
+      width: item.width,
     } as Annotation);
   };
 
@@ -961,8 +988,11 @@ function AnnoView({
     const left = tx[4];
     const top = anno.transform ? tx[5] - fontHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
-    const annoWidth = anno.kind === "textReplace" ? (anno.width ?? 0) : anno.w;
-    const width = annoWidth * Math.hypot(tx[0], tx[1]);
+    const width = anno.kind === "textReplace"
+      ? (anno.transform
+          ? (anno.width ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(anno.transform[0], anno.transform[1])
+          : (anno.width ?? 0) * zoom)
+      : anno.w * Math.hypot(tx[0], tx[1]);
 
     const family = cssFontStack(anno.fontFamily || "");
     
@@ -972,7 +1002,7 @@ function AnnoView({
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
       naturalWidth = getTextWidth(anno.text, fontSpec);
-      scaleX = naturalWidth > 0 && width > 0 ? width / naturalWidth : 1;
+      scaleX = naturalWidth > 0 ? width / naturalWidth : 1;
     }
 
     const s = {
