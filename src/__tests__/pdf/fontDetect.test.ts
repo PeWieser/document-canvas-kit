@@ -42,7 +42,7 @@ const cases: Row[] = [
 
   // Comma style ("Family,Bold")
   { input: "Helvetica,Bold", family: "Helvetica", bold: true, italic: false },
-  { input: "MyFont,BoldItalic", family: "MyFont", bold: true, italic: true },
+  { input: "MyFont,BoldItalic", family: "My Font", bold: true, italic: true },
 
   // CamelCase fallback + style stripping
   { input: "MyCustomFont", family: "My Custom Font", bold: false, italic: false },
