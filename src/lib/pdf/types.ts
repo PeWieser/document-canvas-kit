@@ -42,6 +42,11 @@ export interface TextReplaceAnno {
   italic?: boolean;
   transform?: number[];
   width?: number;
+  /** Raw bytes of the *original* embedded PDF font – reused on export
+   *  so the replacement text uses identical glyph metrics (deckungsgleich). */
+  originalFontBytes?: Uint8Array;
+  weight?: number;
+  italicAngle?: number;
 }
 
 export interface TextboxAnno {
