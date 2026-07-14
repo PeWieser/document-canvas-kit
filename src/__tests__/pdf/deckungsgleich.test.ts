@@ -43,12 +43,21 @@ describe("Text replacement is deckungsgleich (position-preserving)", () => {
       const page = await doc.getPage(1);
       const content = await page.getTextContent();
 
-      // Pick up to 8 non-empty, non-whitespace items with a distinctive first token.
+      // Pick up to 8 items whose text is unique on the page (avoid ambiguous
+      // matches from repeated single letters) and long enough to be
+      // identifiable but short enough to fit on one line.
+      const counts = new Map<string, number>();
+      for (const it of content.items as any[]) {
+        const t = (it.str || "").trim();
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+      }
       const picked: any[] = [];
       for (const it of content.items as any[]) {
         if (picked.length >= 8) break;
-        if (!it.str || !it.str.trim() || !it.fontName) continue;
-        if (it.str.length > 30) continue;
+        const t = (it.str || "").trim();
+        if (t.length < 4 || t.length > 30) continue;
+        if (!it.fontName) continue;
+        if ((counts.get(t) ?? 0) !== 1) continue;
         picked.push(it);
       }
       if (!picked.length) return;
