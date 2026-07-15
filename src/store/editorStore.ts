@@ -57,6 +57,7 @@ interface EditorState {
   setHighlightColor: (c: string) => void;
   setFontSize: (n: number) => void;
   setPenSize: (n: number) => void;
+  setPenStyle: (s: PenStyle) => void;
   setDefaultFontFamily: (f: string) => void;
   setZoom: (z: number) => void;
   setViewMode: (m: ViewMode) => void;
@@ -64,9 +65,13 @@ interface EditorState {
   toggleSidebar: () => void;
   toggleCommentsPanel: () => void;
   setCommentsPanelOpen: (b: boolean) => void;
+  setSearchOpen: (b: boolean) => void;
+  toggleSearch: () => void;
   setCurrentPage: (i: number) => void;
   setGridOpen: (b: boolean) => void;
   select: (id: string | null) => void;
+  setSelectedPages: (ids: number[]) => void;
+  toggleSelectedPage: (i: number, mode?: "single" | "toggle" | "range") => void;
 
   addAnnotation: (a: Annotation) => void;
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
