@@ -27,6 +27,8 @@ import {
   PanelLeftOpen,
   MessagesSquare,
   MoreVertical,
+  Search,
+  Palette,
 } from "lucide-react";
 import {
   DropdownMenu,
