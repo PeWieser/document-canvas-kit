@@ -164,6 +164,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setHighlightColor: (c) => set({ highlightColor: c }),
   setFontSize: (n) => set({ fontSize: n }),
   setPenSize: (n) => set({ penSize: n }),
+  setPenStyle: (s) => set({ penStyle: s }),
   setDefaultFontFamily: (f) => set({ defaultFontFamily: f }),
   setZoom: (z) => set({ zoom: Math.min(6, Math.max(0.1, z)), viewMode: "custom" }),
   setViewMode: (m) => set({ viewMode: m }),
@@ -171,9 +172,32 @@ export const useEditor = create<EditorState>((set, get) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleCommentsPanel: () => set((s) => ({ commentsPanelOpen: !s.commentsPanelOpen })),
   setCommentsPanelOpen: (b) => set({ commentsPanelOpen: b }),
+  setSearchOpen: (b) => set({ searchOpen: b }),
+  toggleSearch: () => set((s) => ({ searchOpen: !s.searchOpen })),
   setCurrentPage: (i) => set({ currentPage: i }),
   setGridOpen: (b) => set({ gridOpen: b }),
   select: (id) => set({ selectedId: id }),
+  setSelectedPages: (ids) => set({ selectedPages: ids }),
+  toggleSelectedPage: (i, mode = "toggle") => {
+    const s = get();
+    if (mode === "single") {
+      set({ selectedPages: [i] });
+      return;
+    }
+    if (mode === "range" && s.selectedPages.length) {
+      const last = s.selectedPages[s.selectedPages.length - 1];
+      const a = Math.min(last, i);
+      const b = Math.max(last, i);
+      const range: number[] = [];
+      for (let k = a; k <= b; k++) range.push(k);
+      set({ selectedPages: range });
+      return;
+    }
+    const has = s.selectedPages.includes(i);
+    set({
+      selectedPages: has ? s.selectedPages.filter((x) => x !== i) : [...s.selectedPages, i],
+    });
+  },
 
   addAnnotation: (a) => {
     const s = get();
