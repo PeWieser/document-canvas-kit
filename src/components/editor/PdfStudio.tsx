@@ -531,7 +531,15 @@ export function PdfStudio() {
         onToggleTheme={toggleTheme}
       />
       <div className="flex min-h-0 flex-1">
-        {doc && <ThumbnailRail doc={doc} activeIndex={currentPage} onJump={jumpTo} />}
+        {doc && (
+          <ThumbnailRail
+            doc={doc}
+            activeIndex={currentPage}
+            onJump={jumpTo}
+            onExportPages={handleExportPages}
+            onCropPages={(pages) => setCropPages(pages)}
+          />
+        )}
         <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
           {!doc && !error && (
