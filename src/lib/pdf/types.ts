@@ -10,6 +10,8 @@ export interface Rect {
 
 export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment";
 
+export type PenStyle = "solid" | "marker" | "pencil" | "dashed";
+
 export type ViewMode = "fit-width" | "fit-height" | "two-page" | "custom";
 
 export type AnnoColor = string; // hex
