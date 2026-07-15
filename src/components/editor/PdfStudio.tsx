@@ -577,7 +577,11 @@ export function PdfStudio() {
           )}
         </main>
         <CommentsPanel onJump={jumpTo} />
+        <SearchRedactPanel doc={doc ?? null} />
       </div>
+      {cropPages && doc && (
+        <CropDialog doc={doc} pages={cropPages} onClose={() => setCropPages(null)} />
+      )}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
     </div>
   );
