@@ -25,14 +25,17 @@ interface EditorState {
   highlightColor: string;
   fontSize: number;
   penSize: number;
+  penStyle: PenStyle;
   defaultFontFamily: string | null;
   zoom: number;
   viewMode: ViewMode;
   estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
   sidebarOpen: boolean;
   commentsPanelOpen: boolean;
+  searchOpen: boolean;
   currentPage: number; // display index of the active page
   selectedId: string | null;
+  selectedPages: number[]; // display indices selected in thumbnail rail
   gridOpen: boolean;
   fingerprints: any[];
   setFingerprints: (fps: any[]) => void;
