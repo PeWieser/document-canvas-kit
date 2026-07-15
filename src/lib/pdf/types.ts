@@ -74,6 +74,14 @@ export interface PenAnno {
   points: [number, number][]; // PDF space
   color: AnnoColor;
   size: number;
+  style?: PenStyle;
+}
+
+export interface CropAnno {
+  id: string;
+  kind: "crop";
+  page: number;
+  rect: Rect; // PDF-user-space crop window
 }
 
 export interface CommentReply {
