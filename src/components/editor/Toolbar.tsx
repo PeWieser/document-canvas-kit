@@ -281,6 +281,9 @@ export function Toolbar({
 
             {/* Desktop Settings */}
             <div className="hidden sm:flex items-center gap-1">
+              <TBtn title={t("searchRedact")} active={searchOpen} onClick={toggleSearch}>
+                <Search className="h-4 w-4" />
+              </TBtn>
               <TBtn
                 title={t("toggleComments")}
                 active={commentsPanelOpen}
