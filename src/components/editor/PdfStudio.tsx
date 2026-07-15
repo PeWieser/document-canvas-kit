@@ -41,6 +41,7 @@ export function PdfStudio() {
   const { doc, error } = useLoadedPdf(originalBytes);
   const [exporting, setExporting] = useState(false);
   const [dark, setDark] = useState(false);
+  const [cropPages, setCropPages] = useState<number[] | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [visible, setVisible] = useState<Set<number>>(new Set([0, 1, 2]));
   const inputRef = useRef<HTMLInputElement>(null);
