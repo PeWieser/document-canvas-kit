@@ -112,4 +112,11 @@ export interface ImageAnno {
 }
 
 export type Annotation =
-  HighlightAnno | RedactAnno | TextReplaceAnno | TextboxAnno | PenAnno | CommentAnno | ImageAnno;
+  | HighlightAnno
+  | RedactAnno
+  | TextReplaceAnno
+  | TextboxAnno
+  | PenAnno
+  | CommentAnno
+  | ImageAnno
+  | CropAnno;
