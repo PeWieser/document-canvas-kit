@@ -10,6 +10,8 @@ export interface Rect {
 
 export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment";
 
+export type PenStyle = "solid" | "marker" | "pencil" | "dashed";
+
 export type ViewMode = "fit-width" | "fit-height" | "two-page" | "custom";
 
 export type AnnoColor = string; // hex
@@ -72,6 +74,14 @@ export interface PenAnno {
   points: [number, number][]; // PDF space
   color: AnnoColor;
   size: number;
+  style?: PenStyle;
+}
+
+export interface CropAnno {
+  id: string;
+  kind: "crop";
+  page: number;
+  rect: Rect; // PDF-user-space crop window
 }
 
 export interface CommentReply {
@@ -102,4 +112,11 @@ export interface ImageAnno {
 }
 
 export type Annotation =
-  HighlightAnno | RedactAnno | TextReplaceAnno | TextboxAnno | PenAnno | CommentAnno | ImageAnno;
+  | HighlightAnno
+  | RedactAnno
+  | TextReplaceAnno
+  | TextboxAnno
+  | PenAnno
+  | CommentAnno
+  | ImageAnno
+  | CropAnno;

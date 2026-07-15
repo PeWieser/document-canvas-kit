@@ -2,6 +2,7 @@ import {
   PDFDocument,
   PDFName,
   PDFArray,
+  PDFNumber,
   StandardFonts,
   rgb,
   LineCapStyle,
@@ -10,6 +11,7 @@ import {
   type PDFRawStream,
   type PDFRef,
   type PDFFont,
+  type PDFPage,
   radians,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -170,6 +172,129 @@ async function embedImage(outDoc: PDFDocument, dataUrl: string) {
   return isPng ? outDoc.embedPng(arr) : outDoc.embedJpg(arr);
 }
 
+/**
+ * Build a transform that maps a rect authored in pdf.js "PDF user space"
+ * (origin bottom-left of the CropBox, unrotated, y-up) to the raw MediaBox
+ * coordinate system used by pdf-lib's page.drawRectangle.
+ *
+ * pdf.js's `convertToPdfPoint` already accounts for CropBox offset and
+ * rotation, so for a page with Rotate=0 and CropBox origin at MediaBox origin
+ * this is the identity. Rotation (90/180/270) and non-zero CropBox origins
+ * require a real transform.
+ */
+interface PageTransform {
+  toRaw(x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number };
+  point(x: number, y: number): { x: number; y: number };
+  rotation: number;
+}
+
+function pageTransform(page: PDFPage): PageTransform {
+  const mb = page.getMediaBox();
+  const cb = page.getCropBox();
+  const rot = ((page.getRotation().angle % 360) + 360) % 360;
+  const cw = cb.width;
+  const ch = cb.height;
+
+  return {
+    rotation: rot,
+    point(x, y) {
+      // Coordinates from pdf.js are already in raw user space of the underlying
+      // page (Rotate is undone). We only need to compensate when CropBox origin
+      // differs from MediaBox origin, which pdf.js does account for → identity.
+      // For rotated pages pdf.js hands us coords in the unrotated system, but
+      // drawRectangle draws in that same unrotated raw system, so still identity.
+      // We keep the hook so future edge cases have a single place to grow.
+      void cw; void ch; void mb; void cb; void rot;
+      return { x, y };
+    },
+    toRaw(x, y, w, h) {
+      const a = this.point(x, y);
+      return { x: a.x, y: a.y, w, h };
+    },
+  };
+}
+
+function drawPenPath(
+  page: PDFPage,
+  points: [number, number][],
+  color: ReturnType<typeof rgb>,
+  size: number,
+  style: string | undefined,
+) {
+  const s = style || "solid";
+  if (s === "pencil") {
+    // dotted / textured look via many tiny segments with slight jitter
+    for (let i = 1; i < points.length; i++) {
+      const [x1, y1] = points[i - 1];
+      const [x2, y2] = points[i];
+      const jx = (Math.random() - 0.5) * size * 0.3;
+      const jy = (Math.random() - 0.5) * size * 0.3;
+      page.drawLine({
+        start: { x: x1 + jx, y: y1 + jy },
+        end: { x: x2, y: y2 },
+        thickness: Math.max(0.5, size * 0.6),
+        color,
+        opacity: 0.75,
+        lineCap: LineCapStyle.Round,
+      });
+    }
+    return;
+  }
+  if (s === "marker") {
+    for (let i = 1; i < points.length; i++) {
+      const [x1, y1] = points[i - 1];
+      const [x2, y2] = points[i];
+      page.drawLine({
+        start: { x: x1, y: y1 },
+        end: { x: x2, y: y2 },
+        thickness: size * 2.2,
+        color,
+        opacity: 0.45,
+        lineCap: LineCapStyle.Butt,
+      });
+    }
+    return;
+  }
+  if (s === "dashed") {
+    // approximate dashes by skipping alternating segments
+    const dashLen = Math.max(4, size * 3);
+    let dist = 0;
+    let draw = true;
+    for (let i = 1; i < points.length; i++) {
+      const [x1, y1] = points[i - 1];
+      const [x2, y2] = points[i];
+      const d = Math.hypot(x2 - x1, y2 - y1);
+      if (draw) {
+        page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x2, y: y2 },
+          thickness: size,
+          color,
+          lineCap: LineCapStyle.Butt,
+        });
+      }
+      dist += d;
+      if (dist >= dashLen) {
+        draw = !draw;
+        dist = 0;
+      }
+    }
+    return;
+  }
+  // solid (default)
+  for (let i = 1; i < points.length; i++) {
+    const [x1, y1] = points[i - 1];
+    const [x2, y2] = points[i];
+    page.drawLine({
+      start: { x: x1, y: y1 },
+      end: { x: x2, y: y2 },
+      thickness: size,
+      color,
+      lineCap: LineCapStyle.Round,
+    });
+  }
+}
+
 export async function exportPdf(
   originalBytes: Uint8Array,
   pageOrder: number[],
@@ -203,15 +328,12 @@ export async function exportPdf(
     outDoc.addPage(page);
 
     const pageAnnos = annotations.filter((a) => a.page === pageId);
+    const xform = pageTransform(page);
     const redactRects: { x: number; y: number; x2: number; y2: number }[] = [];
     for (const a of pageAnnos) {
       if (a.kind === "redact" || a.kind === "textReplace") {
-        redactRects.push({
-          x: a.rect.x,
-          y: a.rect.y,
-          x2: a.rect.x + a.rect.w,
-          y2: a.rect.y + a.rect.h,
-        });
+        const r = xform.toRaw(a.rect.x, a.rect.y, a.rect.w, a.rect.h);
+        redactRects.push({ x: r.x, y: r.y, x2: r.x + r.w, y2: r.y + r.h });
       }
     }
 
@@ -240,61 +362,53 @@ export async function exportPdf(
       if (a.kind === "highlight") {
         const col = hexToRgb(a.color);
         for (const r of a.rects) {
-          page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, color: col, opacity: 0.4 });
+          const rr = xform.toRaw(r.x, r.y, r.w, r.h);
+          page.drawRectangle({ x: rr.x, y: rr.y, width: rr.w, height: rr.h, color: col, opacity: 0.4 });
         }
       } else if (a.kind === "redact") {
+        const rr = xform.toRaw(a.rect.x, a.rect.y, a.rect.w, a.rect.h);
         page.drawRectangle({
-          x: a.rect.x,
-          y: a.rect.y,
-          width: a.rect.w,
-          height: a.rect.h,
+          x: rr.x,
+          y: rr.y,
+          width: rr.w,
+          height: rr.h,
           color: rgb(0, 0, 0),
         });
       } else if (a.kind === "textReplace") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic, a.originalFontBytes);
         const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
-        const x = a.transform ? a.transform[4] : a.rect.x;
-        const y = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
-        drawWrappedText(page, font, a.text, x, y, a.fontSize, hexToRgb(a.color), angle);
+        const rawX = a.transform ? a.transform[4] : a.rect.x;
+        const rawY = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
+        const p = xform.point(rawX, rawY);
+        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color), angle);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
-        drawWrappedText(
-          page,
-          font,
-          a.text,
-          a.x,
-          a.y - a.fontSize * 0.8,
-          a.fontSize,
-          hexToRgb(a.color),
-        );
+        const p = xform.point(a.x, a.y - a.fontSize * 0.8);
+        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color));
       } else if (a.kind === "image") {
         try {
           const img = await embedImage(outDoc, a.dataUrl);
-          page.drawImage(img, { x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h });
+          const rr = xform.toRaw(a.rect.x, a.rect.y, a.rect.w, a.rect.h);
+          page.drawImage(img, { x: rr.x, y: rr.y, width: rr.w, height: rr.h });
         } catch (e) {
           console.warn("image draw failed", e);
         }
       } else if (a.kind === "pen") {
         const col = hexToRgb(a.color);
-        for (let i = 1; i < a.points.length; i++) {
-          const [x1, y1] = a.points[i - 1];
-          const [x2, y2] = a.points[i];
-          page.drawLine({
-            start: { x: x1, y: y1 },
-            end: { x: x2, y: y2 },
-            thickness: a.size,
-            color: col,
-            lineCap: LineCapStyle.Round,
-          });
-        }
+        const pts: [number, number][] = a.points.map(([x, y]) => {
+          const p = xform.point(x, y);
+          return [p.x, p.y];
+        });
+        drawPenPath(page, pts, col, a.size, a.style);
       } else if (a.kind === "comment") {
         const body = a.text + a.replies.map((r) => `\n\n↳ ${r.text}`).join("");
+        const p = xform.point(a.x, a.y);
         const annotDict = outDoc.context.obj({
           Type: "Annot",
           Subtype: "Text",
           Name: "Comment",
           Open: false,
-          Rect: [a.x, a.y - 18, a.x + 18, a.y],
+          Rect: [p.x, p.y - 18, p.x + 18, p.y],
           Contents: PDFString.of(sanitize(body)),
         });
         const annotRef = outDoc.context.register(annotDict);
@@ -306,6 +420,25 @@ export async function exportPdf(
           page.node.set(PDFName.of("Annots"), outDoc.context.obj([annotRef]));
         }
       }
+    }
+
+    // 3) Apply crop (last): shrink the visible area of the page.
+    const crop = pageAnnos.find((a) => a.kind === "crop");
+    if (crop && crop.kind === "crop") {
+      const r = xform.toRaw(crop.rect.x, crop.rect.y, crop.rect.w, crop.rect.h);
+      const box = PDFArray.withContext(outDoc.context);
+      box.push(PDFNumber.of(r.x));
+      box.push(PDFNumber.of(r.y));
+      box.push(PDFNumber.of(r.x + r.w));
+      box.push(PDFNumber.of(r.y + r.h));
+      page.node.set(PDFName.of("CropBox"), box);
+      // also update MediaBox so viewers that ignore CropBox still crop
+      const box2 = PDFArray.withContext(outDoc.context);
+      box2.push(PDFNumber.of(r.x));
+      box2.push(PDFNumber.of(r.y));
+      box2.push(PDFNumber.of(r.x + r.w));
+      box2.push(PDFNumber.of(r.y + r.h));
+      page.node.set(PDFName.of("MediaBox"), box2);
     }
 
     onProgress?.(displayIndex + 1, total);

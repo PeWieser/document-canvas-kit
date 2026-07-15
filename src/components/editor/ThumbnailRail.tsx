@@ -6,32 +6,59 @@ import { useI18n } from "@/lib/i18n";
 import { PageThumb } from "./PageThumb";
 import { cn } from "@/lib/utils";
 
+interface Menu {
+  x: number;
+  y: number;
+  displayIndex: number;
+}
+
 export function ThumbnailRail({
   doc,
   activeIndex,
   onJump,
+  onExportPages,
+  onCropPages,
 }: {
   doc: PdfDocumentProxy;
   activeIndex: number;
   onJump: (index: number) => void;
+  onExportPages: (displayIndices: number[]) => void;
+  onCropPages: (displayIndices: number[]) => void;
 }) {
   const { t } = useI18n();
   const pageOrder = useEditor((s) => s.pageOrder);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const reorderPages = useEditor((s) => s.reorderPages);
   const deletePage = useEditor((s) => s.deletePage);
+  const selectedPages = useEditor((s) => s.selectedPages);
+  const toggleSelectedPage = useEditor((s) => s.toggleSelectedPage);
+  const setSelectedPages = useEditor((s) => s.setSelectedPages);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
+  const [menu, setMenu] = useState<Menu | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
 
-  // Keep the active thumbnail focused (scrolled to the top when possible).
   useEffect(() => {
     if (!sidebarOpen) return;
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeIndex, sidebarOpen]);
 
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
   if (!sidebarOpen) return null;
+
+  const targetsFor = (di: number) =>
+    selectedPages.includes(di) && selectedPages.length > 1 ? [...selectedPages].sort((a, b) => a - b) : [di];
 
   return (
     <aside className="flex w-[140px] shrink-0 flex-col border-r border-border bg-sidebar select-none">
@@ -40,102 +67,179 @@ export function ThumbnailRail({
         <span className="font-mono text-xs">{pageOrder.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4 scrollbar-thin">
-        {pageOrder.map((pageId, index) => (
-          <div
-            key={pageId}
-            ref={activeIndex === index ? activeRef : undefined}
-            draggable
-            onDragStart={() => setDragFrom(index)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const targetPos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-              if (dragOver !== index || dropTarget !== targetPos) {
-                setDragOver(index);
-                setDropTarget(targetPos);
-              }
-            }}
-            onDrop={() => {
-              if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
-                let targetIndex = dragFrom;
-                if (index < dragFrom) {
-                  targetIndex = dropTarget === "before" ? index : index + 1;
-                } else if (index > dragFrom) {
-                  targetIndex = dropTarget === "before" ? index - 1 : index;
-                }
-                if (targetIndex !== dragFrom) {
-                  reorderPages(dragFrom, targetIndex);
-                }
-              }
-              setDragFrom(null);
-              setDragOver(null);
-              setDropTarget(null);
-            }}
-            onDragEnd={() => {
-              setDragFrom(null);
-              setDragOver(null);
-              setDropTarget(null);
-            }}
-            onClick={() => onJump(index)}
-            className="group cursor-pointer relative py-1.5 outline-none"
-            title={t("reorderHint")}
-          >
-            {/* Drop indicator line */}
-            {dragOver === index &&
-              dragFrom !== null &&
-              dragFrom !== index &&
-              dropTarget !== null &&
-              !(dragFrom === index - 1 && dropTarget === "before") &&
-              !(dragFrom === index + 1 && dropTarget === "after") && (
-                <div
-                  className={cn(
-                    "absolute left-0 right-0 h-1 bg-primary rounded-full z-50 pointer-events-none",
-                    dropTarget === "before" ? "top-0 -translate-y-0.5" : "bottom-0 translate-y-0.5",
-                  )}
-                />
-              )}
+        {pageOrder.map((pageId, index) => {
+          const isSelected = selectedPages.includes(index);
+          return (
             <div
-              className={cn(
-                "relative flex flex-col items-center gap-1.5 rounded-lg p-1.5 transition duration-200",
-                activeIndex === index ? "bg-accent/30" : "group-hover:bg-accent/15",
-              )}
+              key={pageId}
+              ref={activeIndex === index ? activeRef : undefined}
+              draggable
+              onDragStart={() => setDragFrom(index)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const targetPos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                if (dragOver !== index || dropTarget !== targetPos) {
+                  setDragOver(index);
+                  setDropTarget(targetPos);
+                }
+              }}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
+                  let targetIndex = dragFrom;
+                  if (index < dragFrom) {
+                    targetIndex = dropTarget === "before" ? index : index + 1;
+                  } else if (index > dragFrom) {
+                    targetIndex = dropTarget === "before" ? index - 1 : index;
+                  }
+                  if (targetIndex !== dragFrom) {
+                    reorderPages(dragFrom, targetIndex);
+                  }
+                }
+                setDragFrom(null);
+                setDragOver(null);
+                setDropTarget(null);
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+                setDropTarget(null);
+              }}
+              onClick={(e) => {
+                if (e.shiftKey) {
+                  toggleSelectedPage(index, "range");
+                } else if (e.ctrlKey || e.metaKey) {
+                  toggleSelectedPage(index, "toggle");
+                } else {
+                  setSelectedPages([]);
+                  onJump(index);
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!selectedPages.includes(index)) {
+                  toggleSelectedPage(index, "single");
+                }
+                setMenu({ x: e.clientX, y: e.clientY, displayIndex: index });
+              }}
+              className="group cursor-pointer relative py-1.5 outline-none"
+              title={t("reorderHint")}
             >
+              {dragOver === index &&
+                dragFrom !== null &&
+                dragFrom !== index &&
+                dropTarget !== null &&
+                !(dragFrom === index - 1 && dropTarget === "before") &&
+                !(dragFrom === index + 1 && dropTarget === "after") && (
+                  <div
+                    className={cn(
+                      "absolute left-0 right-0 h-1 bg-primary rounded-full z-50 pointer-events-none",
+                      dropTarget === "before" ? "top-0 -translate-y-0.5" : "bottom-0 translate-y-0.5",
+                    )}
+                  />
+                )}
               <div
                 className={cn(
-                  "relative flex-1 w-full rounded-md border bg-background overflow-hidden transition-all duration-200 shadow-2xs",
-                  activeIndex === index
-                    ? "border-primary ring-1 ring-primary/45 shadow-xs"
-                    : "border-border/80 group-hover:border-primary/30",
+                  "relative flex flex-col items-center gap-1.5 rounded-lg p-1.5 transition duration-200",
+                  activeIndex === index ? "bg-accent/30" : "group-hover:bg-accent/15",
+                  isSelected && "ring-1 ring-primary/60 bg-primary/5",
                 )}
               >
-                <PageThumb doc={doc} pageId={pageId} />
-                {pageOrder.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deletePage(index);
-                    }}
-                    className="absolute right-1 top-1 rounded-md bg-destructive/90 p-1 text-destructive-foreground opacity-0 backdrop-blur-xs transition hover:bg-destructive group-hover:opacity-100 shadow-sm"
-                    title={t("deletePage")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                <div
+                  className={cn(
+                    "relative flex-1 w-full rounded-md border bg-background overflow-hidden transition-all duration-200 shadow-2xs",
+                    activeIndex === index
+                      ? "border-primary ring-1 ring-primary/45 shadow-xs"
+                      : "border-border/80 group-hover:border-primary/30",
+                  )}
+                >
+                  <PageThumb doc={doc} pageId={pageId} />
+                  {pageOrder.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deletePage(index);
+                      }}
+                      className="absolute right-1 top-1 rounded-md bg-destructive/90 p-1 text-destructive-foreground opacity-0 backdrop-blur-xs transition hover:bg-destructive group-hover:opacity-100 shadow-sm"
+                      title={t("deletePage")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "text-[10px] font-mono transition-colors duration-200",
+                    activeIndex === index ? "text-primary font-bold" : "text-muted-foreground",
+                  )}
+                >
+                  {index + 1}
+                </span>
               </div>
-
-              {/* Subtle, small page index badge at bottom */}
-              <span
-                className={cn(
-                  "text-[10px] font-mono transition-colors duration-200",
-                  activeIndex === index ? "text-primary font-bold" : "text-muted-foreground",
-                )}
-              >
-                {index + 1}
-              </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {menu && (
+        <div
+          className="fixed z-50 min-w-[220px] rounded-md border bg-popover py-1 text-popover-foreground shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MenuItem
+            label={
+              selectedPages.length > 1
+                ? `${t("ctxExportSelected")} (${selectedPages.length})`
+                : t("ctxExportPage")
+            }
+            onClick={() => {
+              onExportPages(targetsFor(menu.displayIndex));
+              setMenu(null);
+            }}
+          />
+          <MenuItem
+            label={t("ctxCropPage")}
+            onClick={() => {
+              onCropPages(targetsFor(menu.displayIndex));
+              setMenu(null);
+            }}
+          />
+          <div className="my-1 h-px bg-border" />
+          <MenuItem
+            label={t("deletePage")}
+            danger
+            onClick={() => {
+              const targets = targetsFor(menu.displayIndex).sort((a, b) => b - a);
+              for (const di of targets) deletePage(di);
+              setSelectedPages([]);
+              setMenu(null);
+            }}
+          />
+        </div>
+      )}
     </aside>
+  );
+}
+
+function MenuItem({
+  label,
+  onClick,
+  danger,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "block w-full px-3 py-1.5 text-left text-xs hover:bg-accent",
+        danger && "text-destructive hover:bg-destructive/10",
+      )}
+    >
+      {label}
+    </button>
   );
 }

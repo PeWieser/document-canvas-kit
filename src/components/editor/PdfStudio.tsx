@@ -13,6 +13,8 @@ import { GridOverview } from "./GridOverview";
 import { PageView } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
+import { SearchRedactPanel } from "./SearchRedactPanel";
+import { CropDialog } from "./CropDialog";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -39,6 +41,7 @@ export function PdfStudio() {
   const { doc, error } = useLoadedPdf(originalBytes);
   const [exporting, setExporting] = useState(false);
   const [dark, setDark] = useState(false);
+  const [cropPages, setCropPages] = useState<number[] | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [visible, setVisible] = useState<Set<number>>(new Set([0, 1, 2]));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +112,27 @@ export function PdfStudio() {
       setExporting(false);
     }
   }, [buildBytes, fileName, t]);
+
+  const handleExportPages = useCallback(
+    async (displayIndices: number[]) => {
+      if (!originalBytes || displayIndices.length === 0) return;
+      setExporting(true);
+      try {
+        const order = displayIndices.map((i) => useEditor.getState().pageOrder[i]);
+        const bytes = await exportPdf(originalBytes, order, useEditor.getState().annotations);
+        const suffix = displayIndices.length === 1 ? `p${displayIndices[0] + 1}` : `${displayIndices.length}pages`;
+        const name = (fileName || "document.pdf").replace(/\.pdf$/i, "") + `-${suffix}.pdf`;
+        downloadBytes(bytes, name);
+        toast.success(t("exportDone"));
+      } catch (e) {
+        console.error(e);
+        toast.error(t("exportFail"));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [originalBytes, fileName, t],
+  );
 
   const writeToHandle = useCallback(
     async (handle: FileSystemFileHandle, bytes: Uint8Array) => {
@@ -507,7 +531,15 @@ export function PdfStudio() {
         onToggleTheme={toggleTheme}
       />
       <div className="flex min-h-0 flex-1">
-        {doc && <ThumbnailRail doc={doc} activeIndex={currentPage} onJump={jumpTo} />}
+        {doc && (
+          <ThumbnailRail
+            doc={doc}
+            activeIndex={currentPage}
+            onJump={jumpTo}
+            onExportPages={handleExportPages}
+            onCropPages={(pages) => setCropPages(pages)}
+          />
+        )}
         <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
           {!doc && !error && (
@@ -545,7 +577,11 @@ export function PdfStudio() {
           )}
         </main>
         <CommentsPanel onJump={jumpTo} />
+        <SearchRedactPanel doc={doc ?? null} />
       </div>
+      {cropPages && doc && (
+        <CropDialog doc={doc} pages={cropPages} onClose={() => setCropPages(null)} />
+      )}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
     </div>
   );
