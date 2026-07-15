@@ -113,6 +113,27 @@ export function PdfStudio() {
     }
   }, [buildBytes, fileName, t]);
 
+  const handleExportPages = useCallback(
+    async (displayIndices: number[]) => {
+      if (!originalBytes || displayIndices.length === 0) return;
+      setExporting(true);
+      try {
+        const order = displayIndices.map((i) => useEditor.getState().pageOrder[i]);
+        const bytes = await exportPdf(originalBytes, order, useEditor.getState().annotations);
+        const suffix = displayIndices.length === 1 ? `p${displayIndices[0] + 1}` : `${displayIndices.length}pages`;
+        const name = (fileName || "document.pdf").replace(/\.pdf$/i, "") + `-${suffix}.pdf`;
+        downloadBytes(bytes, name);
+        toast.success(t("exportDone"));
+      } catch (e) {
+        console.error(e);
+        toast.error(t("exportFail"));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [originalBytes, fileName, t],
+  );
+
   const writeToHandle = useCallback(
     async (handle: FileSystemFileHandle, bytes: Uint8Array) => {
       const writable = await (handle as any).createWritable();
