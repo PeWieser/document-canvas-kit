@@ -92,6 +92,10 @@ export function Toolbar({
   const setFontSize = useEditor((s) => s.setFontSize);
   const penSize = useEditor((s) => s.penSize);
   const setPenSize = useEditor((s) => s.setPenSize);
+  const penStyle = useEditor((s) => s.penStyle);
+  const setPenStyle = useEditor((s) => s.setPenStyle);
+  const toggleSearch = useEditor((s) => s.toggleSearch);
+  const searchOpen = useEditor((s) => s.searchOpen);
   const currentPage = useEditor((s) => s.currentPage);
   const numPages = useEditor((s) => s.pageOrder.length);
   const selectedId = useEditor((s) => s.selectedId);
