@@ -2,6 +2,7 @@ import {
   PDFDocument,
   PDFName,
   PDFArray,
+  PDFNumber,
   StandardFonts,
   rgb,
   LineCapStyle,
@@ -10,6 +11,7 @@ import {
   type PDFRawStream,
   type PDFRef,
   type PDFFont,
+  type PDFPage,
   radians,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
