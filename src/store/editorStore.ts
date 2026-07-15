@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Annotation, Tool, ViewMode } from "@/lib/pdf/types";
+import type { Annotation, Tool, ViewMode, PenStyle } from "@/lib/pdf/types";
 
 interface Snapshot {
   annotations: Annotation[];
