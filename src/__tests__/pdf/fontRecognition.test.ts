@@ -45,7 +45,8 @@ describe('System Font Recognition Test Suite', () => {
   it('accurately matches all embedded system fonts via KNN vector matcher', async () => {
     const doc = await pdfjsLib.getDocument({ 
       data: pdfData, 
-      standardFontDataUrl: path.join(__dirname, '../../../node_modules/pdfjs-dist/standard_fonts/') 
+      standardFontDataUrl: path.join(__dirname, '../../../node_modules/pdfjs-dist/standard_fonts/'),
+      fontExtraProperties: true
     }).promise;
     
     let totalTested = 0;

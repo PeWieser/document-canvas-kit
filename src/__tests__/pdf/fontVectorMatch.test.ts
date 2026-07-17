@@ -28,6 +28,7 @@ describe("font matching and formatting QA", () => {
         __dirname,
         "../../../node_modules/pdfjs-dist/standard_fonts/",
       ),
+      fontExtraProperties: true,
     }).promise;
     const page = (await doc.getPage(1)) as any;
 
@@ -75,6 +76,7 @@ describe("font matching and formatting QA", () => {
         __dirname,
         "../../../node_modules/pdfjs-dist/standard_fonts/",
       ),
+      fontExtraProperties: true,
     }).promise;
     const page = (await doc.getPage(1)) as any;
 
@@ -161,6 +163,7 @@ describe("font matching and formatting QA", () => {
         __dirname,
         "../../../node_modules/pdfjs-dist/standard_fonts/",
       ),
+      fontExtraProperties: true,
     }).promise;
     const page = (await doc.getPage(1)) as any;
 

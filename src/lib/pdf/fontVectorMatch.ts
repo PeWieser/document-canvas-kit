@@ -2,6 +2,17 @@ import { PdfPageProxy } from "./pdfjs";
 import { loadWebFont, resolvePDFCoreFontName } from "./fontDetect";
 // @ts-ignore
 import * as opentype from "opentype.js";
+import { 
+  MatchResult, 
+  matchFontUsingDb, 
+  packMask, 
+  unpackMask, 
+  getNormalizedLines, 
+  rasterizeLines, 
+  countHoles, 
+  calculateHuMoments, 
+  calculateIoU 
+} from "./fontMatchingEngine";
 
 // ==========================================
 // 1. Interfaces & Stores
@@ -21,10 +32,16 @@ export interface FontFingerprint {
   family: string;
   isBold: boolean;
   isItalic: boolean;
-  signature: number[]; // 15-dimensional vector
+  signature: number[];
 }
 
-// Global registry of fingerprints
+const DISCRIMINATOR_CHARS = [
+  'a', 'b', 'e', 'g', 'i', 'o', 'p', 't', 
+  'A', 'B', 'G', 'Q', 'R', 'S', 'W', 
+  '1', '4', '7', '&', '@'
+];
+
+// Global registry of fingerprints (kept for backwards compatibility)
 let globalFingerprints: FontFingerprint[] = [];
 
 export function registerFingerprints(fps: FontFingerprint[]) {
@@ -39,290 +56,174 @@ export function getFingerprints(): FontFingerprint[] {
   return globalFingerprints;
 }
 
-// Convert JSON database to FontFingerprint[]
 export function parseFingerprintsJson(data: any): FontFingerprint[] {
-  const result: FontFingerprint[] = [];
-  const chars = ['e', 'a', 'o', 'g', 'A'];
-  for (const [family, charMap] of Object.entries(data)) {
-    const signature: number[] = [];
-    let valid = true;
-    for (const char of chars) {
-      const vals = (charMap as any)[char];
-      if (vals) {
-        signature.push(vals.r, vals.a, vals.c);
-      } else {
-        valid = false;
-        break;
-      }
-    }
-    if (valid) {
-      const lowerFamily = family.toLowerCase();
-      const isBold = lowerFamily.includes("bold");
-      const isItalic = lowerFamily.includes("italic") || lowerFamily.includes("oblique");
-      
-      result.push({
-        family: family.replace(/-(Bold|Italic|Oblique|BoldItalic|Regular)/gi, ""),
-        isBold,
-        isItalic,
-        signature
-      });
-    }
-  }
-  return result;
+  return []; // SQLite is used instead
 }
 
-import { useEditor } from "../../store/editorStore";
+// ==========================================
+// 2. Node.js SQLite preloader (for Vitest)
+// ==========================================
 
-// Automatically load fingerprints in Node.js / Test environment
-if (typeof window === "undefined" || (typeof process !== "undefined" && process.versions?.node)) {
-  Promise.resolve().then(async () => {
+let nodeDbPromise: Promise<any> | null = null;
+let nodeDb: any = null;
+
+async function getNodeDb() {
+  if (nodeDb) return nodeDb;
+  if (nodeDbPromise) return nodeDbPromise;
+
+  nodeDbPromise = (async () => {
     try {
       const fs = await import("fs");
       const path = await import("path");
       const { fileURLToPath } = await import("url");
-      
       const currentDir = path.dirname(fileURLToPath(import.meta.url));
+
       const pathsToTry = [
-        path.join(currentDir, "../../../public/font-fingerprints.json"),
-        path.join(currentDir, "../../public/font-fingerprints.json"),
-        path.join(currentDir, "../public/font-fingerprints.json")
+        path.join(currentDir, "../../../public/font-fingerprints.db"),
+        path.join(currentDir, "../../public/font-fingerprints.db"),
+        path.join(currentDir, "../public/font-fingerprints.db"),
+        path.join(process.cwd(), "public/font-fingerprints.db")
       ];
+
+      let dbPath = "";
       for (const p of pathsToTry) {
         if (fs.default.existsSync(p)) {
-          const fileContent = fs.default.readFileSync(p, "utf8");
-          const parsed = JSON.parse(fileContent);
-          registerFingerprints(parseFingerprintsJson(parsed));
+          dbPath = p;
           break;
         }
       }
-    } catch (e) {
-      // Ignored
-    }
-  });
-}
 
-// Browser environment: fetch fingerprints dynamically from public folder
-if (typeof window !== "undefined") {
-  fetch("/font-fingerprints.json")
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      return res.json();
-    })
-    .then((data) => {
-      const parsed = parseFingerprintsJson(data);
-      registerFingerprints(parsed); // Register in the matching global state
-      useEditor.getState().setFingerprints(parsed); // Sync to Zustand store for reactive UI
-      console.log(`[fontVectorMatch] Loaded ${parsed.length} font fingerprints in browser.`);
-    })
-    .catch((err) => {
-      console.warn("[fontVectorMatch] Failed to load fingerprints JSON in browser:", err);
-    });
+      if (!dbPath) {
+        throw new Error("font-fingerprints.db not found");
+      }
+
+      const dbBuffer = fs.default.readFileSync(dbPath);
+      const initSqlJs = (await import("sql.js")).default;
+      const SQL = await initSqlJs();
+      nodeDb = new SQL.Database(new Uint8Array(dbBuffer));
+      console.log(`[fontVectorMatch] Loaded SQLite DB in Node environment.`);
+      return nodeDb;
+    } catch (err) {
+      console.error("[fontVectorMatch] Failed to load SQLite DB in Node:", err);
+      nodeDbPromise = null;
+      throw err;
+    }
+  })();
+  return nodeDbPromise;
 }
 
 // ==========================================
-// 2. Path Area and Normalization
+// 3. WebWorker integration (for browser)
+// ==========================================
+
+let workerInstance: Worker | null = null;
+const pendingRequests: Record<string, { resolve: (val: any) => void; reject: (err: any) => void }> = {};
+let requestIdCounter = 0;
+
+function getWorker(): Worker | null {
+  if (typeof window === 'undefined' || typeof Worker === 'undefined') return null;
+  if (workerInstance) return workerInstance;
+
+  try {
+    // Instantiate background SQLite WebWorker
+    workerInstance = new Worker(new URL('./fontRecognition.worker.ts', import.meta.url), { type: 'module' });
+    
+    workerInstance.onmessage = (e: MessageEvent) => {
+      const { type, result, error, requestId } = e.data;
+      const pending = pendingRequests[requestId];
+      if (!pending) return;
+
+      delete pendingRequests[requestId];
+      if (type === 'MATCH_RESULT') {
+        pending.resolve(result);
+      } else {
+        pending.reject(new Error(error || 'Matching failed'));
+      }
+    };
+    
+    // Trigger initialization immediately
+    workerInstance.postMessage({ type: 'INIT' });
+  } catch (err) {
+    console.error("[fontVectorMatch] Worker instantiation failed:", err);
+  }
+  return workerInstance;
+}
+
+function matchFontViaWorker(
+  fontBytes: Uint8Array, 
+  pdfWidths: Record<string, number>, 
+  fontName: string
+): Promise<MatchResult | null> {
+  const worker = getWorker();
+  if (!worker) return Promise.resolve(null);
+
+  return new Promise((resolve, reject) => {
+    const requestId = `req_${++requestIdCounter}`;
+    pendingRequests[requestId] = { resolve, reject };
+
+    const transferableBytes = new Uint8Array(fontBytes);
+    worker.postMessage({
+      type: 'MATCH',
+      fontName,
+      fontBytes: transferableBytes,
+      pdfWidths,
+      requestId
+    }, [transferableBytes.buffer]);
+  });
+}
+
+// ==========================================
+// 4. Bounding Box & Fallbacks
 // ==========================================
 
 export function calculatePathArea(commands: any[]): number {
-  let cx = 0, cy = 0;
-  let sx = 0, sy = 0;
-  let area = 0;
-  const steps = 10;
-
-  function addLine(x1: number, y1: number, x2: number, y2: number) {
-    area += (x1 * y2 - x2 * y1);
-  }
-
-  for (const cmd of commands) {
-    if (cmd.type === 'M') {
-      sx = cmd.x; sy = cmd.y;
-      cx = sx; cy = sy;
-    } else if (cmd.type === 'L') {
-      addLine(cx, cy, cmd.x, cmd.y);
-      cx = cmd.x; cy = cmd.y;
-    } else if (cmd.type === 'Q') {
-      const px = cx, py = cy;
-      for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const invT = 1 - t;
-        const x = invT * invT * px + 2 * invT * t * cmd.x1 + t * t * cmd.x;
-        const y = invT * invT * py + 2 * invT * t * cmd.y1 + t * t * cmd.y;
-        addLine(cx, cy, x, y);
-        cx = x; cy = y;
-      }
-    } else if (cmd.type === 'C') {
-      const px = cx, py = cy;
-      for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const invT = 1 - t;
-        const x = invT * invT * invT * px + 3 * invT * invT * t * cmd.x1 + 3 * invT * t * t * cmd.x2 + t * t * t * cmd.x;
-        const y = invT * invT * invT * py + 3 * invT * invT * t * cmd.y1 + 3 * invT * t * t * cmd.y2 + t * t * t * cmd.y;
-        addLine(cx, cy, x, y);
-        cx = x; cy = y;
-      }
-    } else if (cmd.type === 'Z') {
-      addLine(cx, cy, sx, sy);
-      cx = sx; cy = sy;
-    }
-  }
-  return Math.abs(area / 2);
+  return 0; // Deprecated
 }
 
-/**
- * Normalizes a glyph path to a standard height (Y=1.0).
- * Scales and translates the path so its bounding box starts at X=0, Y=0.
- */
 export function normalizeGlyphPath(commands: PathCommand[]): PathCommand[] {
-  if (!commands.length) return [];
-  
-  let minX = Infinity, minY = Infinity;
-  let maxX = -Infinity, maxY = -Infinity;
-
-  for (const cmd of commands) {
-    for (let i = 0; i < cmd.args.length; i += 2) {
-      const x = cmd.args[i];
-      const y = cmd.args[i + 1];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-
-  const height = maxY - minY;
-  if (height === 0 || height === -Infinity || height === Infinity) {
-    return commands;
-  }
-  
-  const scale = 1.0 / height;
-
-  return commands.map(cmd => {
-    const newArgs = [];
-    for (let i = 0; i < cmd.args.length; i += 2) {
-      newArgs.push((cmd.args[i] - minX) * scale);
-      newArgs.push((cmd.args[i + 1] - minY) * scale);
-    }
-    return { type: cmd.type, args: newArgs };
-  });
+  return []; // Deprecated
 }
-
-// ==========================================
-// 3. Signature Extraction & KNN Matcher
-// ==========================================
 
 export function extractSignatureFromFont(font: opentype.Font): number[] {
-  const chars = ['e', 'a', 'o', 'g', 'A'];
-  const signature: number[] = [];
-  
-  for (const char of chars) {
-    try {
-      const glyph = font.charToGlyph(char);
-      const pathObj = glyph.getPath();
-      const bbox = glyph.getBoundingBox();
-      const width = bbox.x2 - bbox.x1;
-      const height = bbox.y2 - bbox.y1;
-      
-      let ratio = 0;
-      let relArea = 0;
-      let commandsCount = pathObj.commands.length;
-      
-      if (width > 0 && height > 0) {
-        ratio = width / height;
-        const boundingBoxArea = width * height;
-        const area = calculatePathArea(pathObj.commands);
-        relArea = area / boundingBoxArea;
-      }
-      
-      signature.push(ratio, relArea, commandsCount);
-    } catch (e) {
-      signature.push(0, 0, 0);
-    }
-  }
-  return signature;
+  return []; // Deprecated
 }
 
 export function extractSignatureFromPath(commands: PathCommand[]): number[] {
-  // Naive backward compatibility function
-  const signature: number[] = [];
-  for (const cmd of commands) {
-    if (cmd.type === 'L' || cmd.type === 'C') {
-      signature.push(cmd.args[0] || 0);
-    }
-  }
-  while (signature.length < 3) signature.push(0);
-  return signature.slice(0, 3);
+  return []; // Deprecated
 }
 
-/**
- * Fast KNN matcher using Euclidean distance to compare live paths/signatures with database.
- */
 export function matchFontKNN(
   extractedSignature: number[], 
   fingerprints: FontFingerprint[] = getFingerprints(), 
   k: number = 1
 ): FontFingerprint[] {
-  if (fingerprints.length === 0) {
-    return [];
-  }
-
-  // If the signature is 15-dimensional, do full vector matching
-  if (extractedSignature.length === 15) {
-    const weights = [
-      10.0, 1000.0, 0.1, // e
-      10.0, 1000.0, 0.1, // a
-      10.0, 1000.0, 0.1, // o
-      10.0, 1000.0, 0.1, // g
-      10.0, 1000.0, 0.1  // A
-    ];
-
-    const distances = fingerprints.map(fp => {
-      let sum = 0;
-      const len = Math.min(extractedSignature.length, fp.signature.length);
-      for (let i = 0; i < len; i++) {
-        const diff = extractedSignature[i] - fp.signature[i];
-        const w = weights[i] || 1.0;
-        sum += (diff * w) * (diff * w);
-      }
-      return { fp, dist: Math.sqrt(sum) };
-    });
-
-    distances.sort((a, b) => a.dist - b.dist);
-    return distances.slice(0, k).map(d => d.fp);
-  }
-
-  // Naive fallback (3-dimensional mock comparison from original code)
-  const distances = fingerprints.map(fp => {
-    let sum = 0;
-    const len = Math.min(extractedSignature.length, fp.signature.length);
-    for (let i = 0; i < len; i++) {
-      const diff = extractedSignature[i] - fp.signature[i];
-      sum += diff * diff;
-    }
-    return { fp, dist: Math.sqrt(sum) };
-  });
-
-  distances.sort((a, b) => a.dist - b.dist);
-  return distances.slice(0, k).map(d => d.fp);
+  return []; // Deprecated
 }
 
 // ==========================================
-// 4. PDF Font Extraction & Injection
+// 5. PDF Font Extraction & Ingestion
 // ==========================================
 
 export async function extractSubsetFontsPaths(page: PdfPageProxy): Promise<Record<string, FontFingerprint>> {
   const objs = page.commonObjs;
   if (!objs) return {};
 
-  // Force parsing of content stream to resolve all embedded font objects in page.commonObjs
   try {
     await page.getOperatorList();
   } catch (e) {
     // Ignore operator list retrieval failures
   }
 
-  const textContent = await page.getTextContent();
+  // Pre-load & safeguard styles mapping (Fixes the "Try again" Root UI crash)
+  let textContent;
+  try {
+    textContent = await page.getTextContent();
+  } catch (e) {
+    textContent = { items: [], styles: {} };
+  }
+  const textStyles = textContent?.styles || {};
+
   const fontNames = new Set<string>();
-  
   for (const item of textContent.items) {
     if ('fontName' in item) {
       fontNames.add(item.fontName);
@@ -336,7 +237,6 @@ export async function extractSubsetFontsPaths(page: PdfPageProxy): Promise<Recor
       let matchedFamily = 'Unknown';
       let isBold = false;
       let isItalic = false;
-      let signature: number[] = [];
 
       let fontObj: any = null;
       try {
@@ -347,25 +247,45 @@ export async function extractSubsetFontsPaths(page: PdfPageProxy): Promise<Recor
 
       if (fontObj && fontObj.data) {
         try {
-          const font = opentype.parse(
-            fontObj.data.buffer.slice(fontObj.data.byteOffset, fontObj.data.byteOffset + fontObj.data.byteLength)
-          );
-          signature = extractSignatureFromFont(font);
+          const fontBytes = fontObj.data;
           
-          const matches = matchFontKNN(signature, getFingerprints(), 1);
-          if (matches.length > 0) {
-            matchedFamily = matches[0].family;
-            isBold = matches[0].isBold;
-            isItalic = matches[0].isItalic;
+          // Parse embedded font file to extract metrics
+          const font = opentype.parse(
+            fontBytes.buffer.slice(fontBytes.byteOffset, fontBytes.byteOffset + fontBytes.byteLength)
+          );
+          
+          // Build local widths map scaled to 1000 UPEM
+          const pdfWidths: Record<string, number> = {};
+          for (const char of DISCRIMINATOR_CHARS) {
+            if (font.charToGlyphIndex(char) !== 0) {
+              const glyph = font.charToGlyph(char);
+              pdfWidths[char] = Math.round(glyph.advanceWidth * (1000 / font.unitsPerEm));
+            }
+          }
+
+          let matchResult: MatchResult | null = null;
+          if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+            // Node/Vitest/happy-dom: Match synchronously on the main thread
+            const db = await getNodeDb();
+            matchResult = matchFontUsingDb(db, fontBytes, pdfWidths);
+          } else {
+            // Browser: Offload to SQLite WebWorker
+            matchResult = await matchFontViaWorker(fontBytes, pdfWidths, fontName);
+          }
+
+          if (matchResult) {
+            matchedFamily = matchResult.family;
+            isBold = matchResult.isBold;
+            isItalic = matchResult.isItalic;
           }
         } catch (err) {
-          console.warn(`[fontVectorMatch] opentype.js failed to parse font data: ${fontName}`, err);
+          console.warn(`[fontVectorMatch] opentype.js or SQLite match failed: ${fontName}`, err);
         }
       }
 
-      // If KNN matching didn't yield a result, fallback to name resolution
+      // If SQLite matching failed, fall back to name resolution
       if (matchedFamily === 'Unknown') {
-        const style = textContent.styles[fontName];
+        const style = textStyles[fontName];
         const rawName = fontObj?.name || (style ? style.fontFamily : fontName);
         const resolved = resolvePDFCoreFontName(rawName);
         matchedFamily = resolved.family;
@@ -377,7 +297,7 @@ export async function extractSubsetFontsPaths(page: PdfPageProxy): Promise<Recor
         family: matchedFamily,
         isBold,
         isItalic,
-        signature
+        signature: []
       };
     } catch (err) {
       console.warn(`[fontVectorMatch] Could not process font: ${fontName}`, err);
@@ -420,9 +340,6 @@ export async function extractTextBlocks(page: PdfPageProxy): Promise<any[]> {
   }).filter(Boolean);
 }
 
-/**
- * Dynamically loads the matched Bunny Fonts CSS by delegating to fontDetect.ts.
- */
 export async function loadMatchedBunnyFont(fingerprint: FontFingerprint): Promise<void> {
   let familyWithStyles = fingerprint.family;
   if (fingerprint.isBold) familyWithStyles += ' Bold';

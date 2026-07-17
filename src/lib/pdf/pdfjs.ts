@@ -23,7 +23,7 @@ export interface LoadedTextItem {
 export async function loadPdfDocument(data: ArrayBuffer) {
   // Clone the buffer because pdf.js transfers/detaches the ArrayBuffer.
   const copy = data.slice(0);
-  const doc = await pdfjsLib.getDocument({ data: copy }).promise;
+  const doc = await pdfjsLib.getDocument({ data: copy, fontExtraProperties: true }).promise;
   return doc;
 }
 
