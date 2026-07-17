@@ -27,6 +27,8 @@ import {
   PanelLeftOpen,
   MessagesSquare,
   MoreVertical,
+  Search,
+  Palette,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -90,6 +92,10 @@ export function Toolbar({
   const setFontSize = useEditor((s) => s.setFontSize);
   const penSize = useEditor((s) => s.penSize);
   const setPenSize = useEditor((s) => s.setPenSize);
+  const penStyle = useEditor((s) => s.penStyle);
+  const setPenStyle = useEditor((s) => s.setPenStyle);
+  const toggleSearch = useEditor((s) => s.toggleSearch);
+  const searchOpen = useEditor((s) => s.searchOpen);
   const currentPage = useEditor((s) => s.currentPage);
   const numPages = useEditor((s) => s.pageOrder.length);
   const selectedId = useEditor((s) => s.selectedId);
@@ -275,6 +281,9 @@ export function Toolbar({
 
             {/* Desktop Settings */}
             <div className="hidden sm:flex items-center gap-1">
+              <TBtn title={t("searchRedact")} active={searchOpen} onClick={toggleSearch}>
+                <Search className="h-4 w-4" />
+              </TBtn>
               <TBtn
                 title={t("toggleComments")}
                 active={commentsPanelOpen}
@@ -350,23 +359,72 @@ export function Toolbar({
                 tool === "textbox" ||
                 tool === "edit-text" ||
                 (tool === "select" && hasTextSelected)) && (
-                <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
+                <div className="flex items-center gap-1">
+                  <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
+                  <label
+                    className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-full ring-1 ring-white/30"
+                    style={{ background: color }}
+                    title={t("pickColor")}
+                  >
+                    <Palette className="h-3 w-3 text-white mix-blend-difference" />
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    />
+                  </label>
+                </div>
               )}
 
               {tool === "pen" && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">{t("penSize")}:</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={16}
-                    value={penSize}
-                    onChange={(e) => setPenSize(Number(e.target.value))}
-                    className="w-20 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                    title={t("penSize")}
-                  />
-                  <span className="font-mono text-[10px]">{penSize}px</span>
-                </div>
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">{t("penSize")}:</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={16}
+                      value={penSize}
+                      onChange={(e) => setPenSize(Number(e.target.value))}
+                      className="w-20 h-1 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                      title={t("penSize")}
+                    />
+                    <span className="font-mono text-[10px]">{penSize}px</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">{t("penStyle")}:</span>
+                    {(["solid", "marker", "pencil", "dashed"] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setPenStyle(s)}
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase transition",
+                          penStyle === s
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:bg-muted/70",
+                        )}
+                        title={t(
+                          s === "solid"
+                            ? "penSolid"
+                            : s === "marker"
+                            ? "penMarker"
+                            : s === "pencil"
+                            ? "penPencil"
+                            : "penDashed",
+                        )}
+                      >
+                        {s === "solid"
+                          ? t("penSolid")
+                          : s === "marker"
+                          ? t("penMarker")
+                          : s === "pencil"
+                          ? t("penPencil")
+                          : t("penDashed")}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
 
               {(tool === "textbox" ||

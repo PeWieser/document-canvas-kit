@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Annotation, Tool, ViewMode } from "@/lib/pdf/types";
+import type { Annotation, Tool, ViewMode, PenStyle } from "@/lib/pdf/types";
 
 interface Snapshot {
   annotations: Annotation[];
@@ -25,14 +25,17 @@ interface EditorState {
   highlightColor: string;
   fontSize: number;
   penSize: number;
+  penStyle: PenStyle;
   defaultFontFamily: string | null;
   zoom: number;
   viewMode: ViewMode;
   estimateSize: PageSize | null; // page-1 size in PDF points (scale 1)
   sidebarOpen: boolean;
   commentsPanelOpen: boolean;
+  searchOpen: boolean;
   currentPage: number; // display index of the active page
   selectedId: string | null;
+  selectedPages: number[]; // display indices selected in thumbnail rail
   gridOpen: boolean;
   fingerprints: any[];
   setFingerprints: (fps: any[]) => void;
@@ -54,6 +57,7 @@ interface EditorState {
   setHighlightColor: (c: string) => void;
   setFontSize: (n: number) => void;
   setPenSize: (n: number) => void;
+  setPenStyle: (s: PenStyle) => void;
   setDefaultFontFamily: (f: string) => void;
   setZoom: (z: number) => void;
   setViewMode: (m: ViewMode) => void;
@@ -61,9 +65,13 @@ interface EditorState {
   toggleSidebar: () => void;
   toggleCommentsPanel: () => void;
   setCommentsPanelOpen: (b: boolean) => void;
+  setSearchOpen: (b: boolean) => void;
+  toggleSearch: () => void;
   setCurrentPage: (i: number) => void;
   setGridOpen: (b: boolean) => void;
   select: (id: string | null) => void;
+  setSelectedPages: (ids: number[]) => void;
+  toggleSelectedPage: (i: number, mode?: "single" | "toggle" | "range") => void;
 
   addAnnotation: (a: Annotation) => void;
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
@@ -97,14 +105,17 @@ export const useEditor = create<EditorState>((set, get) => ({
   highlightColor: "#ffd54a",
   fontSize: 14,
   penSize: 3,
+  penStyle: "solid",
   defaultFontFamily: null,
   zoom: 1.15,
   viewMode: "fit-width",
   estimateSize: null,
   sidebarOpen: false,
   commentsPanelOpen: false,
+  searchOpen: false,
   currentPage: 0,
   selectedId: null,
+  selectedPages: [],
   gridOpen: false,
   fingerprints: [],
   setFingerprints: (fps) => set({ fingerprints: fps }),
@@ -153,6 +164,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setHighlightColor: (c) => set({ highlightColor: c }),
   setFontSize: (n) => set({ fontSize: n }),
   setPenSize: (n) => set({ penSize: n }),
+  setPenStyle: (s) => set({ penStyle: s }),
   setDefaultFontFamily: (f) => set({ defaultFontFamily: f }),
   setZoom: (z) => set({ zoom: Math.min(6, Math.max(0.1, z)), viewMode: "custom" }),
   setViewMode: (m) => set({ viewMode: m }),
@@ -160,9 +172,32 @@ export const useEditor = create<EditorState>((set, get) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleCommentsPanel: () => set((s) => ({ commentsPanelOpen: !s.commentsPanelOpen })),
   setCommentsPanelOpen: (b) => set({ commentsPanelOpen: b }),
+  setSearchOpen: (b) => set({ searchOpen: b }),
+  toggleSearch: () => set((s) => ({ searchOpen: !s.searchOpen })),
   setCurrentPage: (i) => set({ currentPage: i }),
   setGridOpen: (b) => set({ gridOpen: b }),
   select: (id) => set({ selectedId: id }),
+  setSelectedPages: (ids) => set({ selectedPages: ids }),
+  toggleSelectedPage: (i, mode = "toggle") => {
+    const s = get();
+    if (mode === "single") {
+      set({ selectedPages: [i] });
+      return;
+    }
+    if (mode === "range" && s.selectedPages.length) {
+      const last = s.selectedPages[s.selectedPages.length - 1];
+      const a = Math.min(last, i);
+      const b = Math.max(last, i);
+      const range: number[] = [];
+      for (let k = a; k <= b; k++) range.push(k);
+      set({ selectedPages: range });
+      return;
+    }
+    const has = s.selectedPages.includes(i);
+    set({
+      selectedPages: has ? s.selectedPages.filter((x) => x !== i) : [...s.selectedPages, i],
+    });
+  },
 
   addAnnotation: (a) => {
     const s = get();

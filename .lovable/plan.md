@@ -1,88 +1,69 @@
-# PDF Studio – Phasen 1–3
+## Ziel
 
-Umsetzung der Phasen 1 (Bugfixes), 2 (Font-Caching) und 3 (Design-Overhaul) aus `implementation_plan.md`, in einem Durchlauf. Alle Änderungen bleiben clientseitig; die in der Kompatibilitätsgarantie gesperrten Dateien (`vite.config.ts`, `server.ts`, `start.ts`, `router.tsx`, `routeTree.gen.ts`, `__root.tsx`, `index.tsx`, `.lovable/`) werden nicht angefasst.
-
----
-
-## Phase 1 – Bugfixes
-
-### 1.1 Schwärzen per Textauswahl
-
-`PageView.tsx`:
-
-- Textlayer wird auch bei `tool === "redact"` interaktiv (`textInteractive` erweitern), Cursor `text`.
-- `onTextMouseUp` behandelt zusätzlich `redact`: liest `window.getSelection()`, wandelt jede `ClientRect` via `pdfPoint()` in PDF-Koordinaten und legt pro Fragment eine `RedactAnno` an (analog zur Highlight-Selektion). Rechteck-Zeichnen bleibt als Fallback erhalten.
-- Kontextmenü-Eintrag „Schwärzen": bei vorhandener Textselektion die Selektion schwärzen, sonst wie bisher Bild/Fixpunkt.
-
-`Toolbar.tsx`: Redact-Tooltip/Hint auf „Text auswählen → wird geschwärzt" anpassen (i18n-Key).
-
-### 1.2 Schrifterkennung & FontPicker
-
-`fontDetect.ts`:
-
-- `psNameMap` erweitern (Calibri, Cambria, Verdana, Georgia, Trebuchet MS, Tahoma, Consolas, Courier New) inkl. Bold/Italic-Varianten.
-- Subset-Prefix robuster strippen: Regex `^[A-Z]{6}\+`.
-- Rein numerische/unbekannte CID-Namen → Erstellung eines Algorithmus, der Fonts erkennen kann und prüfen kann (bekannte fonts werden mit ausgelesener fontgröße und formatierung über originaltext gelegt und geprüft, ob eine Übereinstimmung (kanten da ist=.
-- Schriftfarbenerkennung
-
-`FontPicker.tsx` (neu): kompaktes Menü (Familie-Dropdown, Größe, Bold/Italic-Toggles, Farbwähler). Zeigt Werte der selektierten Annotation, ruft `updateAnnotation(id, {...})`. Familienliste = gängige Fonts + im Dokument erkannte.
-
-`Toolbar.tsx`: `FontPicker` inline einblenden, wenn `tool` in `edit-text`/`textbox` **und** eine passende Annotation selektiert ist.
-
-`export.ts`: `makeFontResolver` gibt bei fehlgeschlagener Einbettung ein Warn-Signal zurück; `exportPdf` sammelt fehlende Fonts und meldet sie über einen Toast (statt stillem Helvetica-Fallback).
-
-### 1.3 Kommentare
-
-`PageView.tsx` (`onOverlayPointerDown`, `comment`): vor dem Erstellen prüfen, ob ein bestehender Pin im Radius (~20 PDF-Punkte / Zoom) liegt → dann `select(existing.id)` statt neuem Pin.
-
-`editorStore.ts`: State `commentsPanelOpen: boolean` (default false) + `toggleCommentsPanel()`.
-
-`CommentsPanel.tsx` (neu): rechte Leiste, alle Kommentare nach Seite gruppiert, Status-Badge offen/erledigt, Klick springt zur Seite und selektiert, Antwort-Threads, Filter offen/erledigt/alle.
-
-`PdfStudio.tsx`: `CommentsPanel` rechts rendern, wenn `commentsPanelOpen`.
-
-`Toolbar.tsx`: Toggle-Button (rechts) für das Panel.
-
-`export.ts`: Replies als verknüpfte Annotationen (`IRT`), `resolved` → `AS: /Completed`.
+Vier Verbesserungen an PDF Studio:
+1. Redact-Rechtecke im Export deckungsgleich zur Vorschau
+2. „Suchen & Schwärzen" Funktion
+3. Erweiterte Stift-Optionen (Stiftarten + Farbwähler)
+4. Kontextmenü auf Seiten-Thumbnails: einzelne Seiten exportieren + zuschneiden mit Vorschau
 
 ---
 
-## Phase 2 – Font-Caching (Offline-First)
+### 1. Redact-Offset-Bug (Export ≠ Vorschau)
 
-`fontCache.ts` (neu): Wrapper um die Cache Storage API (`getCachedFont`/`setCachedFont`, Cache `pdfstudio-fonts-v1`).
+**Diagnose:** In `src/lib/pdf/export.ts` werden Redact-Rechtecke direkt mit `page.drawRectangle({ x: a.rect.x, y: a.rect.y, ... })` in Roh-Koordinaten gezeichnet. Vorschau nutzt aber `pdfPoint()` von `pdf.js`, das CropBox-Offset und Seitenrotation berücksichtigt. Bei PDFs mit CropBox ≠ (0,0) oder Rotation ≠ 0 sitzt die Schwärzung im Export verschoben. Gleiches Problem gilt für die Redact-Rects, die an `filterRedactedText` gehen (Content-Stream ist in unrotierter Raum-Koordinate, CTM basiert auf MediaBox).
 
-`fontDetect.ts`: `getFontBytes()` prüft zuerst den Cache, lädt sonst aus dem Netz und speichert das Ergebnis. Sicher gekapselt (kein Absturz, wenn `caches` fehlt, z. B. bei SSR).
+**Fix:**
+- Neue Helper `pdfSpaceToRaw(rect, page)` in `export.ts`: liest `MediaBox` und `CropBox` via pdf-lib, korrigiert `Rotate` (0/90/180/270), transformiert Rect zurück in Raw-Space vor `drawRectangle` und vor `filterRedactedText`.
+- Selbe Korrektur für `highlight`, `textReplace.rect`, `textbox`, `pen.points`, `image.rect` in einer einzigen Konversionsstelle beim Betreten der Page-Loop.
+- Test in `src/__tests__/pdf/export.test.ts`: rotiertes 90°-PDF + Redact → Rect landet im erwarteten Bereich; CropBox-Offset-PDF → Rect deckungsgleich.
 
----
+### 2. Suchen & Schwärzen
 
-## Phase 3 – Design-Overhaul (Swiss / Notion, hell & dunkel)
+- Neue UI: `SearchRedactPanel` als Overlay (Cmd/Ctrl+F öffnet). Eingabefeld, Optionen „Groß-/Kleinschreibung", „Ganze Wörter", „Regex".
+- Suche über alle geladenen Seiten via bereits vorhandenem `getPageTextItems`: pro `TextItem` Substring-Match, aggregiere PDF-Space-Rects (aus `transform` + gemessener Glyph-Breite; für Teilstrings anteilig).
+- Ergebnisliste: Seite + Kontext-Snippet, Klick springt hin und markiert Treffer temporär.
+- Buttons „Aktuellen schwärzen", „Alle schwärzen": legt `RedactAnno` pro Treffer an (via `addAnnotation`).
+- Store-Erweiterung: `searchOpen`, `setSearchOpen`. Ausgelöst durch neuen Button in Toolbar (Lupe-Icon neben Kommentar-Panel) und Kürzel.
 
-`styles.css`:
+### 3. Erweiterte Stift-Optionen
 
-- Neue Tokens: warmes Weiß im Hellmodus, dezente steingraue Ränder, Toolbar/Sidebar kaum vom Canvas abgesetzt; Akzent Blau. Dunkelmodus in warmem Schiefergrau, Dokument-Canvas bleibt weiß.
-- UI-Font auf System-Font-Stack umstellen (Mono-Stack bleibt für Zahlen).
+- `PenAnno` bekommt `style: "solid" | "marker" | "pencil" | "dashed"` (Defaults abwärtskompatibel = "solid").
+- Rendering in `PageView` (SVG) und Export (`export.ts`) berücksichtigen Stilart:
+  - marker = höhere Deckkraft-Kurve mit größerer Breite
+  - pencil = viele kleine Segmente mit Jitter
+  - dashed = `dashArray`
+- Erweiterte Farbauswahl: `<input type="color">` neben Preset-Swatches im Sub-Toolbar (nur für `pen`); zusätzliches Style-Selector-Dropdown (Icons für Fineliner/Marker/Pencil/Dashed) mit Tooltips.
+- Store: `penStyle` + Setter.
 
-Komponenten-Feinschliff (nur Präsentation):
+### 4. Thumbnail-Kontextmenü: Einzel-Export + Zuschneiden
 
-- `Toolbar.tsx`: kompaktere einzeilige Leiste, dezentere Trenner/Akzente.
-- `ThumbnailRail.tsx`: ruhigere Seitennummern, dünnere Linien.
-- `DropZone.tsx`: minimalistisch – Feature-Kacheln entfernen, reduzierter Upload-Bereich.
-- `PageView.tsx`: leichtere Schatten um die Seiten.
-- `GridOverview.tsx`: engere, ruhigere Kacheln.
+**Rechtsklick auf Thumbnail(s) in `ThumbnailRail` und `GridOverview`:**
+- Aktuelle Auswahl unterstützen (`selectedPages: number[]` im Store, Shift-Klick / Cmd-Klick).
+- Menüeinträge: „Diese Seite exportieren", „Ausgewählte Seiten exportieren", „Zuschneiden…".
+- Export nutzt bestehende `exportPdf(bytes, subsetOrder, annotations)` mit gefiltertem `pageOrder`.
 
-`i18n.tsx`: neue DE/EN-Keys für Redact-Hint (Textauswahl), Kommentar-Panel (Titel, Filter offen/erledigt/alle, springe zu), FontPicker (Bold/Italic/Familie) und Font-Einbettungs-Warnung.
+**Crop-Dialog (`CropDialog.tsx`):**
+- Modal mit Live-Vorschau der ersten gewählten Seite (Canvas-Render der Seite in Skalierung, Overlay-Rechteck mit 8 Griffen).
+- Optionen: „Auf alle gewählten Seiten anwenden", „Nur diese Seite".
+- Bestätigen setzt eine neue Annotation `CropAnno { page, rect }` (kombinierbar; bei mehrfachem Crop pro Seite: letzter gewinnt).
+- Export in `export.ts`: pro Seite, falls `CropAnno` vorhanden → `page.setCropBox(x, y, w, h)` und `page.setMediaBox` optional; Redact- und Overlay-Koordinaten anschließend anwenden (nach der oben eingeführten Raw-Transform).
+- Vorschau im Editor: `PageView` liest CropAnno, setzt CSS-Clip auf die gerenderte Seite, damit man den Crop schon vor dem Export sieht.
 
----
+### Technische Details
 
-## Technischer Abriss (Dateien)
+- Betroffene Files:
+  - `src/lib/pdf/export.ts` (Raw-Space-Transform, Crop, Pen-Styles)
+  - `src/lib/pdf/types.ts` (`PenAnno.style`, neue `CropAnno`)
+  - `src/store/editorStore.ts` (`penStyle`, `searchOpen`, `selectedPages`)
+  - `src/components/editor/PageView.tsx` (Pen-Style-Rendering, Crop-Clip, Suchtreffer-Overlay)
+  - `src/components/editor/Toolbar.tsx` (Suche-Button, Pen-Style-Picker, Color-Input)
+  - `src/components/editor/ThumbnailRail.tsx` + `GridOverview.tsx` (Rechtsklick, Auswahl)
+  - Neu: `src/components/editor/SearchRedactPanel.tsx`, `src/components/editor/CropDialog.tsx`, `src/components/editor/PageContextMenu.tsx`
+- Tests:
+  - `export.test.ts`: Redact bei rotierter/gecropter Seite, Crop-Export erzeugt kleinere Seite, Subset-Export enthält nur gewählte Seiten
+  - `searchRedact.test.ts` (neu): Textsuche liefert korrekte Rects auf Test-PDF, Aktion legt Redact-Annos an
 
-Neu: `src/components/editor/FontPicker.tsx`, `src/components/editor/CommentsPanel.tsx`, `src/lib/pdf/fontCache.ts`.
+### Aus dem Scope ausgeschlossen
 
-Geändert: `src/components/editor/PageView.tsx`, `Toolbar.tsx`, `PdfStudio.tsx`, `ThumbnailRail.tsx`, `DropZone.tsx`, `GridOverview.tsx`, `src/store/editorStore.ts`, `src/lib/pdf/fontDetect.ts`, `src/lib/pdf/export.ts`, `src/lib/i18n.tsx`, `src/styles.css`.
-
-Keine neuen npm-Abhängigkeiten nötig (Cache API ist nativ).
-
-## Verifikation
-
-- Typecheck/Build muss sauber sein.
-- Smoke-Test im Preview: PDF laden, Text markieren → schwärzen, Text bearbeiten (FontPicker), Kommentar setzen + erneut anklicken (öffnet Popup, kein neuer Pin), Panel öffnen, Hell/Dunkel umschalten.
+- Regex-Suche über Zeilenumbrüche hinweg (nur pro TextItem-Bereich)
+- Nachträgliches Editieren eines Crops nach Bestätigen — nur „neu setzen"

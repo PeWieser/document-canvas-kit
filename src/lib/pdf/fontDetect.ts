@@ -263,35 +263,38 @@ export function resolvePDFCoreFontName(fontName: string): ResolvedFont {
   if (!fontName) return { family: "Helvetica", isBold: false, isItalic: false };
 
   let cleanName = fontName.replace(SUBSET_PREFIX, "");
+  // Detect style from the full name (before comma / suffix stripping).
+  const styleSrc = cleanName.toLowerCase();
+  const isBold =
+    /(bold|semibold|demibold|extrabold|ultrabold|heavy|black)/i.test(styleSrc) ||
+    /-bd\b|\bbd\b/i.test(styleSrc);
+  const isItalic =
+    /(italic|oblique)/i.test(styleSrc) ||
+    /-it\b|\bit\b/i.test(styleSrc);
+
+  // "Family,Bold" style: strip trailing ",Bold" / ",Italic" for lookup.
+  cleanName = cleanName.replace(/,.*$/, "");
   // Strip trailing numeric suffixes like -7888 or -979
   cleanName = cleanName.replace(/-\d+$/g, "");
-
-  // Derive style from the *raw* name before we strip style tokens away.
-  const lowerRaw = cleanName.toLowerCase();
-  const isBold =
-    lowerRaw.includes("bold") ||
-    lowerRaw.includes("-bd") ||
-    lowerRaw.includes(" bd") ||
-    lowerRaw.endsWith("bd") ||
-    lowerRaw.includes("heavy") ||
-    lowerRaw.includes("black") ||
-    lowerRaw.includes("semibold");
-  const isItalic =
-    lowerRaw.includes("italic") ||
-    lowerRaw.includes("oblique") ||
-    lowerRaw.includes("-it") ||
-    lowerRaw.includes(" it");
 
   if (psNameMap[cleanName]) {
     return { family: psNameMap[cleanName], isBold, isItalic };
   }
 
-  // Fall back to splitting camelCase and stripping style tokens.
-  cleanName = cleanName
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[-_ ]?(SemiBold|Bold|Italic|Oblique|Regular|Medium|Light|Heavy|Black|MT|PS|Bd|It)/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Strip style tokens. Loop until stable so multi-token names collapse
+  // (e.g. "SemiBoldItalic" → "SemiBold" → "Semi" → "").
+  let prev = "";
+  cleanName = cleanName.replace(/([a-z])([A-Z])/g, "$1 $2");
+  while (prev !== cleanName) {
+    prev = cleanName;
+    cleanName = cleanName
+      .replace(
+        /[-_ ]?(SemiBold|DemiBold|ExtraBold|UltraBold|Semi|Demi|Extra|Ultra|Bold|Italic|Oblique|Regular|Medium|Light|Heavy|Black|Book|Thin|Roman|Condensed|Cond|Narrow|MT|PS|Bd|It)\b/gi,
+        "",
+      )
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 
   // CID / purely numeric / empty names / alphanumeric subset names (e.g. TTF4t00, g_d0_f1) → safe default.
   if (

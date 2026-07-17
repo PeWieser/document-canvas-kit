@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { extractSubsetFontsPaths } from "@/lib/pdf/fontVectorMatch";
+import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 
 interface TextItem {
   str: string;
@@ -164,6 +165,7 @@ export function PageView({ doc, pageId }: Props) {
   const [imageRects, setImageRects] = useState<Rect[]>([]);
   const fontRealNames = useRef<Record<string, string>>({});
   const fontMappingRef = useRef<Record<string, any>>({});
+  const fontInfoRef = useRef<Record<string, FontInfo>>({});
   const replaceRectRef = useRef<Rect | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string | null>(null);
 
@@ -192,6 +194,7 @@ export function PageView({ doc, pageId }: Props) {
     setImageRects([]);
     fontRealNames.current = {};
     fontMappingRef.current = {};
+    fontInfoRef.current = {};
 
     let cancelled = false;
     (async () => {
@@ -483,38 +486,78 @@ export function PageView({ doc, pageId }: Props) {
   const replaceSpan = (idx: number) => {
     const vp = getVp();
     const item = items[idx];
-    if (!vp || !item) return;
+    if (!vp || !item || !pdfPage) return;
     const rect = getBoundingBoxInPdfSpace(item.transform, item.width);
 
-    const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
-    const resolved = resolvePDFCoreFontName(realName);
-    
-    // Check if we have a KNN matched font from extractSubsetFontsPaths
-    const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
-    const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : resolved.family;
-    const isBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : resolved.isBold;
-    const isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
+    // Kick off async introspection but don't block the annotation creation.
+    // Primary path: embedded font bytes → deckungsgleich re-embed on export.
+    let family = "Helvetica";
+    let isBold = false;
+    let isItalic = false;
 
-    if (matchedFamily) {
-      void loadWebFont(matchedFamily);
-      setDefaultFontFamily(matchedFamily);
-      import("sonner").then((m) => m.toast.success(`Erkannt: ${matchedFamily}`));
+    const cachedInfo = item.fontName ? fontInfoRef.current[item.fontName] : undefined;
+    if (cachedInfo) {
+      family = cachedInfo.family;
+      isBold = cachedInfo.isBold;
+      isItalic = cachedInfo.isItalic;
+    } else {
+      const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
+      const resolved = resolvePDFCoreFontName(realName);
+      const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
+      family = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : resolved.family;
+      isBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : resolved.isBold;
+      isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
     }
 
+    if (family) {
+      void loadWebFont(family);
+      setDefaultFontFamily(family);
+    }
+
+    const annoId = uid();
     addAnnotation({
-      id: uid(),
+      id: annoId,
       kind: "textReplace",
       page: pageId,
       rect,
       text: item.str,
       fontSize: Math.hypot(item.transform[2], item.transform[3]),
       color: "#111111",
-      fontFamily: matchedFamily,
+      fontFamily: family,
       bold: isBold,
       italic: isItalic,
       transform: item.transform,
       width: item.width,
+      originalFontBytes: cachedInfo?.bytes,
+      weight: cachedInfo?.weight,
+      italicAngle: cachedInfo?.italicAngle,
     } as Annotation);
+
+    // Fire-and-forget: introspect the embedded font and upgrade the annotation.
+    if (item.fontName && !cachedInfo) {
+      void getFontInfo(pdfPage, item.fontName).then((info) => {
+        fontInfoRef.current[item.fontName!] = info;
+        updateAnnotation(annoId, {
+          fontFamily: info.family,
+          bold: info.isBold,
+          italic: info.isItalic,
+          originalFontBytes: info.bytes,
+          weight: info.weight,
+          italicAngle: info.italicAngle,
+        } as Partial<Annotation>);
+        void loadWebFont(info.family);
+        setDefaultFontFamily(info.family);
+        import("sonner").then((m) =>
+          m.toast.success(
+            `${info.family}${info.isBold ? " Bold" : ""}${info.isItalic ? " Italic" : ""} (${info.source})`,
+          ),
+        );
+      }).catch(() => {
+        /* introspection failed – keep heuristic values */
+      });
+    } else if (cachedInfo) {
+      import("sonner").then((m) => m.toast.success(`Erkannt: ${family}`));
+    }
   };
 
   const onSpanClick = (idx: number) => {
