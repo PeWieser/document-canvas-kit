@@ -243,6 +243,11 @@ async function extractTextColors(page: any): Promise<number[][]> {
   }
 }
 
+const globalFontMappings = new WeakMap<any, Record<string, any>>();
+const globalFontInfos = new WeakMap<any, Record<string, FontInfo>>();
+const globalFontRealNames = new WeakMap<any, Record<string, string>>();
+const globalFontMatchingPromises = new WeakMap<any, Record<number, Promise<any>>>();
+
 export function PageView({ doc, pageId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -328,9 +333,27 @@ export function PageView({ doc, pageId }: Props) {
     setPdfPage(null);
     setItems([]);
     setImageRects([]);
-    fontRealNames.current = {};
-    fontMappingRef.current = {};
-    fontInfoRef.current = {};
+
+    let mappings = globalFontMappings.get(doc);
+    if (!mappings) {
+      mappings = {};
+      globalFontMappings.set(doc, mappings);
+    }
+    fontMappingRef.current = mappings;
+
+    let infos = globalFontInfos.get(doc);
+    if (!infos) {
+      infos = {};
+      globalFontInfos.set(doc, infos);
+    }
+    fontInfoRef.current = infos;
+
+    let realNames = globalFontRealNames.get(doc);
+    if (!realNames) {
+      realNames = {};
+      globalFontRealNames.set(doc, realNames);
+    }
+    fontRealNames.current = realNames;
 
     let cancelled = false;
     (async () => {
@@ -407,28 +430,50 @@ export function PageView({ doc, pageId }: Props) {
 
   // --- Run KNN matching and resolve PostScript names ONLY when edit-text tool is active ---
   useEffect(() => {
-    if (tool === "edit-text" && pdfPage && Object.keys(fontMappingRef.current).length === 0) {
+    const hasMappingForPage = Object.keys(fontMappingRef.current).some((k) =>
+      k.startsWith(`${pageId}_`)
+    );
+    if (tool === "edit-text" && pdfPage && !hasMappingForPage) {
       let cancelled = false;
       (async () => {
         try {
           setWorkerLoading(true);
-          const mapping = await extractSubsetFontsPaths(pdfPage);
+
+          // Store the matching promise in the global WeakMap before awaiting
+          const promise = extractSubsetFontsPaths(pdfPage);
+          let docPromises = globalFontMatchingPromises.get(doc);
+          if (!docPromises) {
+            docPromises = {};
+            globalFontMatchingPromises.set(doc, docPromises);
+          }
+          docPromises[pageId] = promise;
+
+          const mapping = await promise;
           if (cancelled) return;
 
-          fontMappingRef.current = mapping;
+          // Merge into global fontMappingRef.current with pageId prefix
+          for (const [fn, val] of Object.entries(mapping)) {
+            fontMappingRef.current[`${pageId}_${fn}`] = val;
+          }
           setFingerprints(Object.values(mapping));
 
           const names: Record<string, string> = {};
           for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
             try {
               const f = pdfPage.commonObjs.get(fn);
-              if (f?.name) names[fn] = f.name as string;
+              if (f?.name) {
+                names[fn] = f.name as string;
+              }
             } catch {
               /* not available */
             }
           }
           if (cancelled) return;
-          fontRealNames.current = names;
+
+          // Merge into global fontRealNames.current with pageId prefix
+          for (const [fn, name] of Object.entries(names)) {
+            fontRealNames.current[`${pageId}_${fn}`] = name;
+          }
 
           // Update any existing annotations on this page that are currently set to Helvetica or fallback fonts
           const currentAnnos = useEditor.getState().annotations;
@@ -462,7 +507,7 @@ export function PageView({ doc, pageId }: Props) {
         cancelled = true;
       };
     }
-  }, [tool, pdfPage, items, pageId]);
+  }, [tool, pdfPage, items, pageId, doc]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -681,22 +726,23 @@ export function PageView({ doc, pageId }: Props) {
     let isBold = false;
     let isItalic = false;
 
-    const cachedInfo = item.fontName ? fontInfoRef.current[item.fontName] : undefined;
+    const cacheKey = item.fontName ? `${pageId}_${item.fontName}` : "";
+    const cachedInfo = cacheKey ? fontInfoRef.current[cacheKey] : undefined;
     if (cachedInfo) {
       family = cachedInfo.family;
       isBold = cachedInfo.isBold;
       isItalic = cachedInfo.isItalic;
     } else {
-      const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
+      const realName = (cacheKey && fontRealNames.current[cacheKey]) || item.fontName || "";
       const resolved = resolvePDFCoreFontName(realName);
-      const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
+      const knnMatch = cacheKey ? fontMappingRef.current[cacheKey] : null;
       family = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : resolved.family;
       isBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : resolved.isBold;
       isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
     }
 
     if (isGarbageFontName(family)) {
-      const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
+      const realName = (cacheKey && fontRealNames.current[cacheKey]) || item.fontName || "";
       const resolved = resolvePDFCoreFontName(realName);
       family = resolved.family;
     }
@@ -731,39 +777,47 @@ export function PageView({ doc, pageId }: Props) {
     // Fire-and-forget: introspect the embedded font and upgrade the annotation.
     if (item.fontName && !cachedInfo) {
       void getFontInfo(pdfPage, item.fontName).then((info) => {
-        // Prioritize the KNN matched properties so they are not overridden by subset names!
-        const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
-        let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
-        const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
-        const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
+        // Wait for the KNN matching promise of this page to resolve, if any
+        const docPromises = globalFontMatchingPromises.get(doc);
+        const matchPromise = docPromises ? docPromises[pageId] : null;
 
-        if (isGarbageFontName(matchedFamily)) {
-          const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
-          const resolved = resolvePDFCoreFontName(realName);
-          matchedFamily = resolved.family;
-        }
+        void Promise.resolve(matchPromise).then(() => {
+          const cacheKey = `${pageId}_${item.fontName}`;
+          // Prioritize the KNN matched properties so they are not overridden by subset names!
+          const knnMatch = fontMappingRef.current[cacheKey] || null;
+          let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
+          const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
+          const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
 
-        // Cache the corrected FontInfo so subsequent clicks reuse the corrected KNN/Heuristic font name!
-        fontInfoRef.current[item.fontName!] = {
-          ...info,
-          family: matchedFamily,
-          isBold: matchedBold,
-          isItalic: matchedItalic,
-        };
+          if (isGarbageFontName(matchedFamily)) {
+            const realName = fontRealNames.current[cacheKey] || item.fontName || "";
+            const resolved = resolvePDFCoreFontName(realName);
+            matchedFamily = resolved.family;
+          }
 
-        updateAnnotation(annoId, {
-          fontFamily: matchedFamily,
-          bold: matchedBold,
-          italic: matchedItalic,
-          originalFontBytes: info.bytes,
-          weight: info.weight,
-          italicAngle: info.italicAngle,
-        } as Partial<Annotation>);
-        void loadWebFont(matchedFamily);
-        setDefaultFontFamily(matchedFamily);
-        toast.success(
-          `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
-        );
+          // Cache the corrected FontInfo so subsequent clicks reuse the corrected KNN/Heuristic font name!
+          fontInfoRef.current[cacheKey] = {
+            ...info,
+            family: matchedFamily,
+            isBold: matchedBold,
+            isItalic: matchedItalic,
+          };
+
+          updateAnnotation(annoId, {
+            fontFamily: matchedFamily,
+            bold: matchedBold,
+            italic: matchedItalic,
+            originalFontBytes: info.bytes,
+            weight: info.weight,
+            italicAngle: info.italicAngle,
+          } as Partial<Annotation>);
+          void loadWebFont(matchedFamily);
+          setDefaultFontFamily(matchedFamily);
+          toast.success(
+            `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
+            { id: `font-match-${item.fontName}` }
+          );
+        });
       }).catch(() => {
         /* introspection failed – keep heuristic values */
       });
@@ -1400,59 +1454,69 @@ function AnnoView({
             transformOrigin: anno.kind === "textReplace" ? "top left" : undefined,
           }}
         />
-        {selected && (
-          <>
-            <MoveHandle
-              onDragStart={pushHistorySnapshot}
-              onMove={(dxScreen, dyScreen) => {
-                const p0 = vp.convertToPdfPoint(0, 0);
-                const p1 = vp.convertToPdfPoint(dxScreen, dyScreen);
-                const dx = p1[0] - p0[0];
-                const dy = p1[1] - p0[1];
-                if (anno.kind === "textbox") {
-                  onUpdate({ x: anno.x + dx, y: anno.y + dy } as any, false);
-                } else {
-                  const nextRect = { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy };
-                  const nextTransform = anno.transform
-                    ? [
-                        anno.transform[0],
-                        anno.transform[1],
-                        anno.transform[2],
-                        anno.transform[3],
-                        anno.transform[4] + dx,
-                        anno.transform[5] + dy,
-                      ]
-                    : undefined;
-                  onUpdate({ rect: nextRect, transform: nextTransform } as any, false);
-                }
-              }}
-            />
-            {anno.kind === "textbox" && (
-              <ResizeHandle
+        {selected && (() => {
+          const height = anno.kind === "textReplace" ? fontHeight : anno.h;
+          const width = anno.kind === "textReplace" ? naturalWidth : anno.w;
+          const isSmall = height < 20 || width < 45;
+          const isNarrow = width < 36;
+          return (
+            <>
+              <MoveHandle
+                className={isSmall ? (isNarrow ? "-left-4 -top-5" : "-left-1 -top-5") : undefined}
                 onDragStart={pushHistorySnapshot}
-                onResize={(dxS, dyS) => {
+                onMove={(dxScreen, dyScreen) => {
                   const p0 = vp.convertToPdfPoint(0, 0);
-                  const p1 = vp.convertToPdfPoint(dxS, dyS);
-                  const dw = p1[0] - p0[0];
-                  const dh = p1[1] - p0[1];
-                  onUpdate({
-                    w: Math.max(20, anno.w + dw),
-                    h: Math.max(20, anno.h - dh),
-                  } as any, false);
+                  const p1 = vp.convertToPdfPoint(dxScreen, dyScreen);
+                  const dx = p1[0] - p0[0];
+                  const dy = p1[1] - p0[1];
+                  if (anno.kind === "textbox") {
+                    onUpdate({ x: anno.x + dx, y: anno.y + dy } as any, false);
+                  } else {
+                    const nextRect = { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy };
+                    const nextTransform = anno.transform
+                      ? [
+                          anno.transform[0],
+                          anno.transform[1],
+                          anno.transform[2],
+                          anno.transform[3],
+                          anno.transform[4] + dx,
+                          anno.transform[5] + dy,
+                        ]
+                      : undefined;
+                    onUpdate({ rect: nextRect, transform: nextTransform } as any, false);
+                  }
                 }}
               />
-            )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              className="absolute -right-2 -top-2 rounded-full bg-destructive p-0.5 text-destructive-foreground"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </>
-        )}
+              {anno.kind === "textbox" && (
+                <ResizeHandle
+                  onDragStart={pushHistorySnapshot}
+                  onResize={(dxS, dyS) => {
+                    const p0 = vp.convertToPdfPoint(0, 0);
+                    const p1 = vp.convertToPdfPoint(dxS, dyS);
+                    const dw = p1[0] - p0[0];
+                    const dh = p1[1] - p0[1];
+                    onUpdate({
+                      w: Math.max(20, anno.w + dw),
+                      h: Math.max(20, anno.h - dh),
+                    } as any, false);
+                  }}
+                />
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove();
+                }}
+                className={cn(
+                  "absolute rounded-full bg-destructive p-0.5 text-destructive-foreground",
+                  isSmall ? (isNarrow ? "-right-4 -top-5" : "-right-1 -top-5") : "-right-2 -top-2"
+                )}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </>
+          );
+        })()}
       </div>
     );
   }
@@ -1506,10 +1570,12 @@ function MoveHandle({
   onMove,
   onDragStart,
   onDragEnd,
+  className,
 }: {
   onMove: (dx: number, dy: number) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  className?: string;
 }) {
   const last = useRef<[number, number] | null>(null);
   return (
@@ -1531,7 +1597,10 @@ function MoveHandle({
         last.current = null;
         onDragEnd?.();
       }}
-      className="absolute -left-2 -top-2 cursor-move rounded bg-primary p-0.5 text-primary-foreground"
+      className={cn(
+        "absolute cursor-move rounded bg-primary p-0.5 text-primary-foreground",
+        className || "-left-2 -top-2"
+      )}
     >
       <GripVertical className="h-3 w-3" />
     </div>

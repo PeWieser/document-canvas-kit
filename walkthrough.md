@@ -306,3 +306,26 @@ Wir haben die gemeldeten Probleme bezüglich des wiederholten Helvetica-Fallback
 
 - Alle **69 Unit- und Integrationstests** laufen erfolgreich durch und das Projekt baut fehlerfrei.
 
+---
+
+## 12. Phase 15: Globaler Font-Cache (WeakMap), Race-Condition Synchronisation & Small-Text UI-Optimierung
+
+Wir haben das ungewöhnliche Font-Erkennungs- und Cache-Verhalten beim Page-Scrolling sowie das Verdecken von kleinen Texten durch die UI-Handles gelöst:
+
+### 🧠 Globaler Font-Cache (WeakMap) & Page-virtualization Persistence
+- **Problem**: Beim Scrollen einer Seite aus dem Viewport wird die `PageView`-Komponente unmounted und beim Zurückscrollen remounted. Dadurch wurden alle bisherigen page-level Cache-Refs (`fontMappingRef`, `fontInfoRef`, `fontRealNames`) auf `{}` zurückgesetzt und die Analyse startete erneut. Wenn das KNN-Matching beim ersten Mal noch nicht fertig war (da SQLite DB noch lud), schrieben Klicks falsche Helvetica-Fallbacks in den Cache.
+- **Lösung**:
+  - Wir haben globale `WeakMap`-Caches (`globalFontMappings`, `globalFontInfos`, `globalFontRealNames`) auf Basis des `doc` (PDFDocumentProxy) deklariert.
+  - PageView initialisiert seine Refs nun direkt aus diesem globalen Cache unter Verwendung des Prefixes `${pageId}_${fontName}`. Die Analyse wird somit für bereits gelesene Seiten beim Zurückscrollen vollständig übersprungen.
+  - Das KNN-Matching-Versprechen (`Promise`) wird in der globalen WeakMap `globalFontMatchingPromises` registriert.
+  - Der Veredelungs-Callback von `getFontInfo` wartet nun via `Promise.resolve(matchPromise)` explizit auf die Fertigstellung der Vektor-Schrifterkennung, bevor er den Cache befüllt. Dies verhindert Race Conditions bei frühen Klicks.
+
+### 📐 Offset-Verschiebung für Handles bei kleinen Texten (Anti-Verdeckung)
+- **Problem**: Bei sehr kleinen/schmalen Textboxen (z. B. "s3") überdeckten das `MoveHandle` und das Lösch-Icon den Text vollständig.
+- **Behebung**:
+  - Wir berechnen die Dimensionen des Textblocks dynamisch. Unterschreitet die Höhe 20px oder die Breite 45px, wird `isSmall` aktiviert.
+  - Wenn `isSmall` aktiv ist, verschieben wir das Verschiebe-Symbol und das Lösch-Icon nach oben (`-top-5`), sodass sie über dem Text schweben.
+  - Unterschreitet die Breite 36px (`isNarrow`), verschieben wir sie zusätzlich nach außen (`-left-4` und `-right-4`), sodass sie das Textfeld rahmen, ohne den Text oder sich gegenseitig zu überlagern.
+
+- Alle **69 Unit- und Integrationstests** laufen fehlerfrei durch und das Projekt baut stabil.
+
