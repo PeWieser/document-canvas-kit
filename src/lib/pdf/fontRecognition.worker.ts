@@ -14,11 +14,12 @@ async function initDb(): Promise<void> {
   initPromise = (async () => {
     try {
       console.log("[Worker] Initializing SQLite Font DB...");
+      const initSqlJsFn = (initSqlJs as any).default || initSqlJs;
       // Parallel fetch of database and sql.js WASM module
       const [dbRes, sqlJsModule] = await Promise.all([
         fetch('/font-fingerprints.db'),
-        initSqlJs({
-          locateFile: (file) => `/${file}`
+        initSqlJsFn({
+          locateFile: () => '/sql-wasm.wasm'
         })
       ]);
 

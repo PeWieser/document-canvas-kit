@@ -28,8 +28,12 @@ export interface FontInfo {
 
 // Per-document cache. WeakMap keeps things GC-friendly.
 const docCache = new WeakMap<PdfDocumentProxy, Map<string, FontInfo>>();
+const fallbackCache = new Map<string, FontInfo>();
 
 function cacheFor(doc: PdfDocumentProxy): Map<string, FontInfo> {
+  if (!doc || typeof doc !== 'object') {
+    return fallbackCache;
+  }
   let m = docCache.get(doc);
   if (!m) {
     m = new Map();
