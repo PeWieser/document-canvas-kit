@@ -85,7 +85,7 @@ async function getNodeDb() {
         path.join(process.cwd(), "public/font-fingerprints.db")
       ];
 
-      const gzipPathsToTry = pathsToTry.map(p => p + ".gz");
+      const gzipPathsToTry = pathsToTry.map(p => p + ".bin");
 
       let dbPath = "";
       let isGzipped = false;
@@ -103,7 +103,7 @@ async function getNodeDb() {
       }
 
       if (!dbPath) {
-        throw new Error("font-fingerprints.db (or .db.gz) not found");
+        throw new Error("font-fingerprints.db (or .db.bin) not found");
       }
 
       let dbBuffer = fs.default.readFileSync(dbPath);
@@ -134,10 +134,12 @@ let workerInstance: Worker | null = null;
 const pendingRequests: Record<string, { resolve: (val: any) => void; reject: (err: any) => void }> = {};
 let requestIdCounter = 0;
 let isWorkerReady = false;
+let isWorkerFailed = false;
 const readyListeners = new Set<() => void>();
 
 export function isFontWorkerReady(): boolean {
   if (typeof window === 'undefined' || typeof Worker === 'undefined') return true;
+  if (isWorkerFailed) return true; // Resolve ready state to unblock UI if worker fails
   getWorker(); // ensure instantiated
   return isWorkerReady;
 }
@@ -149,11 +151,11 @@ export function subscribeToWorkerReady(callback: () => void): () => void {
   };
 }
 
-function waitForWorkerReady(timeoutMs = 20_000): Promise<void> {
-  if (isWorkerReady) return Promise.resolve();
+function waitForWorkerReady(timeoutMs = 5_000): Promise<void> {
+  if (isWorkerReady || isWorkerFailed) return Promise.resolve();
   return new Promise((resolve) => {
     const check = () => {
-      if (isWorkerReady) {
+      if (isWorkerReady || isWorkerFailed) {
         readyListeners.delete(check);
         resolve();
       }
@@ -185,6 +187,15 @@ function getWorker(): Worker | null {
         return;
       }
 
+      if (type === 'INIT_FAILURE') {
+        console.error("[fontVectorMatch] Worker reported database initialization failure:", error);
+        isWorkerFailed = true;
+        for (const cb of readyListeners) {
+          try { cb(); } catch (err) {}
+        }
+        return;
+      }
+
       const pending = requestId ? pendingRequests[requestId] : null;
       if (!pending) return;
 
@@ -198,6 +209,10 @@ function getWorker(): Worker | null {
 
     workerInstance.onerror = (e: ErrorEvent) => {
       console.error("[fontVectorMatch] Worker error:", e.message);
+      isWorkerFailed = true;
+      for (const cb of readyListeners) {
+        try { cb(); } catch (err) {}
+      }
       // Reject all pending requests so they don't hang
       for (const [id, pending] of Object.entries(pendingRequests)) {
         pending.reject(new Error(`Worker error: ${e.message}`));
@@ -221,10 +236,11 @@ async function matchFontViaWorker(
   fontName: string
 ): Promise<MatchResult | null> {
   const worker = getWorker();
-  if (!worker) return null;
+  if (!worker || isWorkerFailed) return null;
 
   // Wait until the database is fully loaded and initialized
   await waitForWorkerReady();
+  if (isWorkerFailed) return null;
 
   return new Promise((resolve, reject) => {
     const requestId = `req_${++requestIdCounter}`;

@@ -329,54 +329,6 @@ export function PageView({ doc, pageId }: Props) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       renderTask = pdfPage.render({ canvasContext: ctx, viewport: vp });
-      renderTask.promise.then(async () => {
-        // Run KNN matching and resolve PostScript font names once after the first render
-        if (Object.keys(fontMappingRef.current).length === 0) {
-          try {
-            setWorkerLoading(true);
-            const mapping = await extractSubsetFontsPaths(pdfPage);
-            fontMappingRef.current = mapping;
-            setFingerprints(Object.values(mapping));
-
-            const names: Record<string, string> = {};
-            for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
-              try {
-                const f = pdfPage.commonObjs.get(fn);
-                if (f?.name) names[fn] = f.name as string;
-              } catch {
-                /* not available */
-              }
-            }
-            fontRealNames.current = names;
-
-            // Update any existing annotations on this page that are currently set to Helvetica or fallback fonts
-            const currentAnnos = useEditor.getState().annotations;
-            const updateAnnotationFn = useEditor.getState().updateAnnotation;
-            for (const anno of currentAnnos) {
-              if (anno.page === pageId && anno.kind === "textReplace") {
-                const item = items.find((x) => x.fontName === anno.fontName || (anno as any).fontName === x.fontName);
-                if (item?.fontName) {
-                  const knnMatch = mapping[item.fontName];
-                  if (knnMatch && knnMatch.family !== "Unknown" && (anno.fontFamily === "Helvetica" || anno.fontFamily === "Unknown" || !anno.fontFamily)) {
-                    updateAnnotationFn(anno.id, {
-                      fontFamily: knnMatch.family,
-                      bold: knnMatch.isBold,
-                      italic: knnMatch.isItalic,
-                    });
-                    void loadWebFont(knnMatch.family);
-                  }
-                }
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to extract subset fonts after render:", err);
-          } finally {
-            setWorkerLoading(false);
-          }
-        }
-      }).catch((err: any) => {
-        // ignore cancellation/rendering errors
-      });
     }
 
     return () => {
@@ -385,6 +337,65 @@ export function PageView({ doc, pageId }: Props) {
       }
     };
   }, [pdfPage, zoom, items]);
+
+  // --- Run KNN matching and resolve PostScript names ONLY when edit-text tool is active ---
+  useEffect(() => {
+    if (tool === "edit-text" && pdfPage && Object.keys(fontMappingRef.current).length === 0) {
+      let cancelled = false;
+      (async () => {
+        try {
+          setWorkerLoading(true);
+          const mapping = await extractSubsetFontsPaths(pdfPage);
+          if (cancelled) return;
+
+          fontMappingRef.current = mapping;
+          setFingerprints(Object.values(mapping));
+
+          const names: Record<string, string> = {};
+          for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
+            try {
+              const f = pdfPage.commonObjs.get(fn);
+              if (f?.name) names[fn] = f.name as string;
+            } catch {
+              /* not available */
+            }
+          }
+          if (cancelled) return;
+          fontRealNames.current = names;
+
+          // Update any existing annotations on this page that are currently set to Helvetica or fallback fonts
+          const currentAnnos = useEditor.getState().annotations;
+          const updateAnnotationFn = useEditor.getState().updateAnnotation;
+          for (const anno of currentAnnos) {
+            if (anno.page === pageId && anno.kind === "textReplace") {
+              const item = items.find((x) => x.fontName === anno.fontName || (anno as any).fontName === x.fontName);
+              if (item?.fontName) {
+                const knnMatch = mapping[item.fontName];
+                if (knnMatch && knnMatch.family !== "Unknown" && (anno.fontFamily === "Helvetica" || anno.fontFamily === "Unknown" || !anno.fontFamily)) {
+                  updateAnnotationFn(anno.id, {
+                    fontFamily: knnMatch.family,
+                    bold: knnMatch.isBold,
+                    italic: knnMatch.isItalic,
+                  });
+                  void loadWebFont(knnMatch.family);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to extract subset fonts:", err);
+        } finally {
+          if (!cancelled) {
+            setWorkerLoading(false);
+          }
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [tool, pdfPage, items, pageId]);
 
   // --- position text-layer spans ---
   useEffect(() => {

@@ -18,7 +18,7 @@ async function initDb(): Promise<void> {
       const initSqlJsFn = (initSqlJs as any).default || initSqlJs;
       // Parallel fetch of gzipped database and sql.js WASM module
       const [dbRes, sqlJsModule] = await Promise.all([
-        fetch('/font-fingerprints.db.gz'),
+        fetch('/font-fingerprints.db.bin'),
         initSqlJsFn({
           locateFile: () => '/sql-wasm.wasm'
         })
@@ -36,6 +36,7 @@ async function initDb(): Promise<void> {
       self.postMessage({ type: 'READY' });
     } catch (err: any) {
       console.error("[Worker] Failed to initialize SQLite database:", err.message);
+      self.postMessage({ type: 'INIT_FAILURE', error: err.message });
       initPromise = null; // Reset for retry
       throw err;
     }

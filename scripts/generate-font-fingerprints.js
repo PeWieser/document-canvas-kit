@@ -353,8 +353,8 @@ async function processFonts() {
   // Gzip the SQLite database for Cloudflare Pages (25MB file size limit)
   try {
     const gzipBytes = zlib.gzipSync(Buffer.from(dbBytes));
-    fs.writeFileSync(OUT_DB_FILE + ".gz", gzipBytes);
-    console.log(`Gzipped SQLite Database written to ${OUT_DB_FILE}.gz (size: ${gzipBytes.length} bytes)`);
+    fs.writeFileSync(OUT_DB_FILE + ".bin", gzipBytes);
+    console.log(`Gzipped SQLite Database written to ${OUT_DB_FILE}.bin (size: ${gzipBytes.length} bytes)`);
   } catch (gzipErr) {
     console.error("Failed to gzip database:", gzipErr.message);
   }

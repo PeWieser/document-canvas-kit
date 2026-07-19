@@ -1,0 +1,6 @@
+/font-fingerprints.db.bin
+  Content-Type: application/octet-stream
+  Content-Encoding: gzip
+
+/sql-wasm.wasm
+  Content-Type: application/wasm
