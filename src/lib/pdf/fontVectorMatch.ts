@@ -140,6 +140,17 @@ function getWorker(): Worker | null {
         pending.reject(new Error(error || 'Matching failed'));
       }
     };
+
+    workerInstance.onerror = (e: ErrorEvent) => {
+      console.error("[fontVectorMatch] Worker error:", e.message);
+      // Reject all pending requests so they don't hang
+      for (const [id, pending] of Object.entries(pendingRequests)) {
+        pending.reject(new Error(`Worker error: ${e.message}`));
+        delete pendingRequests[id];
+      }
+      // Reset workerInstance to try re-creating on next call
+      workerInstance = null;
+    };
     
     // Trigger initialization immediately
     workerInstance.postMessage({ type: 'INIT' });
@@ -160,6 +171,29 @@ function matchFontViaWorker(
   return new Promise((resolve, reject) => {
     const requestId = `req_${++requestIdCounter}`;
     pendingRequests[requestId] = { resolve, reject };
+
+    // Timeout: if worker doesn't respond within 15 seconds, fallback gracefully
+    const timeout = setTimeout(() => {
+      if (pendingRequests[requestId]) {
+        delete pendingRequests[requestId];
+        console.warn(`[fontVectorMatch] Worker matching timeout for font: ${fontName}`);
+        resolve(null);
+      }
+    }, 15_000);
+
+    // Wrap resolve/reject to clear the timeout
+    const origResolve = resolve;
+    const origReject = reject;
+    pendingRequests[requestId] = {
+      resolve: (val) => {
+        clearTimeout(timeout);
+        origResolve(val);
+      },
+      reject: (err) => {
+        clearTimeout(timeout);
+        origReject(err);
+      }
+    };
 
     const transferableBytes = new Uint8Array(fontBytes);
     worker.postMessage({

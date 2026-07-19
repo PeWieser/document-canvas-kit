@@ -2,6 +2,16 @@
 // Contains geometric normalization, scanline rasterization, topological hole counting, 
 // Hu-Moments calculation, and validation metrics (IoU, MAE).
 
+// @ts-ignore
+import * as opentype from 'opentype.js';
+
+// 20 Discriminator characters for feature extraction
+const DISCRIMINATOR_CHARS = [
+  'a', 'b', 'e', 'g', 'i', 'o', 'p', 't', 
+  'A', 'B', 'G', 'Q', 'R', 'S', 'W', 
+  '1', '4', '7', '&', '@'
+];
+
 export interface PathCommand {
   type: 'M' | 'L' | 'Q' | 'C' | 'Z';
   x?: number;

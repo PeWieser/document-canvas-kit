@@ -43,6 +43,10 @@ async function initDb(): Promise<void> {
 // Start loading the DB immediately when the worker spawns
 initDb().catch(() => {});
 
+self.onerror = (e) => {
+  console.error("[Worker] Unhandled error:", e);
+};
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, fontName, fontBytes, pdfWidths, requestId } = e.data;
 
