@@ -655,6 +655,7 @@ export function PageView({ doc, pageId }: Props) {
       italic: isItalic,
       transform: item.transform,
       width: item.width,
+      lineHeight: item.height,
       originalFontBytes: cachedInfo?.bytes,
       weight: cachedInfo?.weight,
       italicAngle: cachedInfo?.italicAngle,
@@ -1218,8 +1219,17 @@ function AnnoView({
       ? Math.hypot(tx[2], tx[3])
       : anno.fontSize * Math.hypot(tx[2], tx[3]);
 
+    const annoLineHeight = anno.kind === "textReplace" ? (anno as TextReplaceAnno).lineHeight : undefined;
+    let screenLineHeight = fontHeight;
+    if (transform && annoLineHeight && annoLineHeight > 0) {
+      const pdfFontHeight = Math.hypot(transform[2], transform[3]);
+      if (pdfFontHeight > 0) {
+        screenLineHeight = annoLineHeight * (fontHeight / pdfFontHeight);
+      }
+    }
+
     const left = tx[4];
-    const top = transform ? tx[5] - fontHeight : tx[5];
+    const top = transform ? tx[5] - screenLineHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const width = anno.kind === "textReplace"
       ? (transform

@@ -266,7 +266,12 @@ async function matchFontViaWorker(
       }
     };
 
-    const transferableBytes = new Uint8Array(fontBytes);
+    // Create a copy of the buffer to avoid detaching the original fontObj.data on transfer
+    const clonedBuffer = fontBytes.buffer.slice(
+      fontBytes.byteOffset,
+      fontBytes.byteOffset + fontBytes.byteLength
+    );
+    const transferableBytes = new Uint8Array(clonedBuffer);
     worker.postMessage({
       type: 'MATCH',
       fontName,
