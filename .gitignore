@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary downloaded fonts and debug scripts
+temp_fonts/
+scripts/debug-font.js

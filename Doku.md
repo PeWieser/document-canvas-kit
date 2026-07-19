@@ -48,9 +48,13 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
 ### 2.3 Font-Erkennungs- und Fallback-System
 
 - Wenn ein Text geändert wird (`textReplace`), muss die Schriftart im PDF eingebettet werden.
-- `resolvePDFCoreFontName` in `src/lib/pdf/fontDetect.ts` säubert den PostScript-Schriftnamen (entfernt z. B. Subset-Präfixe wie `ABCDEF+`) und ordnet ihn bekannten Webfonts (z. B. Arial, Times New Roman, Calibri) zu.
-- `getFontBytes` lädt die TrueType-Schriftart (`.ttf`) im Hintergrund über **Bunny Fonts** herunter (spoofed UA für Rohdaten) und bettet sie ein.
-- Fällt ein Download oder das Einbetten fehl, wird ein sicherer Fallback auf **Helvetica** angewendet.
+- **Deterministische Offline-KNN-Fonterkennung**: Das System verwendet einen clientseitigen WebWorker, um unbekannte oder fehlerhaft benannte Subset-Schriften (z. B. `ABCDEF+TimesNewRoman`) zu identifizieren. Es vergleicht extrahierte Glyphen-Vektordaten und Zeichenbreiten mit einer lokalen SQLite-Datenbank (`public/font-fingerprints.db`), die Fingerabdrücke aller 1.950+ Google/Bunny-Fonts enthält:
+  - **Filterung**: Auswahl durch Zeichen-Topologie (Anzahl geschlossener Löcher) und Hu-Moments (L2-Abstand).
+  - **Metrischer Vergleich**: Mean Absolute Error (MAE) der Zeichenbreiten normiert auf 1000 UPEM.
+  - **Validierung**: IoU-Check der Rastermasken für Schlüsselzeichen.
+- **Farben- und Style-Erhalt**: In `PageView.tsx` wird die originale Textfarbe aus den PDF-Bytes ausgelesen (`item.color`) und als Hexcode dem Eingabefeld zugewiesen. Die Formatierungen Fett (`bold`) und Kursiv (`italic`) sowie der erkannte Schriftname werden vom KNN-Matcher übernommen, anstatt von leeren Subset-Metadaten (z. B. `TTF4t00`) überschrieben zu werden.
+- **Manuelle Font-Auswahl**: Alle 1.950+ Bunny-Schriftarten stehen dem Anwender in `FontPicker.tsx` (geladen aus `src/lib/pdf/font-families.json`) zur manuellen Auswahl zur Verfügung und werden bei Aktivierung on-the-fly geladen.
+- Fällt die Erkennung oder das Laden fehl, wird ein sicherer Fallback auf **Helvetica** angewendet.
 
 ---
 

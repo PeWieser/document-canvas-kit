@@ -142,11 +142,14 @@ Users can select existing PDF text and replace it.
 
 1. The underlying original text is physically deleted using the exact same algorithm as Redaction (see above).
 2. The new text must be drawn over the blanked region using a font that matches the original.
-3. **Font Detection** (`fontDetect.ts`): The system parses the internal PDF font name (e.g., stripping subset prefixes like `ABCDEF+Helvetica-Bold`) to determine the closest standard web font.
-4. **Font Fetching**: `getFontBytes()` asynchronously downloads the TrueType (`.ttf`) file for that font from Google Fonts (via Bunny Fonts proxy).
-5. **Embedding**: `fontkit` embeds the downloaded TTF into the PDF via `pdf-lib` so the final output contains the correct vector font, ensuring it looks identical on any device.
-6. **Matrix & Width Integration**: `TextReplaceAnno` has been extended to include `transform?: number[]` and `width?: number`. These store the original text block's rotation/scale matrix and physical width, allowing the replacement text to be drawn with the exact same angle and size constraints upon export.
-7. If a font cannot be fetched, it safely falls back to standard Helvetica (`StandardFonts.Helvetica`).
+3. **Deterministic Offline KNN Font Recognition**: To accurately identify unknown or subset-prefixed fonts (e.g., `ABCDEF+TimesNewRoman`), the engine extracts character glyph vectors (width and outline geometries) from the PDF. These features are matched in a client-side WebWorker against a local SQLite database (`public/font-fingerprints.db`) containing fingerprints for all 1,950+ Google/Bunny Fonts:
+   - **Pruning**: Candidate selection by character-level topology (count of closed holes) and Hu-moments (L2 distance).
+   - **Tie-breaker**: Mean Absolute Error (MAE) comparison of character advance widths scaled to 1000 UPEM.
+   - **Validation**: Strict IoU validation of raster masks on key discriminator characters.
+4. **Style and Color Preservation**: In `PageView.tsx`, the original text color is extracted from the PDF (`item.color`) and parsed into hex format. Key formatting metrics (`bold`, `italic`, and `family`) are preserved from the KNN matcher to prevent metadata overrides from subset names (like `TTF4t00`).
+5. **Manual Font Selection**: The font selection dropdown (`FontPicker.tsx`) is statically populated with all 1,950+ Bunny Fonts (`src/lib/pdf/font-families.json`), which are downloaded and rendered on-the-fly when selected.
+6. **Embedding**: `@pdf-lib/fontkit` embeds the TrueType (`.ttf`) font bytes (downloaded from Bunny Fonts proxy) during export, ensuring identical appearance on any device.
+7. If a font cannot be resolved, it falls back to standard Helvetica (`StandardFonts.Helvetica`).
 
 ### 5.3 Highlighting, Drawing & Image Overlays
 

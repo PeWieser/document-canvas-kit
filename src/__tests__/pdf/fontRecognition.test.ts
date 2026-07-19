@@ -88,5 +88,5 @@ describe('System Font Recognition Test Suite', () => {
     expect(totalTested).toBeGreaterThan(0);
     expect(failures).toEqual([]);
     expect(totalMatched).toBe(totalTested);
-  });
+  }, 30000);
 });

@@ -27,6 +27,31 @@ interface TextItem {
   width: number;
   height: number;
   fontName?: string;
+  color?: Uint8ClampedArray | number[];
+}
+
+function rgbToHex(color: Uint8ClampedArray | number[] | undefined): string {
+  if (!color) return "#111111";
+  let r = color[0] ?? 0;
+  let g = color[1] ?? 0;
+  let b = color[2] ?? 0;
+  
+  if (r <= 1 && g <= 1 && b <= 1 && (r > 0 || g > 0 || b > 0)) {
+    r = Math.round(r * 255);
+    g = Math.round(g * 255);
+    b = Math.round(b * 255);
+  } else {
+    r = Math.round(r);
+    g = Math.round(g);
+    b = Math.round(b);
+  }
+  
+  const toHex = (c: number) => {
+    const hex = Math.max(0, Math.min(255, c)).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  };
+  
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 interface Props {
@@ -184,6 +209,7 @@ export function PageView({ doc, pageId }: Props) {
   const updateAnnotation = useEditor((s) => s.updateAnnotation);
   const removeAnnotation = useEditor((s) => s.removeAnnotation);
   const select = useEditor((s) => s.select);
+  const setFingerprints = useEditor((s) => s.setFingerprints);
   const { t } = useI18n();
 
   const pageAnnos = annotations.filter((a) => a.page === pageId);
@@ -252,6 +278,7 @@ export function PageView({ doc, pageId }: Props) {
           try {
             const mapping = await extractSubsetFontsPaths(pdfPage);
             fontMappingRef.current = mapping;
+            setFingerprints(Object.values(mapping));
 
             const names: Record<string, string> = {};
             for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
@@ -515,6 +542,8 @@ export function PageView({ doc, pageId }: Props) {
       setDefaultFontFamily(family);
     }
 
+    const textColor = rgbToHex((item as any).color);
+
     const annoId = uid();
     addAnnotation({
       id: annoId,
@@ -523,7 +552,7 @@ export function PageView({ doc, pageId }: Props) {
       rect,
       text: item.str,
       fontSize: Math.hypot(item.transform[2], item.transform[3]),
-      color: "#111111",
+      color: textColor,
       fontFamily: family,
       bold: isBold,
       italic: isItalic,
@@ -538,18 +567,25 @@ export function PageView({ doc, pageId }: Props) {
     if (item.fontName && !cachedInfo) {
       void getFontInfo(pdfPage, item.fontName).then((info) => {
         fontInfoRef.current[item.fontName!] = info;
+        
+        // Prioritize the KNN matched properties so they are not overridden by subset names!
+        const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
+        const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
+        const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
+        const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
+
         updateAnnotation(annoId, {
-          fontFamily: info.family,
-          bold: info.isBold,
-          italic: info.isItalic,
+          fontFamily: matchedFamily,
+          bold: matchedBold,
+          italic: matchedItalic,
           originalFontBytes: info.bytes,
           weight: info.weight,
           italicAngle: info.italicAngle,
         } as Partial<Annotation>);
-        void loadWebFont(info.family);
-        setDefaultFontFamily(info.family);
+        void loadWebFont(matchedFamily);
+        setDefaultFontFamily(matchedFamily);
         toast.success(
-          `${info.family}${info.isBold ? " Bold" : ""}${info.isItalic ? " Italic" : ""} (${info.source})`,
+          `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
         );
       }).catch(() => {
         /* introspection failed – keep heuristic values */

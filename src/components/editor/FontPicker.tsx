@@ -4,6 +4,7 @@ import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
 import { COMMON_FONTS, loadWebFont } from "@/lib/pdf/fontDetect";
 import { cn } from "@/lib/utils";
+import fontFamilies from "@/lib/pdf/font-families.json";
 
 const TEXT_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b", "#ffffff"];
 
@@ -25,23 +26,23 @@ export function FontPicker() {
 
   const anno = annotations.find((a) => a.id === selectedId);
 
-  // Only render for text-carrying annotations.
-  if (!anno || (anno.kind !== "textReplace" && anno.kind !== "textbox")) return null;
-
-  // Font family dropdown: combine COMMON_FONTS and all loaded fingerprints dynamically
+  // Font family dropdown: combine COMMON_FONTS, custom fingerprints, and all 1900+ Bunny Fonts
   const families = useMemo(() => {
-    const list = new Set(COMMON_FONTS);
+    const list = new Set([...COMMON_FONTS, ...fontFamilies]);
     for (const fp of fingerprints) {
       if (fp.family) {
         list.add(fp.family);
       }
     }
     const sorted = Array.from(list).sort();
-    if (anno.fontFamily && !sorted.includes(anno.fontFamily)) {
+    if (anno && anno.fontFamily && !sorted.includes(anno.fontFamily)) {
       return [anno.fontFamily, ...sorted];
     }
     return sorted;
-  }, [fingerprints, anno.fontFamily]);
+  }, [fingerprints, anno?.fontFamily]);
+
+  // Only render for text-carrying annotations.
+  if (!anno || (anno.kind !== "textReplace" && anno.kind !== "textbox")) return null;
 
   const patch = (p: Record<string, unknown>) => updateAnnotation(anno.id, p as never);
 

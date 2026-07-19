@@ -257,3 +257,31 @@ Wir haben die Fonts-Erkennung, Platzierung, Textbox-Größen und Baseline-Ausric
 - **Ergebnis**: **20 von 20 Durchläufen** erzielen eine Abweichung von exakt `0.0000pt` und sind somit zu **100% deckungsgleich (deckungsgleich)**! Der Fuzzing-Test läuft fehlerfrei durch (Exit Code 0).
 - Alle 48 Standard-Unit-Tests und der SSR Production Build laufen stabil durch.
 
+---
+
+## 10. Phase 13: Vollständige Schrifterkennung (Alle 1.950+ Bunny Fonts), Farberhalt und React-Stabilitäts-Hotfix
+
+Wir haben alle gemeldeten Probleme bezüglich der Schrifsauswahl im Dropdown, dem Zurücksetzen auf raw subset font names (wie `TTF4t00`), den verloren gehenden Formatierungen (Bold/Italic), der Schriftfarbe sowie dem React-Absturz (Error #310) vollständig behoben.
+
+### ⚡ React Error #310 Absturz-Hotfix (Rules of Hooks)
+- **Problem**: Bei Klick auf ein Textfeld im Modus "Text bearbeiten" stürzte die Seite mit einem `Minified React error #310` ab.
+- **Ursache**: In `FontPicker.tsx` gab es ein vorzeitiges Return (`if (!anno) return null;`), das platziert war, *bevor* der `useMemo`-Hook für die Schriftenliste aufgerufen wurde. Sobald eine Annotation selektiert wurde, änderte sich die Anzahl der ausgeführten Hooks, was zum Crash führte.
+- **Lösung**: Das vorzeitige Return wurde hinter den `useMemo`-Hook verlagert. Der Hook läuft nun immer stabil durch.
+
+### 🗄️ Vektorbasiertes Matching aller 1.950+ Bunny Fonts (SQLite-Rebuild)
+- **Problem**: Es wurden zuvor nur die Top 50 Schriften für den Vektor-Vergleich indexiert. Zudem war die Download-Methode im Skript fehlerhaft, da sie standardmäßig WOFF2-Dateien herunterlud, welche `opentype.js` nicht parsen kann. Dadurch wurden über 1.800 Schriftarten übersprungen.
+- **Lösung**: 
+  1. Das Generierungsskript (`generate-font-fingerprints.js`) wurde überarbeitet: Es filtert die CSS-Quelltexte nun präzise nach standardmäßigen `.woff` WOFF1-Dateien (die `opentype.js` dekomprimieren und lesen kann) und beschränkt sich auf das `latin`-Subset, um Duplikate zu vermeiden.
+  2. Die SQLite-Datenbank `public/font-fingerprints.db` wurde für **alle 1.959 Bunny-Schriftfamilien** vollständig neu berechnet (Größe: ~34 MB). Das Vektor-Matching (IoU, Hu-Moments und MAE) läuft nun stabil gegen den gesamten Web-Katalog.
+
+### 🎨 Erhalt von Farbe, Schriftname und Formatierung (bold/italic)
+- **Problem**: Bei Klick auf einen Textblock erkannte der Vektor-Matcher zwar die korrekte Schriftart (z.B. Times New Roman), die darauffolgende asynchrone Metadaten-Funktion überschrieb den Schriftnamen jedoch mit dem unbrauchbaren Subset-Namen (z.B. `TTF4t00`) und entfernte Fett/Kursiv-Metriken. Zudem war die Schriftfarbe standardmäßig hartcodiert auf `#111111`.
+- **Behebung**:
+  - In `PageView.tsx` wird das Ergebnis des KNN-Matcher-Algorithmus (`knnMatch.family`, `knnMatch.isBold`, `knnMatch.isItalic`) nun priorisiert und vor dem Überschreiben durch leere Metadaten geschützt.
+  - Ein neuer Farbkonvertierungs-Helper (`rgbToHex`) liest die originale Textfarbe aus den PDF.js Text-Items (`item.color`) aus und wendet sie als Hex-Code direkt auf das editierbare Textfeld an.
+
+### 📋 Vollständiges manuelles Font-Dropdown
+- **Lösung**: Alle 1.950+ Bunny-Schriftarten (Namen) werden beim Build-Prozess in `src/lib/pdf/font-families.json` exportiert und stehen dem Anwender im `FontPicker`-Dropdown zur freien manuellen Auswahl zur Verfügung. Wird eine Schriftart ausgewählt, wird sie on-the-fly via Bunny Fonts nachgeladen.
+
+- Alle **69 Unit- und Integrationstests** (inklusive des KNN-Font-Matching-Tests) laufen mit **100.00% Genauigkeit** erfolgreich durch.
+

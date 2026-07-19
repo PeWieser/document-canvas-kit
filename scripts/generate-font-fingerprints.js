@@ -13,22 +13,6 @@ import {
 
 const __dirname = import.meta.dirname;
 
-const FONTS_TO_FETCH = [
-  // Sans-serif
-  'Roboto', 'Lato', 'Open Sans', 'Montserrat', 'Oswald', 'Source Sans Pro',
-  'Ubuntu', 'Nunito', 'Raleway', 'PT Sans', 'Inter', 'Poppins', 'Noto Sans',
-  'Work Sans', 'Fira Sans', 'Quicksand', 'Mulish', 'Barlow', 'Kanit', 'Rubik',
-  'Dm Sans', 'Cabin', 'Karla', 'Arimo', 'Oxygen', 'Hind', 'Josefin Sans',
-  'Libre Franklin', 'Questrial', 'Manrope', 'Dosis',
-  // Serif
-  'Merriweather', 'Playfair Display', 'PT Serif', 'Lora', 'Roboto Slab',
-  'Noto Serif', 'Crimson Text', 'Libre Baskerville', 'EB Garamond',
-  'Arvo', 'Bitter', 'Cardo', 'Domine', 'Cormorant Garamond',
-  // Monospace
-  'Inconsolata', 'Source Code Pro', 'Fira Code', 'Roboto Mono', 'Ubuntu Mono',
-  'Courier Prime', 'Space Mono'
-];
-
 // 20 Discriminator characters as defined in plan
 const DISCRIMINATOR_CHARS = [
   'a', 'b', 'e', 'g', 'i', 'o', 'p', 't', 
@@ -83,43 +67,49 @@ async function processFonts() {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
   }
 
-  console.log("Initializing SQLite in-memory database...");
+  console.log("Initializing SQLite...");
   const SQL = await initSqlJs();
-  const db = new SQL.Database();
+  let db;
 
-  // Create tables according to plan
-  db.run(`
-    CREATE TABLE fonts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      family TEXT NOT NULL,
-      is_bold INTEGER NOT NULL,
-      is_italic INTEGER NOT NULL
-    );
-  `);
+  if (fs.existsSync(OUT_DB_FILE)) {
+    console.log(`Loading existing database from ${OUT_DB_FILE}...`);
+    const fileBuffer = fs.readFileSync(OUT_DB_FILE);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    console.log("Creating new SQLite database...");
+    db = new SQL.Database();
+    
+    db.run(`
+      CREATE TABLE fonts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        family TEXT NOT NULL,
+        is_bold INTEGER NOT NULL,
+        is_italic INTEGER NOT NULL
+      );
+    `);
 
-  db.run(`
-    CREATE TABLE font_features (
-      font_id INTEGER NOT NULL,
-      char TEXT NOT NULL,
-      holes INTEGER NOT NULL,
-      h1 REAL NOT NULL,
-      h2 REAL NOT NULL,
-      h3 REAL NOT NULL,
-      h4 REAL NOT NULL,
-      h5 REAL NOT NULL,
-      h6 REAL NOT NULL,
-      h7 REAL NOT NULL,
-      width INTEGER NOT NULL,
-      raster_mask BLOB NOT NULL,
-      FOREIGN KEY(font_id) REFERENCES fonts(id)
-    );
-  `);
+    db.run(`
+      CREATE TABLE font_features (
+        font_id INTEGER NOT NULL,
+        char TEXT NOT NULL,
+        holes INTEGER NOT NULL,
+        h1 REAL NOT NULL,
+        h2 REAL NOT NULL,
+        h3 REAL NOT NULL,
+        h4 REAL NOT NULL,
+        h5 REAL NOT NULL,
+        h6 REAL NOT NULL,
+        h7 REAL NOT NULL,
+        width INTEGER NOT NULL,
+        raster_mask BLOB NOT NULL,
+        FOREIGN KEY(font_id) REFERENCES fonts(id)
+      );
+    `);
 
-  // B-Tree indexes on char and holes for massive runtime query acceleration
-  db.run(`CREATE INDEX idx_features_char_holes ON font_features (char, holes);`);
-  db.run(`CREATE INDEX idx_features_font_id ON font_features (font_id);`);
+    db.run(`CREATE INDEX idx_features_char_holes ON font_features (char, holes);`);
+    db.run(`CREATE INDEX idx_features_font_id ON font_features (font_id);`);
+  }
 
-  // Preparation statements
   const insertFontStmt = db.prepare(`
     INSERT INTO fonts (family, is_bold, is_italic) VALUES (?, ?, ?);
   `);
@@ -130,7 +120,6 @@ async function processFonts() {
   `);
 
   function insertFontData(family, isBold, isItalic, font) {
-    // Insert font metadata
     insertFontStmt.run([family, isBold ? 1 : 0, isItalic ? 1 : 0]);
     const fontId = db.exec("SELECT last_insert_rowid();")[0].values[0][0];
 
@@ -139,85 +128,160 @@ async function processFonts() {
       try {
         const glyph = font.charToGlyph(char);
         const pathObj = glyph.getPath();
-        
-        // Feature extraction:
-        // 1. Flatten curves and normalize geometry to 64x64 grid
         const lines = getNormalizedLines(pathObj.commands);
         if (lines.length === 0) continue;
         
-        // 2. Scanline rasterization
         const mask = rasterizeLines(lines);
-        
-        // 3. Topology: count holes
         const holes = countHoles(mask);
-        
-        // 4. Hu moments (log-transformed)
         const hu = calculateHuMoments(mask, 64, 64);
-        
-        // 5. Scaled width to 1000 UPEM
         const scaledWidth = Math.round(glyph.advanceWidth * (1000 / font.unitsPerEm));
 
-        // Insert features into DB
         insertFeatureStmt.run([
           fontId,
           char,
           holes,
           hu[0], hu[1], hu[2], hu[3], hu[4], hu[5], hu[6],
           scaledWidth,
-          packMask(mask) // Uint8Array BLOB (packed to 512 bytes)
+          packMask(mask)
         ]);
         
         extractedCount++;
       } catch (err) {
-        // Skip characters not found or failed
+        // Skip char on error
       }
     }
     return extractedCount;
   }
 
-  // 1. Download and parse web fonts (Google Fonts served via Bunny Fonts)
-  for (const fontName of FONTS_TO_FETCH) {
-    const fontFile = path.join(TEMP_DIR, `${fontName.replace(/ /g, '_')}.woff`);
-    console.log(`Processing Bunny Font: ${fontName}...`);
-    try {
-      if (!fs.existsSync(fontFile)) {
-        console.log(`Fetching CSS from Bunny Fonts for ${fontName}...`);
-        const cssUrl = `https://fonts.bunny.net/css?family=${fontName.replace(/ /g, '+')}:400,400i,700,700i`;
+  // 1. Fetch the complete Bunny Fonts families list
+  console.log("Fetching all Bunny Font families from API...");
+  let bunnyList;
+  try {
+    const listData = await downloadString("https://fonts.bunny.net/list");
+    bunnyList = JSON.parse(listData);
+  } catch (err) {
+    console.error("Failed to fetch Bunny Fonts list, using fallback:", err.message);
+    bunnyList = {};
+  }
+
+  const fontFamilies = Object.keys(bunnyList);
+  console.log(`Found ${fontFamilies.length} families on Bunny Fonts.`);
+
+  // Write all family names to a JSON file for the manual dropdown
+  try {
+    const sortedNames = Object.keys(bunnyList)
+      .map(slug => bunnyList[slug].familyName)
+      .filter(Boolean)
+      .sort();
+    const familiesDest = path.join(__dirname, '../src/lib/pdf/font-families.json');
+    fs.writeFileSync(familiesDest, JSON.stringify(sortedNames, null, 2));
+    console.log(`Saved ${sortedNames.length} font family names to ${familiesDest}`);
+  } catch (err) {
+    console.error("Failed to save font families JSON:", err.message);
+  }
+
+  // 2. Concurrently download and process the Bunny Fonts
+  const CONCURRENCY = 25;
+  const queue = [...fontFamilies];
+  let processedCount = 0;
+  let skippedCount = 0;
+  let successCount = 0;
+  let errorCount = 0;
+
+  async function downloadAndProcessWorker() {
+    while (queue.length > 0) {
+      const slug = queue.shift();
+      if (!slug) break;
+
+      const familyData = bunnyList[slug];
+      const familyName = familyData.familyName || slug;
+
+      try {
+        const weights = familyData.weights || [400];
+        const styles = familyData.styles || ['normal'];
+        
+        // Build the CSS request spec
+        const specs = [];
+        for (const w of weights) {
+          if (styles.includes('normal')) specs.push(`${w}`);
+          if (styles.includes('italic')) specs.push(`${w}i`);
+        }
+        const specStr = specs.join(',');
+        const cssUrl = `https://fonts.bunny.net/css?family=${familyName.replace(/ /g, '+')}:${specStr}`;
+        
+        // Fetch CSS
         const cssContent = await downloadString(cssUrl);
+        const fontFaces = cssContent.split('@font-face');
         
-        let urlMatch = cssContent.match(/url\((https:\/\/[^)]+\.woff)\)/);
-        if (!urlMatch) {
-          urlMatch = cssContent.match(/url\((https:\/\/[^)]+)\)/);
+        for (let i = 1; i < fontFaces.length; i++) {
+          const block = fontFaces[i];
+          const styleMatch = block.match(/font-style:\s*([^;]+)/);
+          const weightMatch = block.match(/font-weight:\s*([^;]+)/);
+          
+          // Find all url(...) blocks in this font-face block
+          const urls = [...block.matchAll(/url\(([^)]+)\)/g)].map(m => m[1].trim());
+          // Find the one ending with .woff (or containing .woff but not .woff2)
+          let fontUrl = urls.find(u => u.includes('.woff') && !u.includes('.woff2'));
+          if (!fontUrl) continue; // If no WOFF url is found, skip this variant
+
+          if (fontUrl.startsWith("'") || fontUrl.startsWith('"')) {
+            fontUrl = fontUrl.slice(1, -1);
+          }
+          fontUrl = fontUrl.split(')')[0];
+
+          // Subsetting filter: only index the latin subset to avoid duplicates
+          if (!fontUrl.includes('-latin-')) {
+            continue;
+          }
+
+          const style = styleMatch ? styleMatch[1].trim().toLowerCase() : 'normal';
+          const weightStr = weightMatch ? weightMatch[1].trim() : '400';
+          const weight = parseInt(weightStr, 10) || 400;
+          const isItalic = style === 'italic' || style === 'oblique';
+          const isBold = weight >= 600;
+
+          // Check if this font variant is already in the DB
+          const checkRes = db.exec(`SELECT id FROM fonts WHERE family = '${familyName.replace(/'/g, "''")}' AND is_bold = ${isBold ? 1 : 0} AND is_italic = ${isItalic ? 1 : 0};`);
+          if (checkRes.length > 0 && checkRes[0].values.length > 0) {
+            skippedCount++;
+            continue;
+          }
+
+          const tempFontFile = path.join(TEMP_DIR, `${slug}_${weight}_${style}.woff`);
+          
+          if (!fs.existsSync(tempFontFile)) {
+            await downloadFile(fontUrl, tempFontFile);
+          }
+
+          const fontBuffer = fs.readFileSync(tempFontFile);
+          const font = opentype.parse(
+            fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+          );
+
+          const charsCount = insertFontData(familyName, isBold, isItalic, font);
+          if (charsCount === 0) {
+            db.run(`DELETE FROM fonts WHERE id = (SELECT last_insert_rowid());`);
+          } else {
+            successCount++;
+          }
         }
-        if (!urlMatch) {
-            throw new Error('Could not find font URL in CSS');
-        }
-        
-        let fontUrl = urlMatch[1];
-        if (fontUrl.startsWith("'") || fontUrl.startsWith('"')) {
-          fontUrl = fontUrl.slice(1, -1);
-        }
-        console.log(`Downloading ${fontName} font file...`);
-        await downloadFile(fontUrl, fontFile);
+      } catch (err) {
+        errorCount++;
       }
-      
-      const fontBuffer = fs.readFileSync(fontFile);
-      const font = opentype.parse(
-        fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
-      );
 
-      const lowerName = fontName.toLowerCase();
-      const isBold = lowerName.includes("bold");
-      const isItalic = lowerName.includes("italic") || lowerName.includes("oblique");
-
-      const charsCount = insertFontData(fontName, isBold, isItalic, font);
-      console.log(`Successfully processed Bunny Font ${fontName}: extracted ${charsCount} chars`);
-    } catch (err) {
-      console.error(`Error processing Bunny Font ${fontName}:`, err.message);
+      processedCount++;
+      if (processedCount % 100 === 0 || processedCount === fontFamilies.length) {
+        console.log(`[Progress] Processed ${processedCount}/${fontFamilies.length} fonts... (Success: ${successCount}, Skipped/Already Indexed: ${skippedCount}, Errors: ${errorCount})`);
+      }
     }
   }
 
-  // 2. Crawl Windows system fonts if on Windows
+  console.log(`Starting worker pool with concurrency = ${CONCURRENCY}...`);
+  const workers = Array.from({ length: CONCURRENCY }, () => downloadAndProcessWorker());
+  await Promise.all(workers);
+  console.log(`Completed Bunny Fonts crawl. Processed: ${processedCount}, Skipped/Already Indexed: ${skippedCount}, Successful additions: ${successCount}, Errors: ${errorCount}`);
+
+  // 3. Crawl Windows system fonts if on Windows
   if (process.platform === 'win32') {
     const winFontsDir = 'C:\\Windows\\Fonts';
     if (fs.existsSync(winFontsDir)) {
@@ -247,28 +311,22 @@ async function processFonts() {
                   fullName = `${fontFamily} ${fontSubfamily}`;
                 }
                 
-                // Skip if already processed in DB
-                const checkRes = db.exec(`SELECT id FROM fonts WHERE family = '${fullName.replace(/'/g, "''")}';`);
-                if (checkRes.length > 0 && checkRes[0].values.length > 0) {
-                  continue;
-                }
-                
-                console.log(`Processing local Windows font: ${fullName} (${file})...`);
-                
                 const lowerSub = fontSubfamily.toLowerCase();
                 const isBold = lowerSub.includes("bold") || lowerSub.includes("heavy") || lowerSub.includes("black");
                 const isItalic = lowerSub.includes("italic") || lowerSub.includes("oblique");
 
+                const checkRes = db.exec(`SELECT id FROM fonts WHERE family = '${fontFamily.replace(/'/g, "''")}' AND is_bold = ${isBold ? 1 : 0} AND is_italic = ${isItalic ? 1 : 0};`);
+                if (checkRes.length > 0 && checkRes[0].values.length > 0) {
+                  continue;
+                }
+
                 const charsCount = insertFontData(fontFamily, isBold, isItalic, font);
                 if (charsCount === 0) {
-                  // Clean up font if no discriminator chars were successfully extracted
-                  db.run(`DELETE FROM fonts WHERE family = '${fontFamily.replace(/'/g, "''")}';`);
-                } else {
-                  console.log(`Successfully processed local Windows font: ${fullName} (${charsCount} chars)`);
+                  db.run(`DELETE FROM fonts WHERE id = (SELECT last_insert_rowid());`);
                 }
               }
             } catch (e) {
-              // skip unreadable font files
+              // skip unreadable
             }
           }
         }
