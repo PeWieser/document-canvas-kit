@@ -1268,11 +1268,14 @@ function AnnoView({
           transformOrigin: transformOriginString,
           minHeight: `${fontHeight}px`,
           height: "auto",
-          pointerEvents: selectable || selected ? "auto" : "none",
+          pointerEvents: selectable || tool === "edit-text" || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
         }}
-        onClick={onSelect}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <textarea
