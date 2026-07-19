@@ -85,23 +85,37 @@ async function getNodeDb() {
         path.join(process.cwd(), "public/font-fingerprints.db")
       ];
 
+      const gzipPathsToTry = pathsToTry.map(p => p + ".gz");
+
       let dbPath = "";
-      for (const p of pathsToTry) {
-        if (fs.default.existsSync(p)) {
-          dbPath = p;
+      let isGzipped = false;
+
+      for (let i = 0; i < pathsToTry.length; i++) {
+        if (fs.default.existsSync(pathsToTry[i])) {
+          dbPath = pathsToTry[i];
+          break;
+        }
+        if (fs.default.existsSync(gzipPathsToTry[i])) {
+          dbPath = gzipPathsToTry[i];
+          isGzipped = true;
           break;
         }
       }
 
       if (!dbPath) {
-        throw new Error("font-fingerprints.db not found");
+        throw new Error("font-fingerprints.db (or .db.gz) not found");
       }
 
-      const dbBuffer = fs.default.readFileSync(dbPath);
+      let dbBuffer = fs.default.readFileSync(dbPath);
+      if (isGzipped) {
+        const pako = (await import("pako")).default || (await import("pako"));
+        dbBuffer = pako.ungzip(dbBuffer);
+      }
+
       const initSqlJs = (await import("sql.js")).default;
       const SQL = await initSqlJs();
       nodeDb = new SQL.Database(new Uint8Array(dbBuffer));
-      console.log(`[fontVectorMatch] Loaded SQLite DB in Node environment.`);
+      console.log(`[fontVectorMatch] Loaded SQLite DB (${isGzipped ? "gzipped" : "raw"}) in Node environment.`);
       return nodeDb;
     } catch (err) {
       console.error("[fontVectorMatch] Failed to load SQLite DB in Node:", err);

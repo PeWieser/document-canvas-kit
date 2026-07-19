@@ -2,6 +2,7 @@
 // Loads the SQLite database and executes the matching pipeline in the background.
 
 import initSqlJs from 'sql.js';
+import * as pako from 'pako';
 import { matchFontUsingDb } from './fontMatchingEngine';
 
 let db: any = null;
@@ -15,9 +16,9 @@ async function initDb(): Promise<void> {
     try {
       console.log("[Worker] Initializing SQLite Font DB...");
       const initSqlJsFn = (initSqlJs as any).default || initSqlJs;
-      // Parallel fetch of database and sql.js WASM module
+      // Parallel fetch of gzipped database and sql.js WASM module
       const [dbRes, sqlJsModule] = await Promise.all([
-        fetch('/font-fingerprints.db'),
+        fetch('/font-fingerprints.db.gz'),
         initSqlJsFn({
           locateFile: () => '/sql-wasm.wasm'
         })
@@ -27,9 +28,10 @@ async function initDb(): Promise<void> {
         throw new Error(`Failed to fetch database: ${dbRes.statusText}`);
       }
 
-      const dbBuffer = await dbRes.arrayBuffer();
+      const compressedBuffer = await dbRes.arrayBuffer();
+      const dbBuffer = pako.ungzip(new Uint8Array(compressedBuffer));
       SQL = sqlJsModule;
-      db = new SQL.Database(new Uint8Array(dbBuffer));
+      db = new SQL.Database(dbBuffer);
       console.log("[Worker] SQLite database loaded and indexed successfully.");
     } catch (err: any) {
       console.error("[Worker] Failed to initialize SQLite database:", err.message);

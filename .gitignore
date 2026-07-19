@@ -34,3 +34,4 @@ dist-ssr
 # Temporary downloaded fonts and debug scripts
 temp_fonts/
 scripts/debug-font.js
+public/font-fingerprints.db
