@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStroke } from "perfect-freehand";
+import { toast } from "sonner";
 import { GripVertical, X, MessageSquare, Check, Move } from "lucide-react";
 import type { PdfDocumentProxy, PdfPageProxy } from "@/lib/pdf/pdfjs";
 import { pdfjsLib } from "@/lib/pdf/pdfjs";
@@ -547,16 +548,14 @@ export function PageView({ doc, pageId }: Props) {
         } as Partial<Annotation>);
         void loadWebFont(info.family);
         setDefaultFontFamily(info.family);
-        import("sonner").then((m) =>
-          m.toast.success(
-            `${info.family}${info.isBold ? " Bold" : ""}${info.isItalic ? " Italic" : ""} (${info.source})`,
-          ),
+        toast.success(
+          `${info.family}${info.isBold ? " Bold" : ""}${info.isItalic ? " Italic" : ""} (${info.source})`,
         );
       }).catch(() => {
         /* introspection failed – keep heuristic values */
       });
     } else if (cachedInfo) {
-      import("sonner").then((m) => m.toast.success(`Erkannt: ${family}`));
+      toast.success(`Erkannt: ${family}`);
     }
   };
 
@@ -865,8 +864,7 @@ export function PageView({ doc, pageId }: Props) {
 }
 
 function toastCopied() {
-  // lightweight, avoid extra imports at top
-  import("sonner").then((m) => m.toast.success("✓")).catch(() => {});
+  toast.success("✓");
 }
 
 let canvasContext: CanvasRenderingContext2D | null = null;
