@@ -133,6 +133,38 @@ async function getNodeDb() {
 let workerInstance: Worker | null = null;
 const pendingRequests: Record<string, { resolve: (val: any) => void; reject: (err: any) => void }> = {};
 let requestIdCounter = 0;
+let isWorkerReady = false;
+const readyListeners = new Set<() => void>();
+
+export function isFontWorkerReady(): boolean {
+  if (typeof window === 'undefined' || typeof Worker === 'undefined') return true;
+  getWorker(); // ensure instantiated
+  return isWorkerReady;
+}
+
+export function subscribeToWorkerReady(callback: () => void): () => void {
+  readyListeners.add(callback);
+  return () => {
+    readyListeners.delete(callback);
+  };
+}
+
+function waitForWorkerReady(timeoutMs = 20_000): Promise<void> {
+  if (isWorkerReady) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (isWorkerReady) {
+        readyListeners.delete(check);
+        resolve();
+      }
+    };
+    readyListeners.add(check);
+    setTimeout(() => {
+      readyListeners.delete(check);
+      resolve(); // resolve anyway to fallback gracefully
+    }, timeoutMs);
+  });
+}
 
 function getWorker(): Worker | null {
   if (typeof window === 'undefined' || typeof Worker === 'undefined') return null;
@@ -144,7 +176,16 @@ function getWorker(): Worker | null {
     
     workerInstance.onmessage = (e: MessageEvent) => {
       const { type, result, error, requestId } = e.data;
-      const pending = pendingRequests[requestId];
+      if (type === 'READY') {
+        console.log("[fontVectorMatch] Worker reported READY.");
+        isWorkerReady = true;
+        for (const cb of readyListeners) {
+          try { cb(); } catch (err) {}
+        }
+        return;
+      }
+
+      const pending = requestId ? pendingRequests[requestId] : null;
       if (!pending) return;
 
       delete pendingRequests[requestId];
@@ -174,18 +215,20 @@ function getWorker(): Worker | null {
   return workerInstance;
 }
 
-function matchFontViaWorker(
+async function matchFontViaWorker(
   fontBytes: Uint8Array, 
   pdfWidths: Record<string, number>, 
   fontName: string
 ): Promise<MatchResult | null> {
   const worker = getWorker();
-  if (!worker) return Promise.resolve(null);
+  if (!worker) return null;
+
+  // Wait until the database is fully loaded and initialized
+  await waitForWorkerReady();
 
   return new Promise((resolve, reject) => {
     const requestId = `req_${++requestIdCounter}`;
-    pendingRequests[requestId] = { resolve, reject };
-
+    
     // Timeout: if worker doesn't respond within 15 seconds, fallback gracefully
     const timeout = setTimeout(() => {
       if (pendingRequests[requestId]) {
@@ -196,16 +239,14 @@ function matchFontViaWorker(
     }, 15_000);
 
     // Wrap resolve/reject to clear the timeout
-    const origResolve = resolve;
-    const origReject = reject;
     pendingRequests[requestId] = {
       resolve: (val) => {
         clearTimeout(timeout);
-        origResolve(val);
+        resolve(val);
       },
       reject: (err) => {
         clearTimeout(timeout);
-        origReject(err);
+        reject(err);
       }
     };
 

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
-import { extractSubsetFontsPaths } from "@/lib/pdf/fontVectorMatch";
+import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady } from "@/lib/pdf/fontVectorMatch";
 import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 
 interface TextItem {
@@ -52,6 +52,17 @@ function rgbToHex(color: Uint8ClampedArray | number[] | undefined): string {
   };
   
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function isGarbageFontName(name: string | undefined | null): boolean {
+  if (!name) return true;
+  const cleanName = name.replace(/^[A-Z]{6}\+/, "").replace(/,.*$/, "").replace(/-\d+$/g, "").trim();
+  return (
+    !cleanName ||
+    /^\d+$/.test(cleanName) ||
+    /^[A-Za-z]{1,3}\d+[A-Za-z0-9]*$/.test(cleanName) ||
+    /^[a-z]_[a-z]\d+_[a-z]\d+$/.test(cleanName)
+  );
 }
 
 interface Props {
@@ -194,6 +205,9 @@ export function PageView({ doc, pageId }: Props) {
   const fontInfoRef = useRef<Record<string, FontInfo>>({});
   const replaceRectRef = useRef<Rect | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string | null>(null);
+  const [workerLoading, setWorkerLoading] = useState(false);
+  const [showProgressBar, setShowProgressBar] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const zoom = useEditor((s) => s.zoom);
   const tool = useEditor((s) => s.tool);
@@ -213,6 +227,48 @@ export function PageView({ doc, pageId }: Props) {
   const { t } = useI18n();
 
   const pageAnnos = annotations.filter((a) => a.page === pageId);
+
+  // --- Subscribe to SQLite Worker initialization progress/ready status ---
+  useEffect(() => {
+    if (isFontWorkerReady()) {
+      setWorkerLoading(false);
+      setShowProgressBar(false);
+      return;
+    }
+
+    if (tool === "edit-text") {
+      setWorkerLoading(true);
+      
+      // If loading takes longer than 1 second, show progress bar
+      const pBarTimeout = setTimeout(() => {
+        setShowProgressBar(true);
+      }, 1000);
+
+      // Simulate loading progress
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const estimatedProgress = Math.min(Math.round((elapsed / 3000) * 100), 95);
+        setProgress(estimatedProgress);
+      }, 100);
+
+      const unsubscribe = subscribeToWorkerReady(() => {
+        clearTimeout(pBarTimeout);
+        clearInterval(interval);
+        setProgress(100);
+        setTimeout(() => {
+          setWorkerLoading(false);
+          setShowProgressBar(false);
+        }, 300);
+      });
+
+      return () => {
+        clearTimeout(pBarTimeout);
+        clearInterval(interval);
+        unsubscribe();
+      };
+    }
+  }, [tool]);
 
   // --- load page data ---
   useEffect(() => {
@@ -240,6 +296,7 @@ export function PageView({ doc, pageId }: Props) {
             width: it.width as number,
             height: it.height as number,
             fontName: (it as any).fontName,
+            color: (it as any).color ?? new Uint8ClampedArray([0, 0, 0]),
           });
       }
       setItems(its);
@@ -276,6 +333,7 @@ export function PageView({ doc, pageId }: Props) {
         // Run KNN matching and resolve PostScript font names once after the first render
         if (Object.keys(fontMappingRef.current).length === 0) {
           try {
+            setWorkerLoading(true);
             const mapping = await extractSubsetFontsPaths(pdfPage);
             fontMappingRef.current = mapping;
             setFingerprints(Object.values(mapping));
@@ -290,8 +348,30 @@ export function PageView({ doc, pageId }: Props) {
               }
             }
             fontRealNames.current = names;
+
+            // Update any existing annotations on this page that are currently set to Helvetica or fallback fonts
+            const currentAnnos = useEditor.getState().annotations;
+            const updateAnnotationFn = useEditor.getState().updateAnnotation;
+            for (const anno of currentAnnos) {
+              if (anno.page === pageId && anno.kind === "textReplace") {
+                const item = items.find((x) => x.fontName === anno.fontName || (anno as any).fontName === x.fontName);
+                if (item?.fontName) {
+                  const knnMatch = mapping[item.fontName];
+                  if (knnMatch && knnMatch.family !== "Unknown" && (anno.fontFamily === "Helvetica" || anno.fontFamily === "Unknown" || !anno.fontFamily)) {
+                    updateAnnotationFn(anno.id, {
+                      fontFamily: knnMatch.family,
+                      bold: knnMatch.isBold,
+                      italic: knnMatch.isItalic,
+                    });
+                    void loadWebFont(knnMatch.family);
+                  }
+                }
+              }
+            }
           } catch (err) {
             console.warn("Failed to extract subset fonts after render:", err);
+          } finally {
+            setWorkerLoading(false);
           }
         }
       }).catch((err: any) => {
@@ -537,12 +617,18 @@ export function PageView({ doc, pageId }: Props) {
       isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
     }
 
+    if (isGarbageFontName(family)) {
+      const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
+      const resolved = resolvePDFCoreFontName(realName);
+      family = resolved.family;
+    }
+
     if (family) {
       void loadWebFont(family);
       setDefaultFontFamily(family);
     }
 
-    const textColor = rgbToHex((item as any).color);
+    const textColor = rgbToHex(item.color);
 
     const annoId = uid();
     addAnnotation({
@@ -570,9 +656,15 @@ export function PageView({ doc, pageId }: Props) {
         
         // Prioritize the KNN matched properties so they are not overridden by subset names!
         const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
-        const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
+        let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
         const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
         const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
+
+        if (isGarbageFontName(matchedFamily)) {
+          const realName = (item.fontName && fontRealNames.current[item.fontName]) || item.fontName || "";
+          const resolved = resolvePDFCoreFontName(realName);
+          matchedFamily = resolved.family;
+        }
 
         updateAnnotation(annoId, {
           fontFamily: matchedFamily,
@@ -733,6 +825,31 @@ export function PageView({ doc, pageId }: Props) {
           onContextMenu={onContextMenu}
         >
           <canvas ref={canvasRef} className="block" />
+          {workerLoading && (
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center pointer-events-auto">
+              <div className="flex flex-col items-center gap-4 max-w-xs px-4">
+                {showProgressBar ? (
+                  <>
+                    <div className="text-sm font-semibold text-gray-700 animate-pulse text-center">
+                      Schrifterkennungs-Datenbank wird geladen...
+                    </div>
+                    <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300 ease-out" 
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium">{progress}%</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <div className="text-sm font-medium text-gray-600 animate-pulse">Lade Schriftanalyse...</div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <input
             ref={replaceInputRef}
             type="file"

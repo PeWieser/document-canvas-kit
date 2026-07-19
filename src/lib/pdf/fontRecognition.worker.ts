@@ -33,6 +33,7 @@ async function initDb(): Promise<void> {
       SQL = sqlJsModule;
       db = new SQL.Database(dbBuffer);
       console.log("[Worker] SQLite database loaded and indexed successfully.");
+      self.postMessage({ type: 'READY' });
     } catch (err: any) {
       console.error("[Worker] Failed to initialize SQLite database:", err.message);
       initPromise = null; // Reset for retry
