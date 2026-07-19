@@ -56,6 +56,7 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
   - **Worker-Readiness & Synchronisation**: Der WebWorker signalisiert seine Einsatzbereitschaft proaktiv mit einem `READY`-Event nach dem Entpacken der DB im RAM. Der Matching-Prozess wartet auf dieses Signal, um Race Conditions und fehlerhafte Rückgabetypen (`Unknown`) zu verhindern.
   - **Filter für Subset-Namen (`isGarbageFontName`)**: Asynchrone Metadaten (z. B. aus `getFontInfo`) werden auf ungültige Subset-Schriftnamen (z. B. `TTF4t00` oder `g_d0_f1`) geprüft. Solche Werte werden verworfen, um ein Zurücksetzen bereits erkannter Fonts auf Helvetica zu unterbinden.
   - **Nachträgliches Font-Update**: Nach erfolgreicher Ermittlung des KNN-Mappings werden bereits erstellte Annotationen auf der Seite, die noch mit dem Standard-Fallback (Helvetica) initialisiert wurden, im Hintergrund automatisch auf die korrekte Schriftart aktualisiert.
+  - **Helvetica-Klick-Fallback behoben**: Beim erstmaligen Erkennen einer Schriftart durch den KNN-Matcher wird der korrigierte Font-Name direkt in `fontInfoRef.current` gecached. Dies verhindert, dass darauffolgende Klicks auf denselben Textabschnitt die Metadaten mit dem Subset-Namen überschreiben und Helvetica erzwingen.
 - **Farben- und Style-Erhalt**: In `PageView.tsx` wird die originale Textfarbe aus den PDF-Bytes ausgelesen (`item.color`) und als Hexcode dem Eingabefeld zugewiesen. Die Formatierungen Fett (`bold`) und Kursiv (`italic`) sowie der erkannte Schriftname werden vom KNN-Matcher übernommen, anstatt von leeren Subset-Metadaten (z. B. `TTF4t00`) überschrieben zu werden.
 - **Manuelle Font-Auswahl**: Alle 1.950+ Bunny-Schriftarten stehen dem Anwender in `FontPicker.tsx` (geladen aus `src/lib/pdf/font-families.json`) zur manuellen Auswahl zur Verfügung und werden bei Aktivierung on-the-fly geladen.
 - Fällt die Erkennung oder das Laden fehl, wird ein sicherer Fallback auf **Helvetica** angewendet.
@@ -68,6 +69,7 @@ Der Zustand der Anwendung wird in `src/store/editorStore.ts` gehalten.
 
 - **Annotationen**: Alle Änderungen (Highlights, Schwärzungen, Textboxen, Freihandzeichnungen, Kommentare) liegen im Array `annotations`.
 - **Undo/Redo**: Bei jeder zustandsverändernden Operation wird ein Snapshot des aktuellen Stands (`annotations`, `pageOrder`) in das `past`-Array geschoben. Ein Aufruf von `undo()` schiebt den aktuellen Zustand in `future` und stellt den letzten Snapshot aus `past` wieder her.
+- **Optimierte Historie bei Drag & Resize**: Um zu verhindern, dass kontinuierliche Mausbewegungen beim Ziehen oder Skalieren hunderte Zwischenzustände in der Historie ablegen, wird beim Klick-Start (`onPointerDown`) über `pushHistorySnapshot` genau ein einzelner Snapshot erzeugt. Während der Bewegung werden die Koordinaten geräuschlos (`commitToHistory = false`) aktualisiert.
 
 ---
 

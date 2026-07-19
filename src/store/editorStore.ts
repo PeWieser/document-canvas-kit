@@ -74,8 +74,9 @@ interface EditorState {
   toggleSelectedPage: (i: number, mode?: "single" | "toggle" | "range") => void;
 
   addAnnotation: (a: Annotation) => void;
-  updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
+  updateAnnotation: (id: string, patch: Partial<Annotation>, commitToHistory?: boolean) => void;
   removeAnnotation: (id: string) => void;
+  pushHistorySnapshot: () => void;
 
   reorderPages: (from: number, to: number) => void;
   deletePage: (displayIndex: number) => void;
@@ -210,13 +211,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  updateAnnotation: (id, patch) => {
+  updateAnnotation: (id, patch, commitToHistory = true) => {
+    const s = get();
+    set({
+      past: commitToHistory ? [...s.past, snap(s)] : s.past,
+      future: commitToHistory ? [] : s.future,
+      dirty: true,
+      annotations: s.annotations.map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a)),
+    });
+  },
+
+  pushHistorySnapshot: () => {
     const s = get();
     set({
       past: [...s.past, snap(s)],
       future: [],
-      dirty: true,
-      annotations: s.annotations.map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a)),
     });
   },
 

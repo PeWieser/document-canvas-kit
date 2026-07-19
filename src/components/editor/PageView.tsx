@@ -191,6 +191,58 @@ async function detectImages(page: any): Promise<Rect[]> {
   }
 }
 
+async function extractTextColors(page: any): Promise<number[][]> {
+  try {
+    const ops = await page.getOperatorList();
+    const OPS = pdfjsLib.OPS;
+    
+    let currentRGB = [0, 0, 0];
+    const textColors: number[][] = [];
+    
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i];
+      const args = ops.argsArray[i];
+      
+      if (fn === OPS.setFillRGBColor) {
+        currentRGB = [args[0], args[1], args[2]];
+      } else if (fn === OPS.setFillGray) {
+        const g = Math.round(args[0] * 255);
+        currentRGB = [g, g, g];
+      } else if (fn === OPS.setFillColor || fn === OPS.setFillColorN) {
+        if (args.length === 4) {
+          const c = args[0];
+          const m = args[1];
+          const y = args[2];
+          const k = args[3];
+          const r = Math.round(255 * (1 - c) * (1 - k));
+          const g = Math.round(255 * (1 - m) * (1 - k));
+          const b = Math.round(255 * (1 - y) * (1 - k));
+          currentRGB = [r, g, b];
+        } else if (args.length === 3) {
+          currentRGB = [
+            Math.round(args[0] * 255),
+            Math.round(args[1] * 255),
+            Math.round(args[2] * 255),
+          ];
+        } else if (args.length === 1) {
+          const g = Math.round(args[0] * 255);
+          currentRGB = [g, g, g];
+        }
+      } else if (
+        fn === OPS.showText ||
+        fn === OPS.showSpans ||
+        fn === OPS.showTextGL
+      ) {
+        textColors.push(currentRGB);
+      }
+    }
+    return textColors;
+  } catch (err) {
+    console.warn("Failed to extract text colors from operators:", err);
+    return [];
+  }
+}
+
 export function PageView({ doc, pageId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -222,6 +274,7 @@ export function PageView({ doc, pageId }: Props) {
   const addAnnotation = useEditor((s) => s.addAnnotation);
   const updateAnnotation = useEditor((s) => s.updateAnnotation);
   const removeAnnotation = useEditor((s) => s.removeAnnotation);
+  const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
   const select = useEditor((s) => s.select);
   const setFingerprints = useEditor((s) => s.setFingerprints);
   const { t } = useI18n();
@@ -285,19 +338,33 @@ export function PageView({ doc, pageId }: Props) {
       if (cancelled) return;
       setPdfPage(page);
 
-      const content = await page.getTextContent();
+      // Extract colors and text content in parallel
+      const [content, colors] = await Promise.all([
+        page.getTextContent(),
+        extractTextColors(page),
+      ]);
+      
       if (cancelled) return;
       const its: TextItem[] = [];
-      for (const it of content.items) {
-        if ("str" in it && it.str)
+      for (let i = 0; i < content.items.length; i++) {
+        const it = content.items[i];
+        if ("str" in it && it.str) {
+          let col = [0, 0, 0];
+          if (colors.length > 0) {
+            const colorIdx = colors.length === content.items.length
+              ? i
+              : Math.min(colors.length - 1, Math.floor((i / content.items.length) * colors.length));
+            col = colors[colorIdx];
+          }
           its.push({
             str: it.str,
             transform: it.transform as number[],
             width: it.width as number,
             height: it.height as number,
             fontName: (it as any).fontName,
-            color: (it as any).color ?? new Uint8ClampedArray([0, 0, 0]),
+            color: col,
           });
+        }
       }
       setItems(its);
 
@@ -664,8 +731,6 @@ export function PageView({ doc, pageId }: Props) {
     // Fire-and-forget: introspect the embedded font and upgrade the annotation.
     if (item.fontName && !cachedInfo) {
       void getFontInfo(pdfPage, item.fontName).then((info) => {
-        fontInfoRef.current[item.fontName!] = info;
-        
         // Prioritize the KNN matched properties so they are not overridden by subset names!
         const knnMatch = item.fontName ? fontMappingRef.current[item.fontName] : null;
         let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
@@ -677,6 +742,14 @@ export function PageView({ doc, pageId }: Props) {
           const resolved = resolvePDFCoreFontName(realName);
           matchedFamily = resolved.family;
         }
+
+        // Cache the corrected FontInfo so subsequent clicks reuse the corrected KNN/Heuristic font name!
+        fontInfoRef.current[item.fontName!] = {
+          ...info,
+          family: matchedFamily,
+          isBold: matchedBold,
+          isItalic: matchedItalic,
+        };
 
         updateAnnotation(annoId, {
           fontFamily: matchedFamily,
@@ -966,7 +1039,7 @@ export function PageView({ doc, pageId }: Props) {
                   selected={selectedId === a.id}
                   tool={tool}
                   onSelect={() => select(a.id)}
-                  onUpdate={(patch) => updateAnnotation(a.id, patch)}
+                  onUpdate={(patch, commitToHistory) => updateAnnotation(a.id, patch, commitToHistory)}
                   onRemove={() => removeAnnotation(a.id)}
                   t={t}
                 />
@@ -1071,11 +1144,12 @@ function AnnoView({
   selected: boolean;
   tool: string;
   onSelect: () => void;
-  onUpdate: (patch: Partial<Annotation>) => void;
+  onUpdate: (patch: Partial<Annotation>, commitToHistory?: boolean) => void;
   onRemove: () => void;
   t: (k: any) => string;
 }) {
   const selectable = tool === "select";
+  const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
 
   if (anno.kind === "highlight") {
     return (
@@ -1129,9 +1203,10 @@ function AnnoView({
         style={{ ...s, pointerEvents: selectable || selected ? "auto" : "none" }}
       >
         <img src={anno.dataUrl} alt="" className="h-full w-full object-fill" draggable={false} />
-        {selected && (
+         {selected && (
           <>
             <MoveHandle
+              onDragStart={pushHistorySnapshot}
               onMove={(dxS, dyS) => {
                 const p0 = vp.convertToPdfPoint(0, 0);
                 const p1 = vp.convertToPdfPoint(dxS, dyS);
@@ -1141,10 +1216,11 @@ function AnnoView({
                     x: anno.rect.x + (p1[0] - p0[0]),
                     y: anno.rect.y + (p1[1] - p0[1]),
                   },
-                } as any);
+                } as any, false);
               }}
             />
             <ResizeHandle
+              onDragStart={pushHistorySnapshot}
               onResize={(dxS, dyS) => {
                 const p0 = vp.convertToPdfPoint(0, 0);
                 const p1 = vp.convertToPdfPoint(dxS, dyS);
@@ -1157,7 +1233,7 @@ function AnnoView({
                     w: Math.max(10, anno.rect.w + dw),
                     h: Math.max(10, anno.rect.h - dh),
                   },
-                } as any);
+                } as any, false);
               }}
             />
             <DeleteBtn
@@ -1327,13 +1403,14 @@ function AnnoView({
         {selected && (
           <>
             <MoveHandle
+              onDragStart={pushHistorySnapshot}
               onMove={(dxScreen, dyScreen) => {
                 const p0 = vp.convertToPdfPoint(0, 0);
                 const p1 = vp.convertToPdfPoint(dxScreen, dyScreen);
                 const dx = p1[0] - p0[0];
                 const dy = p1[1] - p0[1];
                 if (anno.kind === "textbox") {
-                  onUpdate({ x: anno.x + dx, y: anno.y + dy } as any);
+                  onUpdate({ x: anno.x + dx, y: anno.y + dy } as any, false);
                 } else {
                   const nextRect = { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy };
                   const nextTransform = anno.transform
@@ -1346,12 +1423,13 @@ function AnnoView({
                         anno.transform[5] + dy,
                       ]
                     : undefined;
-                  onUpdate({ rect: nextRect, transform: nextTransform } as any);
+                  onUpdate({ rect: nextRect, transform: nextTransform } as any, false);
                 }
               }}
             />
             {anno.kind === "textbox" && (
               <ResizeHandle
+                onDragStart={pushHistorySnapshot}
                 onResize={(dxS, dyS) => {
                   const p0 = vp.convertToPdfPoint(0, 0);
                   const p1 = vp.convertToPdfPoint(dxS, dyS);
@@ -1360,7 +1438,7 @@ function AnnoView({
                   onUpdate({
                     w: Math.max(20, anno.w + dw),
                     h: Math.max(20, anno.h - dh),
-                  } as any);
+                  } as any, false);
                 }}
               />
             )}
@@ -1424,7 +1502,15 @@ function DeleteBtn({
   );
 }
 
-function MoveHandle({ onMove }: { onMove: (dx: number, dy: number) => void }) {
+function MoveHandle({
+  onMove,
+  onDragStart,
+  onDragEnd,
+}: {
+  onMove: (dx: number, dy: number) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+}) {
   const last = useRef<[number, number] | null>(null);
   return (
     <div
@@ -1432,6 +1518,7 @@ function MoveHandle({ onMove }: { onMove: (dx: number, dy: number) => void }) {
         e.stopPropagation();
         (e.target as Element).setPointerCapture(e.pointerId);
         last.current = [e.clientX, e.clientY];
+        onDragStart?.();
       }}
       onPointerMove={(e) => {
         if (!last.current) return;
@@ -1440,7 +1527,10 @@ function MoveHandle({ onMove }: { onMove: (dx: number, dy: number) => void }) {
         last.current = [e.clientX, e.clientY];
         onMove(dx, dy);
       }}
-      onPointerUp={() => (last.current = null)}
+      onPointerUp={() => {
+        last.current = null;
+        onDragEnd?.();
+      }}
       className="absolute -left-2 -top-2 cursor-move rounded bg-primary p-0.5 text-primary-foreground"
     >
       <GripVertical className="h-3 w-3" />
@@ -1448,7 +1538,15 @@ function MoveHandle({ onMove }: { onMove: (dx: number, dy: number) => void }) {
   );
 }
 
-function ResizeHandle({ onResize }: { onResize: (dx: number, dy: number) => void }) {
+function ResizeHandle({
+  onResize,
+  onDragStart,
+  onDragEnd,
+}: {
+  onResize: (dx: number, dy: number) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+}) {
   const last = useRef<[number, number] | null>(null);
   return (
     <div
@@ -1456,6 +1554,7 @@ function ResizeHandle({ onResize }: { onResize: (dx: number, dy: number) => void
         e.stopPropagation();
         (e.target as Element).setPointerCapture(e.pointerId);
         last.current = [e.clientX, e.clientY];
+        onDragStart?.();
       }}
       onPointerMove={(e) => {
         if (!last.current) return;
@@ -1464,7 +1563,10 @@ function ResizeHandle({ onResize }: { onResize: (dx: number, dy: number) => void
         last.current = [e.clientX, e.clientY];
         onResize(dx, dy);
       }}
-      onPointerUp={() => (last.current = null)}
+      onPointerUp={() => {
+        last.current = null;
+        onDragEnd?.();
+      }}
       className="absolute -bottom-2 -right-2 cursor-nwse-resize rounded bg-primary p-0.5 text-primary-foreground"
     >
       <Move className="h-3 w-3" />

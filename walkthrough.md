@@ -285,3 +285,24 @@ Wir haben alle gemeldeten Probleme bezüglich der Schrifsauswahl im Dropdown, de
 
 - Alle **69 Unit- und Integrationstests** (inklusive des KNN-Font-Matching-Tests) laufen mit **100.00% Genauigkeit** erfolgreich durch.
 
+---
+
+## 11. Phase 14: Helvetica Caching-Fix & Undo/Redo Drag-Optimierung
+
+Wir haben die gemeldeten Probleme bezüglich des wiederholten Helvetica-Fallbacks bei aufeinanderfolgenden Text-Erkennungen sowie die Flutung der Undo/Redo-Historie beim Verschieben/Skalieren gelöst:
+
+### 🔤 Korrigiertes Font-Caching (Helvetica Fallback Fix)
+- **Problem**: Nach einer erfolgreichen Erst-Erkennung einer Schriftart (z. B. "Times New Roman" oder "Arial") fiel die Schriftart bei darauffolgenden Klicks auf denselben Schrift-Typ wieder auf den Helvetica-Fallback zurück.
+- **Ursache**: Der Lade-Callback in `PageView.tsx` hatte das unverarbeitete/rohe `info`-Objekt aus der asynchronen `getFontInfo`-Funktion direkt in `fontInfoRef.current` gecached, wodurch nachfolgende Klicks die korrigierte KNN-Schriftart mit den rohen Subset-Namen überschrieben.
+- **Behebung**: Wir cachen nun das um die KNN-Vektordaten korrigierte `info`-Objekt (`matchedFamily`, `matchedBold`, `matchedItalic`) direkt im Cache-Ref. Spätere Klicks greifen somit sofort auf die korrekt ermittelte Schriftart zu.
+
+### 🖱️ Drag-and-Drop History Optimierung
+- **Problem**: Beim Ziehen oder Skalieren von Elementen (z. B. Bildern oder Textboxen) wurde für jeden Pixel der Bewegung ein separater Historienzustand erzeugt, wodurch unzählige Undo-Schritte nötig waren, um ein Objekt zurückzubewegen.
+- **Behebung**:
+  - Wir haben `MoveHandle` und `ResizeHandle` um die Events `onDragStart` und `onDragEnd` erweitert.
+  - Beim Starten des Drag-Gests (`onPointerDown`) wird nun genau **ein einziger Snapshot** über `pushHistorySnapshot()` erzeugt.
+  - Die stetig eintreffenden Move/Resize-Koordinatenupdates werden über `onUpdate(patch, false)` stumm committed, ohne neue Historien-Einträge zu erzeugen.
+  - Dadurch reicht nun ein einziger Undo/Redo-Klick aus, um das Objekt an seine ursprüngliche Position zurückzusetzen.
+
+- Alle **69 Unit- und Integrationstests** laufen erfolgreich durch und das Projekt baut fehlerfrei.
+

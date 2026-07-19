@@ -38,6 +38,7 @@ The application state is entirely managed by a single Zustand store: `useEditor`
 - **Tools & UI Modes**: Tracks the active `tool` (`select`, `highlight`, `redact`, `edit-text`, `textbox`, `pen`, `comment`), `zoom` level, and `viewMode` (`fit-width`, `two-page`, etc.).
 - **Annotation Data**: All user overlays (highlights, redactions, drawn paths, textboxes, and comments) are stored in the `annotations` array. Each annotation strictly uses **PDF coordinate space** (points, bottom-left origin).
 - **Undo/Redo System**: Whenever a state-mutating action occurs (e.g., `addAnnotation`, `updateAnnotation`, `deletePage`), a snapshot of `annotations` and `pageOrder` is pushed into the `past` array. Calling `undo()` moves the current state into `future` and restores the latest snapshot from `past`.
+- **Drag & Resize History Optimization**: During dragging or resizing operations, history snapshot flooding is prevented by taking a single undo snapshot at pointer down (`onDragStart`), and then running subsequent coordinates updates silently with `commitToHistory = false`.
 
 ---
 
@@ -149,6 +150,7 @@ Users can select existing PDF text and replace it.
    - **Loading UI Overlay**: Switching to the Text Edit tool with an uninitialized SQLite worker shows a full-screen overlay blocking interactions. It renders a spinner under 1 second of load time, and automatically switches to an animated progress bar beyond 1 second.
    - **Readiness Sync**: The WebWorker dispatches a `READY` message once database loading and `pako` extraction is complete. Matching requests wait on this event to avoid race conditions or premature fallback failures.
    - **Retroactive Font Updates**: When matching finishes, annotations on the page configured with fallback font families (like Helvetica) are automatically updated with the newly resolved font properties.
+   - **Corrected Font Caching**: Once a font name is resolved via the KNN matcher, it is cached directly in `fontInfoRef.current` with its corrected family name. This prevents subsequent clicks on text segments sharing that font from losing the recognized font name and falling back to Helvetica.
 4. **Style and Color Preservation**: In `PageView.tsx`, the original text color is extracted from the PDF (`item.color`) and parsed into hex format (defaulting to black RGB `[0, 0, 0]` if missing). Key formatting metrics (`bold`, `italic`, and `family`) are preserved from the KNN matcher, and raw subset names (like `TTF4t00` or `g_d0_f1`) are detected and filtered out via `isGarbageFontName` validation to prevent font overrides.
 5. **Manual Font Selection**: The font selection dropdown (`FontPicker.tsx`) is statically populated with all 1,950+ Bunny Fonts (`src/lib/pdf/font-families.json`), which are downloaded and rendered on-the-fly when selected.
 6. **Embedding**: `@pdf-lib/fontkit` embeds the TrueType (`.ttf`) font bytes (downloaded from Bunny Fonts proxy) during export, ensuring identical appearance on any device.
