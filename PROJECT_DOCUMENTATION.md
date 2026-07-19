@@ -142,11 +142,14 @@ Users can select existing PDF text and replace it.
 
 1. The underlying original text is physically deleted using the exact same algorithm as Redaction (see above).
 2. The new text must be drawn over the blanked region using a font that matches the original.
-3. **Deterministic Offline KNN Font Recognition**: To accurately identify unknown or subset-prefixed fonts (e.g., `ABCDEF+TimesNewRoman`), the engine extracts character glyph vectors (width and outline geometries) from the PDF. These features are matched in a client-side WebWorker against a local SQLite database (`public/font-fingerprints.db`) containing fingerprints for all 1,950+ Google/Bunny Fonts:
+3. **Deterministic Offline KNN Font Recognition**: To accurately identify unknown or subset-prefixed fonts (e.g., `ABCDEF+TimesNewRoman`), the engine extracts character glyph vectors (width and outline geometries) from the PDF. These features are matched in a client-side WebWorker against a local SQLite database (`public/font-fingerprints.db.gz`) containing gzipped fingerprints for all 1,950+ Google/Bunny Fonts:
    - **Pruning**: Candidate selection by character-level topology (count of closed holes) and Hu-moments (L2 distance).
    - **Tie-breaker**: Mean Absolute Error (MAE) comparison of character advance widths scaled to 1000 UPEM.
    - **Validation**: Strict IoU validation of raster masks on key discriminator characters.
-4. **Style and Color Preservation**: In `PageView.tsx`, the original text color is extracted from the PDF (`item.color`) and parsed into hex format. Key formatting metrics (`bold`, `italic`, and `family`) are preserved from the KNN matcher to prevent metadata overrides from subset names (like `TTF4t00`).
+   - **Loading UI Overlay**: Switching to the Text Edit tool with an uninitialized SQLite worker shows a full-screen overlay blocking interactions. It renders a spinner under 1 second of load time, and automatically switches to an animated progress bar beyond 1 second.
+   - **Readiness Sync**: The WebWorker dispatches a `READY` message once database loading and `pako` extraction is complete. Matching requests wait on this event to avoid race conditions or premature fallback failures.
+   - **Retroactive Font Updates**: When matching finishes, annotations on the page configured with fallback font families (like Helvetica) are automatically updated with the newly resolved font properties.
+4. **Style and Color Preservation**: In `PageView.tsx`, the original text color is extracted from the PDF (`item.color`) and parsed into hex format (defaulting to black RGB `[0, 0, 0]` if missing). Key formatting metrics (`bold`, `italic`, and `family`) are preserved from the KNN matcher, and raw subset names (like `TTF4t00` or `g_d0_f1`) are detected and filtered out via `isGarbageFontName` validation to prevent font overrides.
 5. **Manual Font Selection**: The font selection dropdown (`FontPicker.tsx`) is statically populated with all 1,950+ Bunny Fonts (`src/lib/pdf/font-families.json`), which are downloaded and rendered on-the-fly when selected.
 6. **Embedding**: `@pdf-lib/fontkit` embeds the TrueType (`.ttf`) font bytes (downloaded from Bunny Fonts proxy) during export, ensuring identical appearance on any device.
 7. If a font cannot be resolved, it falls back to standard Helvetica (`StandardFonts.Helvetica`).
