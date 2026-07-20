@@ -8,7 +8,7 @@ export interface Rect {
   h: number;
 }
 
-export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment";
+export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment" | "crop";
 
 export type PenStyle = "solid" | "marker" | "pencil" | "dashed";
 
