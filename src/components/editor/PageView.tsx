@@ -1071,11 +1071,19 @@ export function PageView({ doc, pageId }: Props) {
               );
             })}
 
+          {/* CROP TOOL overlay: interactive frame, dim outside, 8 handles + move */}
+          {tool === "crop" && viewport && <CropOverlay pageId={pageId} vp={viewport} />}
+
           {/* overlay (annotations + creation) */}
           <div
             className="absolute inset-0"
             style={{
-              pointerEvents: tool === "select" ? "none" : overlayInteractive ? "auto" : "none",
+              pointerEvents:
+                tool === "select" || tool === "crop"
+                  ? "none"
+                  : overlayInteractive
+                    ? "auto"
+                    : "none",
               cursor,
             }}
             onPointerDown={onOverlayPointerDown}
@@ -1126,6 +1134,7 @@ export function PageView({ doc, pageId }: Props) {
               </svg>
             )}
           </div>
+
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
