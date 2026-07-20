@@ -542,6 +542,7 @@ export function PdfStudio() {
               setSelectedPages(pages);
               setTool("crop");
             }}
+          />
         )}
         <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
