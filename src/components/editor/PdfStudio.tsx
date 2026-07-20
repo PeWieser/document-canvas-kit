@@ -14,7 +14,7 @@ import { PageView } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
-import { CropDialog } from "./CropDialog";
+import { CropToolPanel } from "./CropToolPanel";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
