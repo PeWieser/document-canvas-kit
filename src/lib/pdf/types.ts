@@ -83,6 +83,7 @@ export interface CropAnno {
   kind: "crop";
   page: number;
   rect: Rect; // PDF-user-space crop window
+  rotation?: number; // degrees, -45..+45
 }
 
 export interface CommentReply {
