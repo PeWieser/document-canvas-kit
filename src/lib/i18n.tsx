@@ -127,6 +127,20 @@ const de: Dict = {
   cancel: "Abbrechen",
   apply: "Anwenden",
   removeCrop: "Zuschnitt entfernen",
+  cropTool: "Zuschneiden",
+  toolCropHint: "Rahmen ziehen, drehen, auf Seiten anwenden",
+  cropWidth: "Breite",
+  cropHeight: "Höhe",
+  cropX: "X",
+  cropY: "Y",
+  cropRotation: "Drehung",
+  cropReset: "Rahmen zurücksetzen",
+  cropApply: "Anwenden",
+  pageSelection: "Seiten",
+  pageSelCurrent: "Aktuelle",
+  pageSelAll: "Alle",
+  pageSelCustom: "Benutzerdefiniert",
+  pageRangeHint: "z.B. 1-3, 5, 7-9",
 };
 
 const en: Dict = {
