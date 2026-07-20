@@ -1,69 +1,90 @@
 ## Ziel
 
-Vier Verbesserungen an PDF Studio:
-1. Redact-Rechtecke im Export deckungsgleich zur Vorschau
-2. „Suchen & Schwärzen" Funktion
-3. Erweiterte Stift-Optionen (Stiftarten + Farbwähler)
-4. Kontextmenü auf Seiten-Thumbnails: einzelne Seiten exportieren + zuschneiden mit Vorschau
+Das aktuelle „Zuschneiden“ (modaler `CropDialog`, jeder Klick zeichnet einen neuen Rahmen) wird ersetzt durch ein vollwertiges Werkzeug im Werkzeuge-Menü mit inline Live-Preview auf der Seite, persistentem Rahmen (Anfasser + Drag), Maßeingabe, Seiten-Auswahl und Rotation.
 
----
+## 1. Neues Werkzeug im Tools-Menü
 
-### 1. Redact-Offset-Bug (Export ≠ Vorschau)
+- `Tool` in `src/lib/pdf/types.ts` um `"crop"` erweitern.
+- `Toolbar.tsx`: `crop` in `tools[]` (Icon `Crop`, Tooltip). Beim Aktivieren öffnet sich das schwebende Crop-Bedienfenster; der bisherige `CropDialog`-Aufruf aus dem Thumbnail-Kontextmenü entfällt (Menüpunkt „Zuschneiden“ setzt stattdessen `tool = "crop"` + `selectedPages`).
 
-**Diagnose:** In `src/lib/pdf/export.ts` werden Redact-Rechtecke direkt mit `page.drawRectangle({ x: a.rect.x, y: a.rect.y, ... })` in Roh-Koordinaten gezeichnet. Vorschau nutzt aber `pdfPoint()` von `pdf.js`, das CropBox-Offset und Seitenrotation berücksichtigt. Bei PDFs mit CropBox ≠ (0,0) oder Rotation ≠ 0 sitzt die Schwärzung im Export verschoben. Gleiches Problem gilt für die Redact-Rects, die an `filterRedactedText` gehen (Content-Stream ist in unrotierter Raum-Koordinate, CTM basiert auf MediaBox).
+## 2. Persistenter Crop-Rahmen auf der Seite (statt Modal)
 
-**Fix:**
-- Neue Helper `pdfSpaceToRaw(rect, page)` in `export.ts`: liest `MediaBox` und `CropBox` via pdf-lib, korrigiert `Rotate` (0/90/180/270), transformiert Rect zurück in Raw-Space vor `drawRectangle` und vor `filterRedactedText`.
-- Selbe Korrektur für `highlight`, `textReplace.rect`, `textbox`, `pen.points`, `image.rect` in einer einzigen Konversionsstelle beim Betreten der Page-Loop.
-- Test in `src/__tests__/pdf/export.test.ts`: rotiertes 90°-PDF + Redact → Rect landet im erwarteten Bereich; CropBox-Offset-PDF → Rect deckungsgleich.
+- `CropAnno` existiert bereits (`page`, `rect` in PDF-Space). Zusätzlich `rotation?: number` (Grad, −45…+45) ergänzen.
+- `PageView.tsx`:
+  - Wenn `tool === "crop"` und die Seite in `selectedPages` (bzw. „aktuelle Seite“/„alle“) enthalten ist, wird ein interaktiver Overlay-Layer gerendert:
+    - Rechteck aus vorhandener `CropAnno` oder Default = ganze Seite (leicht eingerückt).
+    - Bereich **außerhalb** des Rahmens wird mit `bg-black/50` abgedunkelt (via 4 Rechtecke oder `clip-path`).
+    - 8 Anfasser (Ecken + Kanten) zum Skalieren, Innerer Bereich = Drag-to-move (Cursor `move`).
+    - Klick **außerhalb** setzt den Rahmen nicht mehr zurück; Neuzeichnen nur über Button „Rahmen zurücksetzen“ im Bedienfenster.
+  - Änderungen schreiben live per `updateAnnotation(cropId, { rect }, false)` (kein History-Push je Mousemove; Commit `pushHistorySnapshot()` auf `mouseup`).
+  - Bei aktivierter `rotation` wird die Vorschau der Seite via CSS `transform: rotate(...)` innerhalb des Rahmens gedreht dargestellt (nur visuell während Bearbeitung).
 
-### 2. Suchen & Schwärzen
+## 3. Schwebendes Bedienfenster (Floating Panel)
 
-- Neue UI: `SearchRedactPanel` als Overlay (Cmd/Ctrl+F öffnet). Eingabefeld, Optionen „Groß-/Kleinschreibung", „Ganze Wörter", „Regex".
-- Suche über alle geladenen Seiten via bereits vorhandenem `getPageTextItems`: pro `TextItem` Substring-Match, aggregiere PDF-Space-Rects (aus `transform` + gemessener Glyph-Breite; für Teilstrings anteilig).
-- Ergebnisliste: Seite + Kontext-Snippet, Klick springt hin und markiert Treffer temporär.
-- Buttons „Aktuellen schwärzen", „Alle schwärzen": legt `RedactAnno` pro Treffer an (via `addAnnotation`).
-- Store-Erweiterung: `searchOpen`, `setSearchOpen`. Ausgelöst durch neuen Button in Toolbar (Lupe-Icon neben Kommentar-Panel) und Kürzel.
+Neue Komponente `CropToolPanel.tsx` (position: fixed, unten-mittig, klein, verschiebbar via Header-Drag). Bleibt beim scrollen über mehrere Seiten an seinem relativen Platz zur gesamten website. Enthält:
 
-### 3. Erweiterte Stift-Optionen
+- **Seitenauswahl** (Radio):
+  - Aktuelle Seite
+  - Alle Seiten
+  - Benutzerdefiniert → Text-Input im Stil „1-3, 5, 7-9“ (Parser liefert display indices)
+- **Maße** (Zahlfelder, Einheit pt, mit „mm“-Umschalter optional; Skalierung bleibt auf **Rahmen-Mitte** zentriert):
+  - Breite, Höhe
+  - Änderungen zentrieren den Rahmen auf seinem alten Mittelpunkt.
+- **Position** (X, Y) — read/write in PDF-Space.
+- **Rotation**:
+  - Feinrädchen-Slider (horizontaler „ticker“, ähnlich Apple Fotos): eigene Komponente `WheelSlider` (−45…+45°, 0.1° Steps, tick-Markierungen alle 1°/5°, Snap bei 0°).
+  - Numerisches Grad-Eingabefeld daneben.
+- **Buttons**: „Anwenden“ (schreibt Crop auf alle gewählten Seiten, jeweils gleiche relative Rect / Rotation), „Rahmen zurücksetzen“, „Crop entfernen“, „Schließen“ (setzt `tool = "select"`).
 
-- `PenAnno` bekommt `style: "solid" | "marker" | "pencil" | "dashed"` (Defaults abwärtskompatibel = "solid").
-- Rendering in `PageView` (SVG) und Export (`export.ts`) berücksichtigen Stilart:
-  - marker = höhere Deckkraft-Kurve mit größerer Breite
-  - pencil = viele kleine Segmente mit Jitter
-  - dashed = `dashArray`
-- Erweiterte Farbauswahl: `<input type="color">` neben Preset-Swatches im Sub-Toolbar (nur für `pen`); zusätzliches Style-Selector-Dropdown (Icons für Fineliner/Marker/Pencil/Dashed) mit Tooltips.
-- Store: `penStyle` + Setter.
+Panel-Layout kompakt (≈ 320×auto), Design gemäß Swiss/minimal (existierendes `bg-background border rounded-lg shadow-2xl`).
 
-### 4. Thumbnail-Kontextmenü: Einzel-Export + Zuschneiden
+## 4. Mehrseiten-Zuschnitt
 
-**Rechtsklick auf Thumbnail(s) in `ThumbnailRail` und `GridOverview`:**
-- Aktuelle Auswahl unterstützen (`selectedPages: number[]` im Store, Shift-Klick / Cmd-Klick).
-- Menüeinträge: „Diese Seite exportieren", „Ausgewählte Seiten exportieren", „Zuschneiden…".
-- Export nutzt bestehende `exportPdf(bytes, subsetOrder, annotations)` mit gefiltertem `pageOrder`.
+- „Anwenden“ iteriert über die aufgelösten Seiten (aktuell/alle/benutzerdefiniert) und legt/aktualisiert pro Seite eine `CropAnno` mit demselben `rect` und `rotation`. Bei bereits vorhandener Crop-Anno: `updateAnnotation`, sonst `addAnnotation`.
+- Wenn Seiten unterschiedliche Größen haben: `rect` wird proportional an die Seitengröße geclamped (Info-Hinweis im Panel bei Größenunterschied).
 
-**Crop-Dialog (`CropDialog.tsx`):**
-- Modal mit Live-Vorschau der ersten gewählten Seite (Canvas-Render der Seite in Skalierung, Overlay-Rechteck mit 8 Griffen).
-- Optionen: „Auf alle gewählten Seiten anwenden", „Nur diese Seite".
-- Bestätigen setzt eine neue Annotation `CropAnno { page, rect }` (kombinierbar; bei mehrfachem Crop pro Seite: letzter gewinnt).
-- Export in `export.ts`: pro Seite, falls `CropAnno` vorhanden → `page.setCropBox(x, y, w, h)` und `page.setMediaBox` optional; Redact- und Overlay-Koordinaten anschließend anwenden (nach der oben eingeführten Raw-Transform).
-- Vorschau im Editor: `PageView` liest CropAnno, setzt CSS-Clip auf die gerenderte Seite, damit man den Crop schon vor dem Export sieht.
+## 5. Export
 
-### Technische Details
+`src/lib/pdf/export.ts`:
 
-- Betroffene Files:
-  - `src/lib/pdf/export.ts` (Raw-Space-Transform, Crop, Pen-Styles)
-  - `src/lib/pdf/types.ts` (`PenAnno.style`, neue `CropAnno`)
-  - `src/store/editorStore.ts` (`penStyle`, `searchOpen`, `selectedPages`)
-  - `src/components/editor/PageView.tsx` (Pen-Style-Rendering, Crop-Clip, Suchtreffer-Overlay)
-  - `src/components/editor/Toolbar.tsx` (Suche-Button, Pen-Style-Picker, Color-Input)
-  - `src/components/editor/ThumbnailRail.tsx` + `GridOverview.tsx` (Rechtsklick, Auswahl)
-  - Neu: `src/components/editor/SearchRedactPanel.tsx`, `src/components/editor/CropDialog.tsx`, `src/components/editor/PageContextMenu.tsx`
-- Tests:
-  - `export.test.ts`: Redact bei rotierter/gecropter Seite, Crop-Export erzeugt kleinere Seite, Subset-Export enthält nur gewählte Seiten
-  - `searchRedact.test.ts` (neu): Textsuche liefert korrekte Rects auf Test-PDF, Aktion legt Redact-Annos an
+- Vorhandene CropBox-Logik bleibt.
+- Bei `rotation` ≠ 0: `page.setRotation(degrees(existingRotation + cropRotation))` — echte PDF-Rotation nur in 90°-Schritten möglich; feine Rotationen werden über Content-Stream-Wrap umgesetzt: neue Seite gleicher Cropgröße erzeugen, alte Seite via `embedPage` + `drawPage` mit `rotate: degrees(-r)` und passendem Translate zeichnen, dann Overlays.
+- Fallback (falls `embedPage`-Rotation nicht sauber klappt): Rotation ≠ 0 wird auf nächstes Vielfaches von 90° gerundet und der Rest verworfen; Warnung im Panel.
 
-### Aus dem Scope ausgeschlossen
+## 6. Aufräumen
 
-- Regex-Suche über Zeilenumbrüche hinweg (nur pro TextItem-Bereich)
-- Nachträgliches Editieren eines Crops nach Bestätigen — nur „neu setzen"
+- `CropDialog.tsx` entfernen (oder auf reinen Re-Export von `CropToolPanel` reduzieren, um bestehende Imports nicht zu brechen — vorzugsweise Imports in `ThumbnailRail.tsx` / `PdfStudio.tsx` umstellen und Datei löschen).
+- `ThumbnailRail` Kontextmenü-Eintrag „Zuschneiden…“ setzt: `setSelectedPages(pages)` → `setTool("crop")`.
+- i18n-Keys ergänzen: `cropTool`, `cropWidth`, `cropHeight`, `cropX`, `cropY`, `cropRotation`, `cropApply`, `cropReset`, `pageSelectionCurrent|All|Custom`, `pageRangeHint`.
+
+## Technische Details
+
+**Betroffene Dateien**
+
+- `src/lib/pdf/types.ts` — `Tool` + `CropAnno.rotation`.
+- `src/store/editorStore.ts` — nichts strukturell Neues (nutzt vorhandene `selectedPages`, `tool`).
+- `src/components/editor/PageView.tsx` — Overlay-Rendering + Interaktion (Anfasser, Drag, Dim-Layer, Rotationsvorschau).
+- `src/components/editor/Toolbar.tsx` — `crop` in `tools[]`.
+- `src/components/editor/ThumbnailRail.tsx` — Kontextmenü → Tool aktivieren.
+- `src/components/editor/PdfStudio.tsx` — mountet `CropToolPanel`, wenn `tool === "crop"`.
+- **Neu**: `src/components/editor/CropToolPanel.tsx`, `src/components/editor/WheelSlider.tsx`.
+- `src/lib/pdf/export.ts` — Rotationsanwendung via `embedPage`.
+- `src/lib/i18n.tsx` — neue Keys.
+- `CropDialog.tsx` — entfernen.
+
+**Interaktionsdetails**
+
+- Handles: 8 `div`s absolut positioniert; `pointerdown` merkt Start-Rect + Handle-Typ; `pointermove` (auf `window`) berechnet neues Rect in Screen-Space → via bestehender Viewport-Konversion in PDF-Space; `pointerup` committet History.
+- Skalierung „aus der Mitte“ nur für numerische Eingaben im Panel; Handle-Drag bleibt kantenorientiert (Standard-Erwartung).
+- Verschieben: `pointerdown` innerhalb Rahmen (nicht auf Handle) startet Move.
+
+**Tests**
+
+- `src/__tests__/pdf/export.test.ts` erweitern: Crop mit Rotation ≠ 0 → exportierte Seite hat erwartete Größe und `embedPage`-Content ist vorhanden.
+- Kleiner Unit-Test für Seitenbereich-Parser („1-3,5,7-9“).
+
+## Nicht im Scope
+
+- Nicht-rechteckige Crops (Ellipse/Freiform).
+- Rotation > 45° (dafür ist die Standard-Seitenrotation im Datei-Menü zuständig).
+- Persistieren des Floating-Panel-Positionsstands über Reloads.
