@@ -1071,11 +1071,19 @@ export function PageView({ doc, pageId }: Props) {
               );
             })}
 
+          {/* CROP TOOL overlay: interactive frame, dim outside, 8 handles + move */}
+          {tool === "crop" && viewport && <CropOverlay pageId={pageId} vp={viewport} />}
+
           {/* overlay (annotations + creation) */}
           <div
             className="absolute inset-0"
             style={{
-              pointerEvents: tool === "select" ? "none" : overlayInteractive ? "auto" : "none",
+              pointerEvents:
+                tool === "select" || tool === "crop"
+                  ? "none"
+                  : overlayInteractive
+                    ? "auto"
+                    : "none",
               cursor,
             }}
             onPointerDown={onOverlayPointerDown}
@@ -1126,6 +1134,7 @@ export function PageView({ doc, pageId }: Props) {
               </svg>
             )}
           </div>
+
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
@@ -1760,6 +1769,198 @@ function CommentPin({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- Crop tool overlay ----
+type Handle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | "move";
+
+function CropOverlay({ pageId, vp }: { pageId: number; vp: Viewport }) {
+  const annotations = useEditor((s) => s.annotations);
+  const selectedPages = useEditor((s) => s.selectedPages);
+  const pageOrder = useEditor((s) => s.pageOrder);
+  const currentPage = useEditor((s) => s.currentPage);
+  const addAnnotation = useEditor((s) => s.addAnnotation);
+  const updateAnnotation = useEditor((s) => s.updateAnnotation);
+  const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
+
+  // is this page in the active set? empty selectedPages => only currentPage
+  const displayIdx = pageOrder.indexOf(pageId);
+  const targets = selectedPages.length ? selectedPages : [currentPage];
+  const inScope = targets.includes(displayIdx);
+
+  // page size in PDF space via viewport
+  const pageW = vp.width / (vp as any).scale || vp.convertToPdfPoint(vp.width, 0)[0];
+  const pageH = vp.height / (vp as any).scale || Math.abs(vp.convertToPdfPoint(0, vp.height)[1]);
+
+  const existing = annotations.find((a) => a.page === pageId && a.kind === "crop") as
+    | Extract<Annotation, { kind: "crop" }>
+    | undefined;
+  const rect: Rect = existing?.rect ?? { x: 0, y: 0, w: pageW, h: pageH };
+  const rotation = existing?.rotation ?? 0;
+
+  const dragRef = useRef<{
+    handle: Handle;
+    startClient: [number, number];
+    startRect: Rect;
+  } | null>(null);
+
+  const applyToAll = (nextRect: Rect, commit = false) => {
+    for (const di of targets) {
+      const pid = pageOrder[di];
+      const ex = useEditor
+        .getState()
+        .annotations.find((a) => a.page === pid && a.kind === "crop") as
+        | Extract<Annotation, { kind: "crop" }>
+        | undefined;
+      if (ex) {
+        updateAnnotation(ex.id, { rect: nextRect } as any, commit);
+      } else {
+        addAnnotation({
+          id: Math.random().toString(36).slice(2, 10),
+          kind: "crop",
+          page: pid,
+          rect: nextRect,
+          rotation: 0,
+        } as any);
+      }
+    }
+  };
+
+  const onDown = (h: Handle) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    pushHistorySnapshot();
+    dragRef.current = { handle: h, startClient: [e.clientX, e.clientY], startRect: rect };
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dxScreen = e.clientX - d.startClient[0];
+    const dyScreen = e.clientY - d.startClient[1];
+    const p0 = vp.convertToPdfPoint(0, 0);
+    const p1 = vp.convertToPdfPoint(dxScreen, dyScreen);
+    const dxPdf = p1[0] - p0[0];
+    const dyPdf = p1[1] - p0[1];
+    let { x, y, w, h } = d.startRect;
+    const h_ = d.handle;
+    if (h_ === "move") {
+      x += dxPdf;
+      y += dyPdf;
+    } else {
+      // In PDF space y grows upward; screen dyPdf < 0 when moving down.
+      // Handle names refer to on-screen edges.
+      if (h_.includes("w")) {
+        x += dxPdf;
+        w -= dxPdf;
+      }
+      if (h_.includes("e")) {
+        w += dxPdf;
+      }
+      if (h_.includes("n")) {
+        // top edge (screen) → higher y in PDF space
+        h += dyPdf;
+      }
+      if (h_.includes("s")) {
+        // bottom edge (screen) → lower y in PDF space
+        y += dyPdf;
+        h -= dyPdf;
+      }
+    }
+    // clamp
+    if (w < 10) w = 10;
+    if (h < 10) h = 10;
+    x = Math.max(0, Math.min(pageW - w, x));
+    y = Math.max(0, Math.min(pageH - h, y));
+    w = Math.min(pageW - x, w);
+    h = Math.min(pageH - y, h);
+    applyToAll({ x, y, w, h }, false);
+  };
+
+  const onUp = () => {
+    if (dragRef.current) {
+      // final commit
+      const last = useEditor
+        .getState()
+        .annotations.find((a) => a.page === pageId && a.kind === "crop") as
+        | Extract<Annotation, { kind: "crop" }>
+        | undefined;
+      if (last) applyToAll(last.rect, false); // history already pushed on down
+    }
+    dragRef.current = null;
+  };
+
+  const s = screenRect(rect, vp);
+  const dim = "rgba(0,0,0,0.55)";
+
+  if (!inScope) return null;
+
+  return (
+    <div
+      className="absolute inset-0"
+      style={{ pointerEvents: "auto" }}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+    >
+      {/* 4 dim rectangles around the crop rect */}
+      <div className="absolute" style={{ left: 0, top: 0, width: "100%", height: s.top, background: dim, pointerEvents: "none" }} />
+      <div className="absolute" style={{ left: 0, top: s.top + s.height, width: "100%", bottom: 0, background: dim, pointerEvents: "none" }} />
+      <div className="absolute" style={{ left: 0, top: s.top, width: s.left, height: s.height, background: dim, pointerEvents: "none" }} />
+      <div className="absolute" style={{ left: s.left + s.width, top: s.top, right: 0, height: s.height, background: dim, pointerEvents: "none" }} />
+
+      {/* Inner frame + rotation visual (border only rotates as a preview cue) */}
+      <div
+        className="absolute border-2 border-primary"
+        style={{
+          left: s.left,
+          top: s.top,
+          width: s.width,
+          height: s.height,
+          cursor: "move",
+          transform: rotation ? `rotate(${-rotation}deg)` : undefined,
+          transformOrigin: "center center",
+        }}
+        onPointerDown={onDown("move")}
+      >
+        {/* handles */}
+        {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as Handle[]).map((h) => {
+          const style: React.CSSProperties = {
+            position: "absolute",
+            width: 10,
+            height: 10,
+            background: "hsl(var(--primary))",
+            border: "1px solid white",
+            borderRadius: 2,
+          };
+          if (h.includes("n")) style.top = -6;
+          if (h.includes("s")) style.bottom = -6;
+          if (h.includes("w")) style.left = -6;
+          if (h.includes("e")) style.right = -6;
+          if (h === "n" || h === "s") {
+            style.left = "50%";
+            style.transform = "translateX(-50%)";
+            style.cursor = "ns-resize";
+          } else if (h === "e" || h === "w") {
+            style.top = "50%";
+            style.transform = "translateY(-50%)";
+            style.cursor = "ew-resize";
+          } else {
+            style.cursor =
+              h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize";
+          }
+          return (
+            <div
+              key={h}
+              style={style}
+              onPointerDown={onDown(h)}
+              onPointerMove={onMove}
+              onPointerUp={onUp}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

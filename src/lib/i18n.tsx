@@ -127,6 +127,20 @@ const de: Dict = {
   cancel: "Abbrechen",
   apply: "Anwenden",
   removeCrop: "Zuschnitt entfernen",
+  cropTool: "Zuschneiden",
+  toolCropHint: "Rahmen ziehen, drehen, auf Seiten anwenden",
+  cropWidth: "Breite",
+  cropHeight: "Höhe",
+  cropX: "X",
+  cropY: "Y",
+  cropRotation: "Drehung",
+  cropReset: "Rahmen zurücksetzen",
+  cropApply: "Anwenden",
+  pageSelection: "Seiten",
+  pageSelCurrent: "Aktuelle",
+  pageSelAll: "Alle",
+  pageSelCustom: "Benutzerdefiniert",
+  pageRangeHint: "z.B. 1-3, 5, 7-9",
 };
 
 const en: Dict = {
@@ -251,6 +265,20 @@ const en: Dict = {
   cancel: "Cancel",
   apply: "Apply",
   removeCrop: "Remove crop",
+  cropTool: "Crop",
+  toolCropHint: "Drag frame, rotate, apply to pages",
+  cropWidth: "Width",
+  cropHeight: "Height",
+  cropX: "X",
+  cropY: "Y",
+  cropRotation: "Rotation",
+  cropReset: "Reset frame",
+  cropApply: "Apply",
+  pageSelection: "Pages",
+  pageSelCurrent: "Current",
+  pageSelAll: "All",
+  pageSelCustom: "Custom",
+  pageRangeHint: "e.g. 1-3, 5, 7-9",
 };
 
 const dicts: Record<Lang, Dict> = { de, en };

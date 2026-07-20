@@ -8,7 +8,7 @@ export interface Rect {
   h: number;
 }
 
-export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment";
+export type Tool = "select" | "highlight" | "redact" | "edit-text" | "textbox" | "pen" | "comment" | "crop";
 
 export type PenStyle = "solid" | "marker" | "pencil" | "dashed";
 
@@ -83,6 +83,7 @@ export interface CropAnno {
   kind: "crop";
   page: number;
   rect: Rect; // PDF-user-space crop window
+  rotation?: number; // degrees, -45..+45
 }
 
 export interface CommentReply {

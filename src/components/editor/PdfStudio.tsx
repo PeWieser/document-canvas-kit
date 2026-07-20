@@ -14,7 +14,7 @@ import { PageView } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
-import { CropDialog } from "./CropDialog";
+import { CropToolPanel } from "./CropToolPanel";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -41,7 +41,8 @@ export function PdfStudio() {
   const { doc, error } = useLoadedPdf(originalBytes);
   const [exporting, setExporting] = useState(false);
   const [dark, setDark] = useState(false);
-  const [cropPages, setCropPages] = useState<number[] | null>(null);
+  const setSelectedPages = useEditor((s) => s.setSelectedPages);
+  const currentTool = useEditor((s) => s.tool);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [visible, setVisible] = useState<Set<number>>(new Set([0, 1, 2]));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -537,7 +538,10 @@ export function PdfStudio() {
             activeIndex={currentPage}
             onJump={jumpTo}
             onExportPages={handleExportPages}
-            onCropPages={(pages) => setCropPages(pages)}
+            onCropPages={(pages) => {
+              setSelectedPages(pages);
+              setTool("crop");
+            }}
           />
         )}
         <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
@@ -579,9 +583,7 @@ export function PdfStudio() {
         <CommentsPanel onJump={jumpTo} />
         <SearchRedactPanel doc={doc ?? null} />
       </div>
-      {cropPages && doc && (
-        <CropDialog doc={doc} pages={cropPages} onClose={() => setCropPages(null)} />
-      )}
+      {doc && currentTool === "crop" && <CropToolPanel doc={doc} />}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
     </div>
   );

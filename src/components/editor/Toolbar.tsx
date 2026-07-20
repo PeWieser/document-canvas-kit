@@ -29,6 +29,7 @@ import {
   MoreVertical,
   Search,
   Palette,
+  Crop,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -113,6 +114,7 @@ export function Toolbar({
     { id: "textbox", icon: Type, label: t("textbox"), hint: t("toolTextboxHint") },
     { id: "pen", icon: Pen, label: t("pen"), hint: t("toolPenHint") },
     { id: "comment", icon: MessageSquarePlus, label: t("comment"), hint: t("toolCommentHint") },
+    { id: "crop", icon: Crop, label: t("cropTool"), hint: t("toolCropHint") },
   ];
   const activeTool = tools.find((x) => x.id === tool);
 
