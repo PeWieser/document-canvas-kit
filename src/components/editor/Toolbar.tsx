@@ -29,6 +29,7 @@ import {
   MoreVertical,
   Search,
   Palette,
+  Crop,
 } from "lucide-react";
 import {
   DropdownMenu,
