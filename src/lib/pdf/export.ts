@@ -192,24 +192,68 @@ function pageTransform(page: PDFPage): PageTransform {
   const mb = page.getMediaBox();
   const cb = page.getCropBox();
   const rot = ((page.getRotation().angle % 360) + 360) % 360;
+  const ox = cb.x || 0;
+  const oy = cb.y || 0;
   const cw = cb.width;
   const ch = cb.height;
 
   return {
     rotation: rot,
     point(x, y) {
-      // Coordinates from pdf.js are already in raw user space of the underlying
-      // page (Rotate is undone). We only need to compensate when CropBox origin
-      // differs from MediaBox origin, which pdf.js does account for → identity.
-      // For rotated pages pdf.js hands us coords in the unrotated system, but
-      // drawRectangle draws in that same unrotated raw system, so still identity.
-      // We keep the hook so future edge cases have a single place to grow.
-      void cw; void ch; void mb; void cb; void rot;
-      return { x, y };
+      if (rot === 90) {
+        return {
+          x: ox + y,
+          y: oy + ch - x,
+        };
+      }
+      if (rot === 180) {
+        return {
+          x: ox + cw - x,
+          y: oy + ch - y,
+        };
+      }
+      if (rot === 270) {
+        return {
+          x: ox + cw - y,
+          y: oy + x,
+        };
+      }
+      return {
+        x: ox + x,
+        y: oy + y,
+      };
     },
     toRaw(x, y, w, h) {
-      const a = this.point(x, y);
-      return { x: a.x, y: a.y, w, h };
+      if (rot === 90) {
+        return {
+          x: ox + y,
+          y: oy + ch - x - w,
+          w: h,
+          h: w,
+        };
+      }
+      if (rot === 180) {
+        return {
+          x: ox + cw - x - w,
+          y: oy + ch - y - h,
+          w,
+          h,
+        };
+      }
+      if (rot === 270) {
+        return {
+          x: ox + cw - y - h,
+          y: oy + x,
+          w: h,
+          h: w,
+        };
+      }
+      return {
+        x: ox + x,
+        y: oy + y,
+        w,
+        h,
+      };
     },
   };
 }
@@ -327,6 +371,7 @@ export async function exportPdf(
     const page = copied[displayIndex];
     outDoc.addPage(page);
 
+    const cb = page.getCropBox();
     const pageAnnos = annotations.filter((a) => a.page === pageId);
     const xform = pageTransform(page);
     const redactRects: { x: number; y: number; x2: number; y2: number }[] = [];
@@ -379,12 +424,14 @@ export async function exportPdf(
         const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
         const rawX = a.transform ? a.transform[4] : a.rect.x;
         const rawY = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
-        const p = xform.point(rawX, rawY);
-        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color), angle);
+        const px = rawX + (cb.x || 0);
+        const py = rawY + (cb.y || 0);
+        drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
         const p = xform.point(a.x, a.y - a.fontSize * 0.8);
-        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color));
+        const angleRad = -xform.rotation * Math.PI / 180;
+        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color), angleRad);
       } else if (a.kind === "image") {
         try {
           const img = await embedImage(outDoc, a.dataUrl);

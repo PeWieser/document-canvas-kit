@@ -260,7 +260,6 @@ export function PageView({ doc, pageId }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const [viewport, setViewport] = useState<Viewport | null>(null);
   const [pdfPage, setPdfPage] = useState<PdfPageProxy | null>(null);
   const [items, setItems] = useState<TextItem[]>([]);
   const [imageRects, setImageRects] = useState<Rect[]>([]);
@@ -278,6 +277,19 @@ export function PageView({ doc, pageId }: Props) {
   const color = useEditor((s) => s.color);
   const highlightColor = useEditor((s) => s.highlightColor);
   const fontSize = useEditor((s) => s.fontSize);
+
+  // Synchronous viewport derived directly from pdfPage and zoom (zero-lag, no jitter)
+  const viewport = pdfPage ? (pdfPage.getViewport({ scale: zoom }) as unknown as Viewport) : null;
+
+  // Re-trigger layout measurement when web fonts complete loading
+  const [, setFontCount] = useState(0);
+  useEffect(() => {
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.ready.then(() => {
+        setFontCount((c) => c + 1);
+      });
+    }
+  }, []);
   const defaultFontFamily = useEditor((s) => s.defaultFontFamily);
   const setDefaultFontFamily = useEditor((s) => s.setDefaultFontFamily);
   const penSize = useEditor((s) => s.penSize);
@@ -397,25 +409,41 @@ export function PageView({ doc, pageId }: Props) {
     };
   }, [doc, pageId]);
 
-  // --- render page ---
+  // --- render page (double-buffered to eliminate white zoom flashes) ---
   useEffect(() => {
-    if (!pdfPage) return;
+    if (!pdfPage || !viewport) return;
     let renderTask: any = null;
-
-    const vp = pdfPage.getViewport({ scale: zoom });
-    setViewport(vp as unknown as Viewport);
 
     const canvas = canvasRef.current;
     if (canvas) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(vp.width * dpr);
-      canvas.height = Math.floor(vp.height * dpr);
-      canvas.style.width = `${vp.width}px`;
-      canvas.style.height = `${vp.height}px`;
-      const ctx = canvas.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const targetW = Math.floor(viewport.width * dpr);
+      const targetH = Math.floor(viewport.height * dpr);
 
-      renderTask = pdfPage.render({ canvasContext: ctx, viewport: vp });
+      // Smoothly scale the existing canvas via CSS during zoom transitions
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+
+      // Render to an off-screen canvas buffer
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = targetW;
+      tempCanvas.height = targetH;
+      const tempCtx = tempCanvas.getContext("2d")!;
+      tempCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      renderTask = pdfPage.render({ canvasContext: tempCtx, viewport: viewport as any });
+
+      void renderTask.promise.then(() => {
+        // Update backing store and copy buffer image in a single frame tick
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(tempCanvas, 0, 0);
+        }
+      }).catch(() => {
+        /* task cancelled or interrupted */
+      });
     }
 
     return () => {
@@ -423,7 +451,7 @@ export function PageView({ doc, pageId }: Props) {
         renderTask.cancel();
       }
     };
-  }, [pdfPage, zoom]);
+  }, [pdfPage, zoom, viewport]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -1339,9 +1367,9 @@ function AnnoView({
     }
 
     const left = tx[4];
-    const top = transform ? tx[5] - screenLineHeight : tx[5];
+    const top = tx[5]; // Baseline start Y coordinate
     const angle = Math.atan2(tx[1], tx[0]);
-    const width = anno.kind === "textReplace"
+    const origWidth = anno.kind === "textReplace"
       ? (transform
           ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1])
           : (annoWidth ?? 0) * zoom)
@@ -1349,19 +1377,18 @@ function AnnoView({
 
     const family = cssFontStack(anno.fontFamily || "");
     
-    // For textReplace annotations, measure text to apply scaleX compression/stretching
-    let scaleX = 1;
-    let naturalWidth = width;
+    // For textReplace annotations, measure text to allow auto-growing without font distortion
+    let naturalWidth = origWidth;
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
-      naturalWidth = getTextWidth(anno.text, fontSpec);
-      scaleX = naturalWidth > 0 ? width / naturalWidth : 1;
+      const measured = getTextWidth(anno.text, fontSpec);
+      naturalWidth = Math.max(origWidth, measured);
     }
 
     const s = {
       left: `${left}px`,
       top: `${top}px`,
-      width: `${width}px`,
+      width: anno.kind === "textReplace" ? `${naturalWidth}px` : `${origWidth}px`,
     };
     const transformString = transform ? `rotate(${angle}rad)` : undefined;
     const transformOriginString = transform ? "0 0" : undefined;
@@ -1426,12 +1453,12 @@ function AnnoView({
             margin: 0,
             border: "none",
             display: "block",
+            position: transform ? "absolute" : "relative",
+            top: transform ? `-${screenLineHeight}px` : undefined,
+            left: 0,
             overflow: anno.kind === "textReplace" ? "hidden" : "visible",
             whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
-            // Apply scaleX to fit text replace perfectly
-            width: anno.kind === "textReplace" ? `${Math.max(8, naturalWidth)}px` : "100%",
-            transform: anno.kind === "textReplace" ? `scaleX(${scaleX})` : undefined,
-            transformOrigin: anno.kind === "textReplace" ? "top left" : undefined,
+            width: "100%",
           }}
         />
         {selected && (() => {

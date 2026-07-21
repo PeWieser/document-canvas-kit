@@ -83,6 +83,7 @@ export function Toolbar({
   const setGridOpen = useEditor((s) => s.setGridOpen);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const toggleSidebar = useEditor((s) => s.toggleSidebar);
+  const selectedId = useEditor((s) => s.selectedId);
   const commentsPanelOpen = useEditor((s) => s.commentsPanelOpen);
   const toggleCommentsPanel = useEditor((s) => s.toggleCommentsPanel);
   const color = useEditor((s) => s.color);
@@ -99,7 +100,6 @@ export function Toolbar({
   const searchOpen = useEditor((s) => s.searchOpen);
   const currentPage = useEditor((s) => s.currentPage);
   const numPages = useEditor((s) => s.pageOrder.length);
-  const selectedId = useEditor((s) => s.selectedId);
   const annotations = useEditor((s) => s.annotations);
 
   const selectedAnno = annotations.find((a) => a.id === selectedId);
@@ -358,9 +358,7 @@ export function Toolbar({
               )}
 
               {(tool === "pen" ||
-                tool === "textbox" ||
-                tool === "edit-text" ||
-                (tool === "select" && hasTextSelected)) && (
+                ((tool === "textbox" || tool === "edit-text") && !selectedId)) && (
                 <div className="flex items-center gap-1">
                   <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
                   <label
