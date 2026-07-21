@@ -337,6 +337,60 @@ async function processFonts() {
     }
   }
 
+  // 4. Crawl custom fonts in custom_fonts/ directory if it exists
+  const customFontsDir = path.join(__dirname, '..', 'custom_fonts');
+  if (fs.existsSync(customFontsDir)) {
+    console.log('Crawling custom fonts from custom_fonts directory...');
+    try {
+      const files = fs.readdirSync(customFontsDir);
+      for (const file of files) {
+        if (
+          file.toLowerCase().endsWith('.ttf') ||
+          file.toLowerCase().endsWith('.otf') ||
+          file.toLowerCase().endsWith('.woff')
+        ) {
+          const fontPath = path.join(customFontsDir, file);
+          try {
+            const fontBuffer = fs.readFileSync(fontPath);
+            const font = opentype.parse(
+              fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+            );
+            
+            const platformNames = font.names.windows || font.names.macintosh;
+            const fontFamily = platformNames 
+              ? (platformNames.fontFamily ? (platformNames.fontFamily.en || Object.values(platformNames.fontFamily)[0]) : null) 
+              : null;
+            const fontSubfamily = platformNames 
+              ? (platformNames.fontSubfamily ? (platformNames.fontSubfamily.en || Object.values(platformNames.fontSubfamily)[0]) : '') 
+              : '';
+            
+            if (fontFamily) {
+              const lowerSub = fontSubfamily.toLowerCase();
+              const isBold = lowerSub.includes("bold") || lowerSub.includes("heavy") || lowerSub.includes("black");
+              const isItalic = lowerSub.includes("italic") || lowerSub.includes("oblique");
+
+              const checkRes = db.exec(`SELECT id FROM fonts WHERE family = '${fontFamily.replace(/'/g, "''")}' AND is_bold = ${isBold ? 1 : 0} AND is_italic = ${isItalic ? 1 : 0};`);
+              if (checkRes.length > 0 && checkRes[0].values.length > 0) {
+                continue;
+              }
+
+              const charsCount = insertFontData(fontFamily, isBold, isItalic, font);
+              if (charsCount === 0) {
+                db.run(`DELETE FROM fonts WHERE id = (SELECT last_insert_rowid());`);
+              } else {
+                console.log(`Successfully ingested custom font: ${fontFamily} (${fontSubfamily})`);
+              }
+            }
+          } catch (e) {
+            console.warn(`Failed to parse custom font ${file}:`, e.message);
+          }
+        }
+      }
+    } catch (dirErr) {
+      console.error('Error listing custom fonts directory:', dirErr);
+    }
+  }
+
   insertFontStmt.free();
   insertFeatureStmt.free();
 

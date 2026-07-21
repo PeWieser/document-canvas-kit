@@ -18,8 +18,9 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
-import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady } from "@/lib/pdf/fontVectorMatch";
+import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady, matchSingleFontOnPage } from "@/lib/pdf/fontVectorMatch";
 import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
+import bunnyFamilies from "@/lib/pdf/font-families.json";
 
 interface TextItem {
   str: string;
@@ -203,12 +204,17 @@ async function extractTextColors(page: any): Promise<number[][]> {
       const fn = ops.fnArray[i];
       const args = ops.argsArray[i];
       
-      if (fn === OPS.setFillRGBColor) {
+      if (fn === OPS.setFillRGBColor || fn === OPS.setStrokeRGBColor) {
         currentRGB = [args[0], args[1], args[2]];
-      } else if (fn === OPS.setFillGray) {
+      } else if (fn === OPS.setFillGray || fn === OPS.setStrokeGray) {
         const g = Math.round(args[0] * 255);
         currentRGB = [g, g, g];
-      } else if (fn === OPS.setFillColor || fn === OPS.setFillColorN) {
+      } else if (
+        fn === OPS.setFillColor ||
+        fn === OPS.setFillColorN ||
+        fn === OPS.setStrokeColor ||
+        fn === OPS.setStrokeColorN
+      ) {
         if (args.length === 4) {
           const c = args[0];
           const m = args[1];
@@ -247,6 +253,7 @@ const globalFontMappings = new WeakMap<any, Record<string, any>>();
 const globalFontInfos = new WeakMap<any, Record<string, FontInfo>>();
 const globalFontRealNames = new WeakMap<any, Record<string, string>>();
 const globalFontMatchingPromises = new WeakMap<any, Record<number, Promise<any>>>();
+const globalPageColors = new WeakMap<any, number[][]>();
 
 export function PageView({ doc, pageId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -361,31 +368,21 @@ export function PageView({ doc, pageId }: Props) {
       if (cancelled) return;
       setPdfPage(page);
 
-      // Extract colors and text content in parallel
-      const [content, colors] = await Promise.all([
-        page.getTextContent(),
-        extractTextColors(page),
-      ]);
-      
+      // Extract text content only (fast, doesn't parse graphics)
+      const content = await page.getTextContent();
       if (cancelled) return;
+      
       const its: TextItem[] = [];
       for (let i = 0; i < content.items.length; i++) {
         const it = content.items[i];
         if ("str" in it && it.str) {
-          let col = [0, 0, 0];
-          if (colors.length > 0) {
-            const colorIdx = colors.length === content.items.length
-              ? i
-              : Math.min(colors.length - 1, Math.floor((i / content.items.length) * colors.length));
-            col = colors[colorIdx];
-          }
           its.push({
             str: it.str,
             transform: it.transform as number[],
             width: it.width as number,
             height: it.height as number,
             fontName: (it as any).fontName,
-            color: col,
+            color: undefined, // Resolved lazily on-demand
           });
         }
       }
@@ -426,88 +423,7 @@ export function PageView({ doc, pageId }: Props) {
         renderTask.cancel();
       }
     };
-  }, [pdfPage, zoom, items]);
-
-  // --- Run KNN matching and resolve PostScript names ONLY when edit-text tool is active ---
-  useEffect(() => {
-    const hasMappingForPage = Object.keys(fontMappingRef.current).some((k) =>
-      k.startsWith(`${pageId}_`)
-    );
-    if (tool === "edit-text" && pdfPage && !hasMappingForPage) {
-      let cancelled = false;
-      (async () => {
-        try {
-          setWorkerLoading(true);
-
-          // Store the matching promise in the global WeakMap before awaiting
-          const promise = extractSubsetFontsPaths(pdfPage);
-          let docPromises = globalFontMatchingPromises.get(doc);
-          if (!docPromises) {
-            docPromises = {};
-            globalFontMatchingPromises.set(doc, docPromises);
-          }
-          docPromises[pageId] = promise;
-
-          const mapping = await promise;
-          if (cancelled) return;
-
-          // Merge into global fontMappingRef.current with pageId prefix
-          for (const [fn, val] of Object.entries(mapping)) {
-            fontMappingRef.current[`${pageId}_${fn}`] = val;
-          }
-          setFingerprints(Object.values(mapping));
-
-          const names: Record<string, string> = {};
-          for (const fn of new Set(items.map((x) => x.fontName).filter(Boolean) as string[])) {
-            try {
-              const f = pdfPage.commonObjs.get(fn);
-              if (f?.name) {
-                names[fn] = f.name as string;
-              }
-            } catch {
-              /* not available */
-            }
-          }
-          if (cancelled) return;
-
-          // Merge into global fontRealNames.current with pageId prefix
-          for (const [fn, name] of Object.entries(names)) {
-            fontRealNames.current[`${pageId}_${fn}`] = name;
-          }
-
-          // Update any existing annotations on this page that are currently set to Helvetica or fallback fonts
-          const currentAnnos = useEditor.getState().annotations;
-          const updateAnnotationFn = useEditor.getState().updateAnnotation;
-          for (const anno of currentAnnos) {
-            if (anno.page === pageId && anno.kind === "textReplace") {
-              const item = items.find((x) => x.fontName === anno.fontName || (anno as any).fontName === x.fontName);
-              if (item?.fontName) {
-                const knnMatch = mapping[item.fontName];
-                if (knnMatch && knnMatch.family !== "Unknown" && (anno.fontFamily === "Helvetica" || anno.fontFamily === "Unknown" || !anno.fontFamily)) {
-                  updateAnnotationFn(anno.id, {
-                    fontFamily: knnMatch.family,
-                    bold: knnMatch.isBold,
-                    italic: knnMatch.isItalic,
-                  });
-                  void loadWebFont(knnMatch.family);
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn("Failed to extract subset fonts:", err);
-        } finally {
-          if (!cancelled) {
-            setWorkerLoading(false);
-          }
-        }
-      })();
-
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [tool, pdfPage, items, pageId, doc]);
+  }, [pdfPage, zoom]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -720,7 +636,6 @@ export function PageView({ doc, pageId }: Props) {
     if (!vp || !item || !pdfPage) return;
     const rect = getBoundingBoxInPdfSpace(item.transform, item.width);
 
-    // Kick off async introspection but don't block the annotation creation.
     // Primary path: embedded font bytes → deckungsgleich re-embed on export.
     let family = "Helvetica";
     let isBold = false;
@@ -752,7 +667,8 @@ export function PageView({ doc, pageId }: Props) {
       setDefaultFontFamily(family);
     }
 
-    const textColor = rgbToHex(item.color);
+    // Default color initially to black
+    const defaultColor = "#111111";
 
     const annoId = uid();
     addAnnotation({
@@ -762,7 +678,7 @@ export function PageView({ doc, pageId }: Props) {
       rect,
       text: item.str,
       fontSize: Math.hypot(item.transform[2], item.transform[3]),
-      color: textColor,
+      color: defaultColor,
       fontFamily: family,
       bold: isBold,
       italic: isItalic,
@@ -774,52 +690,107 @@ export function PageView({ doc, pageId }: Props) {
       italicAngle: cachedInfo?.italicAngle,
     } as Annotation);
 
-    // Fire-and-forget: introspect the embedded font and upgrade the annotation.
-    if (item.fontName && !cachedInfo) {
-      void getFontInfo(pdfPage, item.fontName).then((info) => {
-        // Wait for the KNN matching promise of this page to resolve, if any
-        const docPromises = globalFontMatchingPromises.get(doc);
-        const matchPromise = docPromises ? docPromises[pageId] : null;
-
-        void Promise.resolve(matchPromise).then(() => {
-          const cacheKey = `${pageId}_${item.fontName}`;
-          // Prioritize the KNN matched properties so they are not overridden by subset names!
-          const knnMatch = fontMappingRef.current[cacheKey] || null;
-          let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
-          const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
-          const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
-
-          if (isGarbageFontName(matchedFamily)) {
-            const realName = fontRealNames.current[cacheKey] || item.fontName || "";
-            const resolved = resolvePDFCoreFontName(realName);
-            matchedFamily = resolved.family;
-          }
-
-          // Cache the corrected FontInfo so subsequent clicks reuse the corrected KNN/Heuristic font name!
-          fontInfoRef.current[cacheKey] = {
-            ...info,
-            family: matchedFamily,
-            isBold: matchedBold,
-            isItalic: matchedItalic,
-          };
-
-          updateAnnotation(annoId, {
-            fontFamily: matchedFamily,
-            bold: matchedBold,
-            italic: matchedItalic,
-            originalFontBytes: info.bytes,
-            weight: info.weight,
-            italicAngle: info.italicAngle,
-          } as Partial<Annotation>);
-          void loadWebFont(matchedFamily);
-          setDefaultFontFamily(matchedFamily);
-          toast.success(
-            `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
-            { id: `font-match-${item.fontName}` }
-          );
+    // 1. Resolve page colors on-demand asynchronously
+    let cachedColors = globalPageColors.get(pdfPage);
+    const colorsPromise = cachedColors 
+      ? Promise.resolve(cachedColors)
+      : extractTextColors(pdfPage).then((colors) => {
+          globalPageColors.set(pdfPage, colors);
+          return colors;
         });
-      }).catch(() => {
-        /* introspection failed – keep heuristic values */
+
+    void colorsPromise.then((colors) => {
+      let col = [0, 0, 0];
+      if (colors.length > 0) {
+        const colorIdx = colors.length === items.length
+          ? idx
+          : Math.min(colors.length - 1, Math.floor((idx / items.length) * colors.length));
+        col = colors[colorIdx];
+      }
+      const textColor = rgbToHex(col);
+      updateAnnotation(annoId, { color: textColor } as Partial<Annotation>);
+    }).catch(() => {
+      // keep default color if extraction fails
+    });
+
+    // 2. Resolve font matching on-demand asynchronously
+    if (item.fontName && !cachedInfo) {
+      // Get introspected info and run KNN match for this specific font in parallel
+      const infoPromise = getFontInfo(pdfPage, item.fontName);
+      const matchPromise = matchSingleFontOnPage(pdfPage, item.fontName);
+
+      void Promise.all([infoPromise, matchPromise]).then(([info, knnMatch]) => {
+        const cacheKey = `${pageId}_${item.fontName}`;
+        let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
+        const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
+        const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
+
+        if (isGarbageFontName(matchedFamily)) {
+          const realName = fontRealNames.current[cacheKey] || item.fontName || "";
+          const resolved = resolvePDFCoreFontName(realName);
+          matchedFamily = resolved.family;
+        }
+
+        // Cache the corrected FontInfo
+        fontInfoRef.current[cacheKey] = {
+          ...info,
+          family: matchedFamily,
+          isBold: matchedBold,
+          isItalic: matchedItalic,
+        };
+
+        if (knnMatch) {
+          fontMappingRef.current[cacheKey] = knnMatch;
+        }
+
+        updateAnnotation(annoId, {
+          fontFamily: matchedFamily,
+          bold: matchedBold,
+          italic: matchedItalic,
+          originalFontBytes: info.bytes,
+          weight: info.weight,
+          italicAngle: info.italicAngle,
+        } as Partial<Annotation>);
+        void loadWebFont(matchedFamily);
+        setDefaultFontFamily(matchedFamily);
+        toast.success(
+          `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
+          { id: `font-match-${item.fontName}` }
+        );
+
+        // Check local system fonts permission if the font is not in the Bunny Font library
+        const isBunnyFont = bunnyFamilies.includes(matchedFamily);
+        if (!isBunnyFont && 'queryLocalFonts' in window) {
+          navigator.permissions.query({ name: 'local-fonts' as any }).then((result) => {
+            if (result.state === 'prompt') {
+              toast.info(
+                `Schriftart '${matchedFamily}' ist eine Systemschrift. Erlauben Sie Zugriff auf lokale Systemschriftarten, um diese zu nutzen.`,
+                {
+                  action: {
+                    label: "Zulassen",
+                    onClick: async () => {
+                      try {
+                        await (window as any).queryLocalFonts();
+                        toast.success("Zugriff auf Systemschriftarten erlaubt!");
+                      } catch (err) {
+                        toast.error("Zugriff verweigert.");
+                      }
+                    }
+                  },
+                  duration: 8000
+                }
+              );
+            } else if (result.state === 'granted') {
+              // Try to query to make sure it's available
+              (window as any).queryLocalFonts().catch(() => {});
+            }
+          }).catch(() => {
+            // navigator.permissions might throw in some configurations, fallback directly to call
+            (window as any).queryLocalFonts().catch(() => {});
+          });
+        }
+      }).catch((err) => {
+        console.warn("[replaceSpan] Async font match failed:", err);
       });
     } else if (cachedInfo) {
       toast.success(`Erkannt: ${family}`);

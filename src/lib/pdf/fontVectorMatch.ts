@@ -457,3 +457,71 @@ export async function loadMatchedBunnyFont(fingerprint: FontFingerprint): Promis
   
   await loadWebFont(familyWithStyles);
 }
+
+export async function matchSingleFontOnPage(
+  page: PdfPageProxy,
+  fontName: string
+): Promise<FontFingerprint | null> {
+  const objs = page.commonObjs;
+  if (!objs) return null;
+
+  let fontObj: any = null;
+  try {
+    fontObj = objs.get(fontName);
+  } catch (err) {
+    // ignore
+  }
+
+  let matchedFamily = 'Unknown';
+  let isBold = false;
+  let isItalic = false;
+
+  if (fontObj && fontObj.data) {
+    try {
+      const fontBytes = fontObj.data;
+      
+      const font = opentype.parse(
+        fontBytes.buffer.slice(fontBytes.byteOffset, fontBytes.byteOffset + fontBytes.byteLength)
+      );
+      
+      const pdfWidths: Record<string, number> = {};
+      for (const char of DISCRIMINATOR_CHARS) {
+        if (font.charToGlyphIndex(char) !== 0) {
+          const glyph = font.charToGlyph(char);
+          pdfWidths[char] = Math.round(glyph.advanceWidth * (1000 / font.unitsPerEm));
+        }
+      }
+
+      let matchResult: MatchResult | null = null;
+      if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+        const db = await getNodeDb();
+        matchResult = matchFontUsingDb(db, fontBytes, pdfWidths);
+      } else {
+        matchResult = await matchFontViaWorker(fontBytes, pdfWidths, fontName);
+      }
+
+      if (matchResult) {
+        matchedFamily = matchResult.family;
+        isBold = matchResult.isBold;
+        isItalic = matchResult.isItalic;
+      }
+    } catch (err) {
+      console.warn(`[fontVectorMatch] matchSingleFontOnPage opentype/SQLite match failed: ${fontName}`, err);
+    }
+  }
+
+  if (matchedFamily === 'Unknown') {
+    const rawName = fontObj?.name || fontName;
+    const resolved = resolvePDFCoreFontName(rawName);
+    matchedFamily = resolved.family;
+    isBold = resolved.isBold;
+    isItalic = resolved.isItalic;
+  }
+
+  return {
+    family: matchedFamily,
+    isBold,
+    isItalic,
+    signature: []
+  };
+}

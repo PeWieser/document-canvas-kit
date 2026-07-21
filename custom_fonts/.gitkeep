@@ -1,0 +1,2 @@
+# Placeholder for custom user fonts (.ttf, .otf, .woff)
+# Drop your files here and run "node scripts/generate-font-fingerprints.js" to register them.

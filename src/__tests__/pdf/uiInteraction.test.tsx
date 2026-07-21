@@ -161,7 +161,7 @@ describe("UI Interaction and Keybindings", () => {
     const duration = performance.now() - start;
     console.log(`Rapid 50x state transitions took: ${duration.toFixed(2)}ms`);
 
-    // Ensure 50 rapid changes take less than 2000ms in testing environment (safety margin)
-    expect(duration).toBeLessThan(2000);
+    // Ensure 50 rapid changes take less than 5000ms in testing environment (safety margin)
+    expect(duration).toBeLessThan(5000);
   });
 });

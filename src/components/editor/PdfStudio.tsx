@@ -48,6 +48,7 @@ export function PdfStudio() {
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const prevZoomRef = useRef(zoom);
 
   const loadBytes = useCallback(
     async (name: string, buf: Uint8Array, handle: FileSystemFileHandle | null) => {
@@ -401,6 +402,9 @@ export function PdfStudio() {
           const targetLeft = docX * ratio - mouseX;
           const targetTop = docY * ratio - mouseY;
 
+          // Prevent the general zoom effect from running on this change
+          prevZoomRef.current = newZoom;
+
           useEditor.setState({ zoom: newZoom, viewMode: "custom" });
 
           requestAnimationFrame(() => {
@@ -413,6 +417,32 @@ export function PdfStudio() {
     document.addEventListener("wheel", handleWheel, { passive: false });
     return () => document.removeEventListener("wheel", handleWheel);
   }, []);
+
+  // Track zoom changes to keep viewport center stable for button/keyboard zooms
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      prevZoomRef.current = zoom;
+      return;
+    }
+    const oldZoom = prevZoomRef.current;
+    if (oldZoom !== zoom) {
+      prevZoomRef.current = zoom;
+      if (Math.abs(zoom - oldZoom) > 0.001) {
+        const centerDocY = el.scrollTop + el.clientHeight / 2;
+        const centerDocX = el.scrollLeft + el.clientWidth / 2;
+
+        const ratio = zoom / oldZoom;
+        const targetTop = centerDocY * ratio - el.clientHeight / 2;
+        const targetLeft = centerDocX * ratio - el.clientWidth / 2;
+
+        requestAnimationFrame(() => {
+          el.scrollTop = targetTop;
+          el.scrollLeft = targetLeft;
+        });
+      }
+    }
+  }, [zoom]);
 
   // keyboard shortcuts
   useEffect(() => {

@@ -127,6 +127,11 @@ describe("Font Integration in UI", () => {
       span.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
+    // Wait for async font matching and resolution
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
     // It should have resolved "Arial" and set it as default
     expect(useEditor.getState().defaultFontFamily).toBe("Arial");
 
