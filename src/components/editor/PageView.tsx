@@ -478,13 +478,25 @@ export function PageView({ doc, pageId }: Props) {
       setSnapGuides([]);
       return rawRect;
     }
-    const snapZone = 6 / zoom;
+    // Work entirely in PDF coordinate space.
+    // convertToPdfPoint(viewport.width, 0) gives the far-right edge of the page in PDF coords.
+    const origin = viewport.convertToPdfPoint(0, 0);
+    const farCorner = viewport.convertToPdfPoint(viewport.width, viewport.height);
+    const pageLeft   = Math.min(origin[0], farCorner[0]);
+    const pageRight  = Math.max(origin[0], farCorner[0]);
+    const pageTop    = Math.max(origin[1], farCorner[1]);
+    const pageBottom = Math.min(origin[1], farCorner[1]);
+    const pageW = pageRight - pageLeft;
+    const pageH = pageTop  - pageBottom;
+
+    // Snap zone in PDF user-units (6 screen-pixels converted)
+    const snapPt0 = viewport.convertToPdfPoint(0, 0);
+    const snapPt1 = viewport.convertToPdfPoint(6, 0);
+    const snapZone = Math.abs(snapPt1[0] - snapPt0[0]);
+
     let newX = rawRect.x;
     let newY = rawRect.y;
     const guides: { x?: number; y?: number }[] = [];
-
-    const vWidth = viewport.viewBox[2];
-    const vHeight = viewport.viewBox[3];
 
     const trySnapX = (target: number, current: number) => {
       if (Math.abs(target - current) < snapZone) {
@@ -499,25 +511,25 @@ export function PageView({ doc, pageId }: Props) {
       }
     };
 
-    // margins & center
-    trySnapX(0, rawRect.x);
-    trySnapX(vWidth, rawRect.x + rawRect.w);
-    trySnapX(vWidth / 2, rawRect.x + rawRect.w / 2);
+    // Page margins & center in PDF space
+    trySnapX(pageLeft,          rawRect.x);
+    trySnapX(pageRight,         rawRect.x + rawRect.w);
+    trySnapX(pageLeft + pageW / 2, rawRect.x + rawRect.w / 2);
 
-    trySnapY(0, rawRect.y);
-    trySnapY(vHeight, rawRect.y + rawRect.h);
-    trySnapY(vHeight / 2, rawRect.y + rawRect.h / 2);
+    trySnapY(pageBottom,        rawRect.y);
+    trySnapY(pageTop,           rawRect.y + rawRect.h);
+    trySnapY(pageBottom + pageH / 2, rawRect.y + rawRect.h / 2);
 
-    // other annos
+    // Other annotations on this page
     pageAnnos.forEach(a => {
       if (a.id === ignoreId || !("rect" in a)) return;
       const r = a.rect as Rect;
       if (r && typeof r.x === 'number') {
-        trySnapX(r.x, rawRect.x);
-        trySnapX(r.x + r.w, rawRect.x + rawRect.w);
+        trySnapX(r.x,           rawRect.x);
+        trySnapX(r.x + r.w,    rawRect.x + rawRect.w);
         trySnapX(r.x + r.w / 2, rawRect.x + rawRect.w / 2);
-        trySnapY(r.y, rawRect.y);
-        trySnapY(r.y + r.h, rawRect.y + rawRect.h);
+        trySnapY(r.y,           rawRect.y);
+        trySnapY(r.y + r.h,    rawRect.y + rawRect.h);
         trySnapY(r.y + r.h / 2, rawRect.y + rawRect.h / 2);
       }
     });
@@ -712,32 +724,29 @@ export function PageView({ doc, pageId }: Props) {
 
     const cacheKey = item.fontName || "";
     const cachedInfo = cacheKey ? globalFontInfo[cacheKey] : undefined;
+
+    // 1. Start with whatever the fontIntrospect cache already knows
     if (cachedInfo) {
       family = cachedInfo.family;
       isBold = cachedInfo.isBold;
       isItalic = cachedInfo.isItalic;
     }
 
-    if (cacheKey && globalFontRealNames[cacheKey]) {
-      const realName = globalFontRealNames[cacheKey];
-      item.fontName = realName;
-      const knnMatch = cacheKey ? globalFontMapping[cacheKey] : null;
-      if (knnMatch) {
-         family = knnMatch.family;
-         isBold = knnMatch.isBold;
-         isItalic = knnMatch.isItalic;
-      }
-    } else if (cachedInfo) {
-      const realName = item.fontName || "";
-      const resolved = resolvePDFCoreFontName(realName);
-      family = resolved.family;
-      isBold = resolved.isBold;
-      isItalic = resolved.isItalic;
+    // 2. If a KNN match is already in cache, prefer it (more accurate)
+    const knnMatch = cacheKey ? globalFontMapping[cacheKey] : null;
+    if (knnMatch && knnMatch.family && knnMatch.family !== "Unknown") {
+      family = knnMatch.family;
+      isBold = knnMatch.isBold;
+      isItalic = knnMatch.isItalic;
     }
 
-    if (isGarbageFontName(family)) {
-      const realName = (cacheKey && globalFontRealNames[cacheKey]) || item.fontName || "";
-      const resolved = resolvePDFCoreFontName(realName);
+    // 3. Only fall back to psname resolution if we still have a garbage/empty name
+    if (isGarbageFontName(family) || !family) {
+      const psName = (cacheKey && cachedInfo?.postscriptName) || item.fontName || "";
+      const resolved = resolvePDFCoreFontName(psName);
+      // Only accept the resolution if it gives us something better than Helvetica
+      // (resolvePDFCoreFontName returns Helvetica as its own default, so only
+      // override if our current family is also bad)
       family = resolved.family;
       isBold = resolved.isBold;
       isItalic = resolved.isItalic;
