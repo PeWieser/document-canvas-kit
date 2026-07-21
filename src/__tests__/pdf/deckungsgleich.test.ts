@@ -104,24 +104,23 @@ describe("Text replacement is deckungsgleich (position-preserving)", () => {
 
         const dx = Math.abs(found.transform[4] - anno.transform![4]);
         const dy = Math.abs(found.transform[5] - anno.transform![5]);
-        const ds = Math.abs(
-          Math.hypot(found.transform[0], found.transform[1]) -
-            Math.hypot(anno.transform![0], anno.transform![1]),
-        );
+        // Vertical font height (unaffected by horizontal Tz scaling)
+        const foundHeight = Math.hypot(found.transform[2], found.transform[3]) || Math.abs(found.transform[3]);
+        const annoHeight = Math.hypot(anno.transform![2], anno.transform![3]) || Math.abs(anno.transform![3]);
+        const ds = Math.abs(foundHeight - annoHeight);
+        const dw = Math.abs((found.width || 0) - (anno.width || 0));
+
         if (dx <= POS_TOLERANCE && dy <= POS_TOLERANCE) posMatches++;
         else failures.push(`"${wanted}" pos drift dx=${dx.toFixed(3)} dy=${dy.toFixed(3)}`);
-        if (ds <= SIZE_TOLERANCE) sizeMatches++;
-        else failures.push(`"${wanted}" size drift ds=${ds.toFixed(3)}`);
+        if (ds <= SIZE_TOLERANCE && dw <= 3.0) sizeMatches++;
+        else failures.push(`"${wanted}" size/width drift ds=${ds.toFixed(3)} dw=${dw.toFixed(3)}`);
       }
 
       if (failures.length) console.warn(`[deckungsgleich ${pdfName}]\n` + failures.slice(0, 10).join("\n"));
 
-      // At least 70 % of the replaced items should be perfectly aligned.
-      // Some items (subset fonts pdf-lib refuses, or fonts that fail fontkit)
-      // will drift slightly – that's the expected fallback path.
       if (checked > 0) {
-        expect(posMatches / checked).toBeGreaterThanOrEqual(0.7);
-        expect(sizeMatches / checked).toBeGreaterThanOrEqual(0.9);
+        expect(posMatches / checked).toBeGreaterThanOrEqual(0.95);
+        expect(sizeMatches / checked).toBeGreaterThanOrEqual(0.95);
       }
     }, 60_000);
   }

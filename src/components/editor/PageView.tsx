@@ -249,10 +249,18 @@ async function extractTextColors(page: any): Promise<number[][]> {
   }
 }
 
-const globalFontMappings = new WeakMap<any, Record<string, any>>();
-const globalFontInfos = new WeakMap<any, Record<string, FontInfo>>();
-const globalFontRealNames = new WeakMap<any, Record<string, string>>();
-const globalFontMatchingPromises = new WeakMap<any, Record<number, Promise<any>>>();
+export let globalFontMapping: Record<string, any> = {};
+export let globalFontInfo: Record<string, FontInfo> = {};
+export let globalFontRealNames: Record<string, string> = {};
+export let globalFontMatchingPromises: Record<number, Promise<any>> = {};
+
+export function clearGlobalFontCache() {
+  globalFontMapping = {};
+  globalFontInfo = {};
+  globalFontRealNames = {};
+  globalFontMatchingPromises = {};
+}
+
 const globalPageColors = new WeakMap<any, number[][]>();
 
 export function PageView({ doc, pageId }: Props) {
@@ -264,8 +272,6 @@ export function PageView({ doc, pageId }: Props) {
   const [items, setItems] = useState<TextItem[]>([]);
   const [imageRects, setImageRects] = useState<Rect[]>([]);
   const fontRealNames = useRef<Record<string, string>>({});
-  const fontMappingRef = useRef<Record<string, any>>({});
-  const fontInfoRef = useRef<Record<string, FontInfo>>({});
   const replaceRectRef = useRef<Rect | null>(null);
   const [hoverCursor, setHoverCursor] = useState<string | null>(null);
   const [workerLoading, setWorkerLoading] = useState(false);
@@ -353,26 +359,7 @@ export function PageView({ doc, pageId }: Props) {
     setItems([]);
     setImageRects([]);
 
-    let mappings = globalFontMappings.get(doc);
-    if (!mappings) {
-      mappings = {};
-      globalFontMappings.set(doc, mappings);
-    }
-    fontMappingRef.current = mappings;
-
-    let infos = globalFontInfos.get(doc);
-    if (!infos) {
-      infos = {};
-      globalFontInfos.set(doc, infos);
-    }
-    fontInfoRef.current = infos;
-
-    let realNames = globalFontRealNames.get(doc);
-    if (!realNames) {
-      realNames = {};
-      globalFontRealNames.set(doc, realNames);
-    }
-    fontRealNames.current = realNames;
+    // Using module-level global font cache.
 
     let cancelled = false;
     (async () => {
@@ -484,6 +471,60 @@ export function PageView({ doc, pageId }: Props) {
   const penPtsRef = useRef<[number, number][]>([]);
   const [penScreen, setPenScreen] = useState<[number, number][]>([]);
   const startRef = useRef<[number, number] | null>(null);
+  const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }[]>([]);
+
+  const handleDragSnap = useCallback((rawRect: Rect, skip: boolean, ignoreId: string) => {
+    if (skip || !viewport) {
+      setSnapGuides([]);
+      return rawRect;
+    }
+    const snapZone = 6 / zoom;
+    let newX = rawRect.x;
+    let newY = rawRect.y;
+    const guides: { x?: number; y?: number }[] = [];
+
+    const vWidth = viewport.viewBox[2];
+    const vHeight = viewport.viewBox[3];
+
+    const trySnapX = (target: number, current: number) => {
+      if (Math.abs(target - current) < snapZone) {
+        newX += target - current;
+        guides.push({ x: target });
+      }
+    };
+    const trySnapY = (target: number, current: number) => {
+      if (Math.abs(target - current) < snapZone) {
+        newY += target - current;
+        guides.push({ y: target });
+      }
+    };
+
+    // margins & center
+    trySnapX(0, rawRect.x);
+    trySnapX(vWidth, rawRect.x + rawRect.w);
+    trySnapX(vWidth / 2, rawRect.x + rawRect.w / 2);
+
+    trySnapY(0, rawRect.y);
+    trySnapY(vHeight, rawRect.y + rawRect.h);
+    trySnapY(vHeight / 2, rawRect.y + rawRect.h / 2);
+
+    // other annos
+    pageAnnos.forEach(a => {
+      if (a.id === ignoreId || !("rect" in a)) return;
+      const r = a.rect as Rect;
+      if (r && typeof r.x === 'number') {
+        trySnapX(r.x, rawRect.x);
+        trySnapX(r.x + r.w, rawRect.x + rawRect.w);
+        trySnapX(r.x + r.w / 2, rawRect.x + rawRect.w / 2);
+        trySnapY(r.y, rawRect.y);
+        trySnapY(r.y + r.h, rawRect.y + rawRect.h);
+        trySnapY(r.y + r.h / 2, rawRect.y + rawRect.h / 2);
+      }
+    });
+
+    setSnapGuides(guides);
+    return { ...rawRect, x: newX, y: newY };
+  }, [pageAnnos, viewport, zoom]);
 
   const localXY = (e: React.PointerEvent | React.MouseEvent) => {
     const rect = wrapRef.current!.getBoundingClientRect();
@@ -669,23 +710,33 @@ export function PageView({ doc, pageId }: Props) {
     let isBold = false;
     let isItalic = false;
 
-    const cacheKey = item.fontName ? `${pageId}_${item.fontName}` : "";
-    const cachedInfo = cacheKey ? fontInfoRef.current[cacheKey] : undefined;
+    const cacheKey = item.fontName || "";
+    const cachedInfo = cacheKey ? globalFontInfo[cacheKey] : undefined;
     if (cachedInfo) {
       family = cachedInfo.family;
       isBold = cachedInfo.isBold;
       isItalic = cachedInfo.isItalic;
-    } else {
-      const realName = (cacheKey && fontRealNames.current[cacheKey]) || item.fontName || "";
+    }
+
+    if (cacheKey && globalFontRealNames[cacheKey]) {
+      const realName = globalFontRealNames[cacheKey];
+      item.fontName = realName;
+      const knnMatch = cacheKey ? globalFontMapping[cacheKey] : null;
+      if (knnMatch) {
+         family = knnMatch.family;
+         isBold = knnMatch.isBold;
+         isItalic = knnMatch.isItalic;
+      }
+    } else if (cachedInfo) {
+      const realName = item.fontName || "";
       const resolved = resolvePDFCoreFontName(realName);
-      const knnMatch = cacheKey ? fontMappingRef.current[cacheKey] : null;
-      family = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : resolved.family;
-      isBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : resolved.isBold;
-      isItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : resolved.isItalic;
+      family = resolved.family;
+      isBold = resolved.isBold;
+      isItalic = resolved.isItalic;
     }
 
     if (isGarbageFontName(family)) {
-      const realName = (cacheKey && fontRealNames.current[cacheKey]) || item.fontName || "";
+      const realName = (cacheKey && globalFontRealNames[cacheKey]) || item.fontName || "";
       const resolved = resolvePDFCoreFontName(realName);
       family = resolved.family;
       isBold = resolved.isBold;
@@ -716,8 +767,6 @@ export function PageView({ doc, pageId }: Props) {
       width: item.width,
       lineHeight: item.height,
       originalFontBytes: cachedInfo?.bytes,
-      weight: cachedInfo?.weight,
-      italicAngle: cachedInfo?.italicAngle,
     } as Annotation);
 
     // 1. Resolve page colors on-demand asynchronously
@@ -742,38 +791,40 @@ export function PageView({ doc, pageId }: Props) {
     }).catch(() => {
       // keep default color if extraction fails
     });
-
     // 2. Resolve font matching on-demand asynchronously
     if (item.fontName && !cachedInfo) {
-      // Get introspected info and run KNN match for this specific font in parallel
-      const infoPromise = getFontInfo(pdfPage, item.fontName);
-      const matchPromise = matchSingleFontOnPage(pdfPage, item.fontName);
+      const cacheKey = item.fontName || "";
+      void getFontInfo(pdfPage, item.fontName).then((info) => {
+        globalFontInfo[cacheKey] = info;
+        let fam = info.family;
+        let bld = info.isBold;
+        let itl = info.isItalic;
+        if (isGarbageFontName(fam)) {
+          const resolved = resolvePDFCoreFontName(item.fontName);
+          fam = resolved.family;
+          bld = resolved.isBold;
+          itl = resolved.isItalic;
+        }
+        if (fam) {
+          void loadWebFont(fam);
+          setDefaultFontFamily(fam);
+          updateAnnotation(annoId, {
+            fontFamily: fam,
+            bold: bld,
+            italic: itl,
+            originalFontBytes: info.bytes,
+          } as Partial<Annotation>);
+        }
+      }).catch(() => {});
 
-      void Promise.all([infoPromise, matchPromise]).then(([info, knnMatch]) => {
-        const cacheKey = `${pageId}_${item.fontName}`;
-        let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
-        let matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
-        let matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
-
-        if (isGarbageFontName(matchedFamily)) {
-          const realName = fontRealNames.current[cacheKey] || item.fontName || "";
-          const resolved = resolvePDFCoreFontName(realName);
-          matchedFamily = resolved.family;
-          matchedBold = resolved.isBold;
-          matchedItalic = resolved.isItalic;
+      void matchSingleFontOnPage(pdfPage, item.fontName).then((knnMatch) => {
+        if (knnMatch && knnMatch.family !== "Unknown") {
+          globalFontMapping[cacheKey] = knnMatch;
         }
 
-        // Cache the corrected FontInfo
-        fontInfoRef.current[cacheKey] = {
-          ...info,
-          family: matchedFamily,
-          isBold: matchedBold,
-          isItalic: matchedItalic,
-        };
-
-        if (knnMatch) {
-          fontMappingRef.current[cacheKey] = knnMatch;
-        }
+        const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
+        const matchedBold = knnMatch ? knnMatch.isBold : info.isBold;
+        const matchedItalic = knnMatch ? knnMatch.isItalic : info.isItalic;
 
         updateAnnotation(annoId, {
           fontFamily: matchedFamily,
@@ -1013,6 +1064,16 @@ export function PageView({ doc, pageId }: Props) {
                 data-i={i}
                 onClick={() => onSpanClick(i)}
                 style={{ cursor: tool === "edit-text" || tool === "redact" ? "text" : undefined }}
+                onMouseEnter={() => {
+                  if (tool === "edit-text" && it.fontName && !globalFontInfo[it.fontName] && pdfPage) {
+                    getFontInfo(pdfPage, it.fontName).then(info => {
+                      globalFontInfo[it.fontName] = info;
+                    }).catch(() => {});
+                    matchSingleFontOnPage(pdfPage, it.fontName).then(mapping => {
+                      if (mapping) globalFontMapping[it.fontName] = mapping;
+                    }).catch(() => {});
+                  }
+                }}
               >
                 {it.str}
               </span>
@@ -1107,8 +1168,25 @@ export function PageView({ doc, pageId }: Props) {
                   onUpdate={(patch, commitToHistory) => updateAnnotation(a.id, patch, commitToHistory)}
                   onRemove={() => removeAnnotation(a.id)}
                   t={t}
+                  onDragSnap={handleDragSnap}
                 />
               ))}
+
+            {snapGuides.map((g, i) => {
+              if (!viewport) return null;
+              const xScreen = g.x !== undefined ? viewport.convertToViewportPoint(g.x, 0)[0] : undefined;
+              const yScreen = g.y !== undefined ? viewport.convertToViewportPoint(0, g.y)[1] : undefined;
+              return (
+                <svg key={`guide-${i}`} className="absolute inset-0 h-full w-full pointer-events-none z-50">
+                  {xScreen !== undefined && (
+                    <line x1={xScreen} y1={0} x2={xScreen} y2="100%" stroke="#3b82f6" strokeWidth={1} strokeDasharray="2 2" />
+                  )}
+                  {yScreen !== undefined && (
+                    <line x1={0} y1={yScreen} x2="100%" y2={yScreen} stroke="#3b82f6" strokeWidth={1} strokeDasharray="2 2" />
+                  )}
+                </svg>
+              );
+            })}
 
             {viewport && draft && (
               <div
@@ -1203,6 +1281,7 @@ function AnnoView({
   onUpdate,
   onRemove,
   t,
+  onDragSnap,
 }: {
   anno: Annotation;
   vp: Viewport;
@@ -1213,9 +1292,11 @@ function AnnoView({
   onUpdate: (patch: Partial<Annotation>, commitToHistory?: boolean) => void;
   onRemove: () => void;
   t: (k: any) => string;
+  onDragSnap?: (rect: Rect, skip: boolean, ignoreId: string) => Rect;
 }) {
   const selectable = tool === "select";
   const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
+  const dragStartRect = useRef<Rect | null>(null);
 
   if (anno.kind === "highlight") {
     return (
@@ -1272,17 +1353,24 @@ function AnnoView({
          {selected && (
           <>
             <MoveHandle
-              onDragStart={pushHistorySnapshot}
-              onMove={(dxS, dyS) => {
+              onDragStart={() => {
+                pushHistorySnapshot();
+                if ("rect" in anno) dragStartRect.current = anno.rect;
+              }}
+              onDragEnd={() => {
+                if (onDragSnap && "rect" in anno) onDragSnap(anno.rect, true, anno.id);
+              }}
+              onMove={(dxS, dyS, dxTotal, dyTotal) => {
+                if (!dragStartRect.current) return;
                 const p0 = vp.convertToPdfPoint(0, 0);
-                const p1 = vp.convertToPdfPoint(dxS, dyS);
-                onUpdate({
-                  rect: {
-                    ...anno.rect,
-                    x: anno.rect.x + (p1[0] - p0[0]),
-                    y: anno.rect.y + (p1[1] - p0[1]),
-                  },
-                } as any, false);
+                const p1 = vp.convertToPdfPoint(dxTotal, dyTotal);
+                const rawRect = {
+                  ...dragStartRect.current,
+                  x: dragStartRect.current.x + (p1[0] - p0[0]),
+                  y: dragStartRect.current.y + (p1[1] - p0[1]),
+                };
+                const snapped = onDragSnap ? onDragSnap(rawRect, false, anno.id) : rawRect;
+                onUpdate({ rect: snapped } as any, false);
               }}
             />
             <ResizeHandle
@@ -1318,6 +1406,12 @@ function AnnoView({
       const sp = vp.convertToViewportPoint(p[0], p[1]);
       return [sp[0], sp[1]] as [number, number];
     });
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const bx = Math.min(...xs);
+    const by = Math.min(...ys);
+    const bw = Math.max(...xs) - bx;
+    const bh = Math.max(...ys) - by;
     return (
       <svg className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}>
         <path
@@ -1329,9 +1423,12 @@ function AnnoView({
           style={{ pointerEvents: selectable ? "auto" : "none" }}
         />
         {selected && (
-          <g onClick={onRemove} style={{ cursor: "pointer", pointerEvents: "auto" }}>
-            <circle cx={pts[0][0]} cy={pts[0][1]} r={9} fill="hsl(0 72% 51%)" />
-          </g>
+          <>
+            <rect x={bx - 4} y={by - 4} width={bw + 8} height={bh + 8} fill="none" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 3" style={{ pointerEvents: "none" }} />
+            <g onClick={onRemove} style={{ cursor: "pointer", pointerEvents: "auto" }}>
+              <circle cx={pts[0][0]} cy={pts[0][1]} r={9} fill="hsl(0 72% 51%)" />
+            </g>
+          </>
         )}
       </svg>
     );
@@ -1383,10 +1480,13 @@ function AnnoView({
     
     // For textReplace annotations, measure text to allow auto-growing without font distortion
     let naturalWidth = origWidth;
+    let textScaleX = 1;
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
       const measured = getTextWidth(anno.text, fontSpec);
-      naturalWidth = Math.max(origWidth, measured);
+      const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
+      textScaleX = measured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / measured : 1;
+      naturalWidth = pdfScreenWidth;
     }
 
     const s = {
@@ -1394,7 +1494,10 @@ function AnnoView({
       top: `${top}px`,
       width: anno.kind === "textReplace" ? `${naturalWidth}px` : `${origWidth}px`,
     };
-    const transformString = transform ? `rotate(${angle}rad)` : undefined;
+    let transformString = transform ? `rotate(${angle}rad)` : undefined;
+    if (anno.kind === "textReplace") {
+       transformString = transformString ? `${transformString} scaleX(${textScaleX})` : `scaleX(${textScaleX})`;
+    }
     const transformOriginString = transform ? `0 ${screenLineHeight}px` : undefined;
 
     return (
@@ -1472,27 +1575,32 @@ function AnnoView({
             <>
               <MoveHandle
                 className={isSmall ? (isNarrow ? "-left-4 -top-5" : "-left-1 -top-5") : undefined}
-                onDragStart={pushHistorySnapshot}
-                onMove={(dxScreen, dyScreen) => {
+                onDragStart={() => {
+                  pushHistorySnapshot();
+                  if (anno.kind === "textbox") dragStartRect.current = { x: anno.x, y: anno.y, w: anno.w, h: 10 };
+                }}
+                onDragEnd={() => {
+                  if (onDragSnap && anno.kind === "textbox") {
+                    onDragSnap({ x: anno.x, y: anno.y, w: anno.w, h: 10 }, true, anno.id);
+                  }
+                }}
+                onMove={(dxScreen, dyScreen, dxTotal, dyTotal) => {
                   const p0 = vp.convertToPdfPoint(0, 0);
-                  const p1 = vp.convertToPdfPoint(dxScreen, dyScreen);
+                  const p1 = vp.convertToPdfPoint(dxTotal, dyTotal);
                   const dx = p1[0] - p0[0];
                   const dy = p1[1] - p0[1];
                   if (anno.kind === "textbox") {
-                    onUpdate({ x: anno.x + dx, y: anno.y + dy } as any, false);
-                  } else {
-                    const nextRect = { ...anno.rect, x: anno.rect.x + dx, y: anno.rect.y + dy };
-                    const nextTransform = anno.transform
-                      ? [
-                          anno.transform[0],
-                          anno.transform[1],
-                          anno.transform[2],
-                          anno.transform[3],
-                          anno.transform[4] + dx,
-                          anno.transform[5] + dy,
-                        ]
-                      : undefined;
-                    onUpdate({ rect: nextRect, transform: nextTransform } as any, false);
+                    if (!dragStartRect.current) return;
+                    const rawRect = {
+                      x: dragStartRect.current.x + dx,
+                      y: dragStartRect.current.y + dy,
+                      w: anno.w,
+                      h: 10,
+                    };
+                    const snapped = onDragSnap ? onDragSnap(rawRect, false, anno.id) : rawRect;
+                    onUpdate({ x: snapped.x, y: snapped.y } as any, false);
+                  } else if (anno.kind === "textReplace") {
+                    onUpdate({ transform: [1, 0, 0, 1, left + dxScreen, top + dyScreen] } as any, false);
                   }
                 }}
               />
@@ -1581,29 +1689,34 @@ function MoveHandle({
   onDragEnd,
   className,
 }: {
-  onMove: (dx: number, dy: number) => void;
+  onMove: (dx: number, dy: number, dxTotal: number, dyTotal: number) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   className?: string;
 }) {
   const last = useRef<[number, number] | null>(null);
+  const start = useRef<[number, number] | null>(null);
   return (
     <div
       onPointerDown={(e) => {
         e.stopPropagation();
         (e.target as Element).setPointerCapture(e.pointerId);
         last.current = [e.clientX, e.clientY];
+        start.current = [e.clientX, e.clientY];
         onDragStart?.();
       }}
       onPointerMove={(e) => {
-        if (!last.current) return;
+        if (!last.current || !start.current) return;
         const dx = e.clientX - last.current[0];
         const dy = e.clientY - last.current[1];
+        const dxTotal = e.clientX - start.current[0];
+        const dyTotal = e.clientY - start.current[1];
         last.current = [e.clientX, e.clientY];
-        onMove(dx, dy);
+        onMove(dx, dy, dxTotal, dyTotal);
       }}
       onPointerUp={() => {
         last.current = null;
+        start.current = null;
         onDragEnd?.();
       }}
       className={cn(

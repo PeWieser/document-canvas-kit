@@ -13,6 +13,7 @@ import {
   type PDFFont,
   type PDFPage,
   radians,
+  PDFOperator,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
@@ -90,6 +91,7 @@ function drawWrappedText(
   fontSize: number,
   color: ReturnType<typeof rgb>,
   angleRad: number = 0,
+  targetWidth?: number,
 ) {
   const lines = sanitize(text).split("\n");
   const lineHeight = fontSize * 1.2;
@@ -99,6 +101,19 @@ function drawWrappedText(
     const line = lines[i];
     const lx = x + i * lineHeight * sin;
     const ly = baselineTop - i * lineHeight * cos;
+    let tzApplied = false;
+    if (targetWidth && targetWidth > 0) {
+      try {
+        const unscaledWidth = font.widthOfTextAtSize(line, fontSize);
+        if (unscaledWidth > 0) {
+          const horizScalePercent = (targetWidth / unscaledWidth) * 100;
+          page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(horizScalePercent)]));
+          tzApplied = true;
+        }
+      } catch {
+        /* font measurement fallback */
+      }
+    }
     page.drawText(line, {
       x: lx,
       y: ly,
@@ -107,6 +122,9 @@ function drawWrappedText(
       color,
       rotate: radians(angleRad),
     });
+    if (tzApplied) {
+      page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(100)]));
+    }
   }
 }
 
@@ -425,7 +443,7 @@ export async function exportPdf(
         const rawY = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
         const px = rawX;
         const py = rawY;
-        drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle);
+        drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle, a.width);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);
         const p = xform.point(a.x, a.y - a.fontSize * 0.8);

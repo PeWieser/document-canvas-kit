@@ -359,7 +359,10 @@ export function Toolbar({
 
               {(tool === "pen" ||
                 ((tool === "textbox" || tool === "edit-text") && !selectedId)) && (
-                <div className="flex items-center gap-1">
+                <div 
+                  className={cn("flex items-center gap-1 transition-opacity duration-150", tool === "edit-text" && !selectedId ? "pointer-events-none" : "")}
+                  style={{ opacity: tool === "edit-text" && !selectedId ? 0.35 : undefined }}
+                >
                   <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
                   <label
                     className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-full ring-1 ring-white/30"
@@ -429,7 +432,18 @@ export function Toolbar({
 
               {(tool === "textbox" ||
                 tool === "edit-text" ||
-                (tool === "select" && hasTextSelected)) && <FontPicker />}
+                (tool === "select" && hasTextSelected)) && (
+                <div
+                  className={cn(
+                    "transition-opacity duration-150",
+                    tool === "edit-text" && !selectedId ? "pointer-events-none" : "opacity-100",
+                  )}
+                  style={{ opacity: tool === "edit-text" && !selectedId ? 0.35 : undefined }}
+                  title={tool === "edit-text" && !selectedId ? "Klicke auf einen Text zum Bearbeiten" : undefined}
+                >
+                  <FontPicker />
+                </div>
+              )}
             </div>
 
             {tool === "comment" && (

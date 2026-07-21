@@ -26,6 +26,10 @@ export function FontPicker() {
 
   const anno = annotations.find((a) => a.id === selectedId);
 
+  const defaultFontFamily = useEditor((s) => s.defaultFontFamily);
+  const defaultFontSize = useEditor((s) => s.fontSize);
+  const defaultColor = useEditor((s) => s.color);
+
   // Font family dropdown: combine COMMON_FONTS, custom fingerprints, and all 1900+ Bunny Fonts
   const families = useMemo(() => {
     const list = new Set([...COMMON_FONTS, ...fontFamilies]);
@@ -41,16 +45,26 @@ export function FontPicker() {
     return sorted;
   }, [fingerprints, anno?.fontFamily]);
 
-  // Only render for text-carrying annotations.
-  if (!anno || (anno.kind !== "textReplace" && anno.kind !== "textbox")) return null;
+  // Only render for text-carrying annotations if one is selected, but allow rendering for new text tools
+  if (anno && anno.kind !== "textReplace" && anno.kind !== "textbox") return null;
 
-  const patch = (p: Record<string, unknown>) => updateAnnotation(anno.id, p as never);
+  const patch = (p: Record<string, unknown>) => {
+    if (anno) {
+      updateAnnotation(anno.id, p as never);
+    }
+  };
+
+  const currentFontFamily = anno?.fontFamily || defaultFontFamily || "Helvetica";
+  const currentFontSize = anno ? Math.round(anno.fontSize) : defaultFontSize || 16;
+  const currentBold = anno?.bold || false;
+  const currentItalic = anno?.italic || false;
+  const currentColor = anno?.color || defaultColor || TEXT_COLORS[0];
 
   return (
     <div className="flex items-center gap-1 rounded-md bg-toolbar-accent/50 px-1.5 py-1">
       {/* Font family */}
       <select
-        value={anno.fontFamily || "Helvetica"}
+        value={currentFontFamily}
         onChange={(e) => {
           void loadWebFont(e.target.value);
           patch({ fontFamily: e.target.value });
@@ -70,7 +84,7 @@ export function FontPicker() {
         type="number"
         min={6}
         max={96}
-        value={Math.round(anno.fontSize)}
+        value={currentFontSize}
         onChange={(e) => patch({ fontSize: Math.max(6, Math.min(96, Number(e.target.value))) })}
         className="w-12 rounded bg-toolbar-accent px-1 py-1 text-center font-mono text-xs outline-none focus:ring-1 focus:ring-primary"
         title={t("fontSize")}
@@ -78,10 +92,10 @@ export function FontPicker() {
 
       {/* Bold */}
       <button
-        onClick={() => patch({ bold: !anno.bold })}
+        onClick={() => patch({ bold: !currentBold })}
         className={cn(
           "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          anno.bold ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          currentBold ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
         )}
         title={t("bold")}
       >
@@ -90,10 +104,10 @@ export function FontPicker() {
 
       {/* Italic */}
       <button
-        onClick={() => patch({ italic: !anno.italic })}
+        onClick={() => patch({ italic: !currentItalic })}
         className={cn(
           "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          anno.italic ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          currentItalic ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
         )}
         title={t("italic")}
       >
@@ -108,7 +122,7 @@ export function FontPicker() {
             onClick={() => patch({ color: c })}
             className={cn(
               "h-4 w-4 rounded-full ring-offset-1 ring-offset-toolbar transition",
-              anno.color === c ? "ring-2 ring-primary" : "ring-1 ring-white/30",
+              currentColor === c ? "ring-2 ring-primary" : "ring-1 ring-white/30",
             )}
             style={{ background: c }}
             title={t("color")}

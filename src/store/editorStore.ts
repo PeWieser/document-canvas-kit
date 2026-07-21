@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Annotation, Tool, ViewMode, PenStyle } from "@/lib/pdf/types";
+import { clearGlobalFontCache } from "@/components/editor/PageView";
 
 interface Snapshot {
   annotations: Annotation[];
@@ -124,7 +125,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   past: [],
   future: [],
 
-  loadDoc: (fileName, bytes, numPages, estimateSize, handle = null) =>
+  loadDoc: (fileName, bytes, numPages, estimateSize, handle = null) => {
     set({
       fileName,
       originalBytes: bytes,
@@ -140,9 +141,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       currentPage: 0,
       tool: "select",
       viewMode: "fit-width",
-    }),
+    });
+  },
 
-  closeDoc: () =>
+  closeDoc: () => {
     set({
       fileName: null,
       originalBytes: null,
@@ -155,7 +157,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       future: [],
       selectedId: null,
       currentPage: 0,
-    }),
+    });
+  },
 
   setFileHandle: (h) => set({ fileHandle: h }),
   markSaved: (bytes) => set({ originalBytes: bytes, dirty: false }),

@@ -10,7 +10,7 @@ import { DropZone } from "./DropZone";
 import { Toolbar } from "./Toolbar";
 import { ThumbnailRail } from "./ThumbnailRail";
 import { GridOverview } from "./GridOverview";
-import { PageView } from "./PageView";
+import { PageView, clearGlobalFontCache } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
@@ -56,6 +56,7 @@ export function PdfStudio() {
         const probe = await loadPdfDocument(buf.buffer.slice(0) as ArrayBuffer);
         const p1 = await probe.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
+        clearGlobalFontCache();
         loadDoc(name, buf, probe.numPages, { w: vp.width, h: vp.height }, handle);
       } catch {
         toast.error(t("exportFail"));
@@ -594,17 +595,15 @@ export function PdfStudio() {
                   ref={(el) => {
                     pageRefs.current[index] = el;
                   }}
-                  style={{ width: slotDims.w, minHeight: slotDims.h }}
+                  style={{
+                    width: slotDims.w,
+                    minHeight: slotDims.h,
+                    contentVisibility: visible.has(index) ? "visible" : "hidden",
+                    containIntrinsicSize: `${slotDims.w}px ${slotDims.h}px`
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {visible.has(index) ? (
-                    <PageView doc={doc} pageId={pageId} />
-                  ) : (
-                    <div
-                      className="rounded-sm bg-white shadow-sm ring-1 ring-black/5"
-                      style={{ width: slotDims.w, height: slotDims.h }}
-                    />
-                  )}
+                  <PageView doc={doc} pageId={pageId} />
                 </div>
               ))}
             </div>
