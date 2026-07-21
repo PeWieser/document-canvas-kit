@@ -189,7 +189,6 @@ interface PageTransform {
 }
 
 function pageTransform(page: PDFPage): PageTransform {
-  const mb = page.getMediaBox();
   const cb = page.getCropBox();
   const rot = ((page.getRotation().angle % 360) + 360) % 360;
   const ox = cb.x || 0;
@@ -424,8 +423,8 @@ export async function exportPdf(
         const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
         const rawX = a.transform ? a.transform[4] : a.rect.x;
         const rawY = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
-        const px = rawX + (cb.x || 0);
-        const py = rawY + (cb.y || 0);
+        const px = rawX;
+        const py = rawY;
         drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle);
       } else if (a.kind === "textbox") {
         const font = await resolveFont(a.fontFamily, a.bold, a.italic);

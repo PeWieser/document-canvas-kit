@@ -688,6 +688,8 @@ export function PageView({ doc, pageId }: Props) {
       const realName = (cacheKey && fontRealNames.current[cacheKey]) || item.fontName || "";
       const resolved = resolvePDFCoreFontName(realName);
       family = resolved.family;
+      isBold = resolved.isBold;
+      isItalic = resolved.isItalic;
     }
 
     if (family) {
@@ -750,13 +752,15 @@ export function PageView({ doc, pageId }: Props) {
       void Promise.all([infoPromise, matchPromise]).then(([info, knnMatch]) => {
         const cacheKey = `${pageId}_${item.fontName}`;
         let matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
-        const matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
-        const matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
+        let matchedBold = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isBold : info.isBold;
+        let matchedItalic = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.isItalic : info.isItalic;
 
         if (isGarbageFontName(matchedFamily)) {
           const realName = fontRealNames.current[cacheKey] || item.fontName || "";
           const resolved = resolvePDFCoreFontName(realName);
           matchedFamily = resolved.family;
+          matchedBold = resolved.isBold;
+          matchedItalic = resolved.isItalic;
         }
 
         // Cache the corrected FontInfo
@@ -1367,7 +1371,7 @@ function AnnoView({
     }
 
     const left = tx[4];
-    const top = tx[5]; // Baseline start Y coordinate
+    const top = transform ? tx[5] - screenLineHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const origWidth = anno.kind === "textReplace"
       ? (transform
@@ -1391,7 +1395,7 @@ function AnnoView({
       width: anno.kind === "textReplace" ? `${naturalWidth}px` : `${origWidth}px`,
     };
     const transformString = transform ? `rotate(${angle}rad)` : undefined;
-    const transformOriginString = transform ? "0 0" : undefined;
+    const transformOriginString = transform ? `0 ${screenLineHeight}px` : undefined;
 
     return (
       <div
@@ -1453,9 +1457,7 @@ function AnnoView({
             margin: 0,
             border: "none",
             display: "block",
-            position: transform ? "absolute" : "relative",
-            top: transform ? `-${screenLineHeight}px` : undefined,
-            left: 0,
+            position: "relative",
             overflow: anno.kind === "textReplace" ? "hidden" : "visible",
             whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
             width: "100%",
