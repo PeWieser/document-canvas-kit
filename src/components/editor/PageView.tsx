@@ -1496,7 +1496,7 @@ function AnnoView({
       const measured = getTextWidth(anno.text, fontSpec);
       const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
       textScaleX = measured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / measured : 1;
-      containerWidth = measured > 0 ? measured : pdfScreenWidth;
+      containerWidth = measured > 0 ? measured + 2 : pdfScreenWidth;
     }
 
     const s = {
@@ -1541,7 +1541,7 @@ function AnnoView({
               el.style.height = "auto";
               el.style.height = `${el.scrollHeight}px`;
             } else {
-              el.style.height = `${fontHeight}px`;
+              el.style.height = `${Math.ceil(fontHeight * 1.2)}px`;
             }
             onUpdate({ text: el.value } as any);
           }}
@@ -1551,27 +1551,29 @@ function AnnoView({
                 el.style.height = "auto";
                 el.style.height = `${el.scrollHeight}px`;
               } else {
-                el.style.height = `${fontHeight}px`;
+                el.style.height = `${Math.ceil(fontHeight * 1.2)}px`;
               }
             }
           }}
           onFocus={onSelect}
           placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
           rows={anno.kind === "textReplace" ? 1 : undefined}
-          className="w-full resize-none bg-transparent outline-none"
+          className="w-full resize-none bg-transparent outline-none overflow-hidden"
           style={{
             fontSize: fontHeight,
             color: anno.color,
             fontFamily: family,
             fontWeight: anno.bold ? 700 : 400,
             fontStyle: anno.italic ? "italic" : "normal",
-            lineHeight: 1,
+            lineHeight: 1.15,
             padding: 0,
             margin: 0,
             border: "none",
             display: "block",
             position: "relative",
-            overflow: anno.kind === "textReplace" ? "visible" : "visible",
+            overflow: "hidden",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
             whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
             width: "100%",
           }}

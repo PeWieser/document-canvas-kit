@@ -211,3 +211,14 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Suppress all native scrollbars on textareas in the editor */
+textarea {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+textarea::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
