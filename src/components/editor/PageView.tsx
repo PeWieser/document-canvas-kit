@@ -1306,6 +1306,7 @@ function AnnoView({
   const selectable = tool === "select";
   const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
   const dragStartRect = useRef<Rect | null>(null);
+  const dragStartTransform = useRef<number[] | null>(null);
 
   if (anno.kind === "highlight") {
     return (
@@ -1477,7 +1478,7 @@ function AnnoView({
     }
 
     const left = tx[4];
-    const top = transform ? tx[5] - screenLineHeight : tx[5];
+    const top = transform ? tx[5] - fontHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const origWidth = anno.kind === "textReplace"
       ? (transform
@@ -1487,27 +1488,27 @@ function AnnoView({
 
     const family = cssFontStack(anno.fontFamily || "");
     
-    // For textReplace annotations, measure text to allow auto-growing without font distortion
-    let naturalWidth = origWidth;
+    // For textReplace annotations, measure unscaled text width to prevent right-clipping
+    let containerWidth = origWidth;
     let textScaleX = 1;
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
       const measured = getTextWidth(anno.text, fontSpec);
       const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
       textScaleX = measured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / measured : 1;
-      naturalWidth = pdfScreenWidth;
+      containerWidth = measured > 0 ? measured : pdfScreenWidth;
     }
 
     const s = {
       left: `${left}px`,
       top: `${top}px`,
-      width: anno.kind === "textReplace" ? `${naturalWidth}px` : `${origWidth}px`,
+      width: anno.kind === "textReplace" ? `${containerWidth}px` : `${origWidth}px`,
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
     if (anno.kind === "textReplace") {
        transformString = transformString ? `${transformString} scaleX(${textScaleX})` : `scaleX(${textScaleX})`;
     }
-    const transformOriginString = transform ? `0 ${screenLineHeight}px` : undefined;
+    const transformOriginString = transform ? `0 0` : undefined;
 
     return (
       <div
@@ -1570,14 +1571,14 @@ function AnnoView({
             border: "none",
             display: "block",
             position: "relative",
-            overflow: anno.kind === "textReplace" ? "hidden" : "visible",
+            overflow: anno.kind === "textReplace" ? "visible" : "visible",
             whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
             width: "100%",
           }}
         />
         {selected && (() => {
           const height = anno.kind === "textReplace" ? fontHeight : anno.h;
-          const width = anno.kind === "textReplace" ? naturalWidth : anno.w;
+          const width = anno.kind === "textReplace" ? containerWidth : anno.w;
           const isSmall = height < 20 || width < 45;
           const isNarrow = width < 36;
           return (
@@ -1587,10 +1588,15 @@ function AnnoView({
                 onDragStart={() => {
                   pushHistorySnapshot();
                   if (anno.kind === "textbox") dragStartRect.current = { x: anno.x, y: anno.y, w: anno.w, h: 10 };
+                  if (anno.kind === "textReplace") dragStartTransform.current = [...(anno as TextReplaceAnno).transform];
                 }}
                 onDragEnd={() => {
                   if (onDragSnap && anno.kind === "textbox") {
                     onDragSnap({ x: anno.x, y: anno.y, w: anno.w, h: 10 }, true, anno.id);
+                  }
+                  if (onDragSnap && anno.kind === "textReplace") {
+                    const t = (anno as TextReplaceAnno).transform;
+                    onDragSnap({ x: t[4], y: t[5], w: (anno as TextReplaceAnno).width || 50, h: fontHeight / zoom }, true, anno.id);
                   }
                 }}
                 onMove={(dxScreen, dyScreen, dxTotal, dyTotal) => {
@@ -1609,7 +1615,19 @@ function AnnoView({
                     const snapped = onDragSnap ? onDragSnap(rawRect, false, anno.id) : rawRect;
                     onUpdate({ x: snapped.x, y: snapped.y } as any, false);
                   } else if (anno.kind === "textReplace") {
-                    onUpdate({ transform: [1, 0, 0, 1, left + dxScreen, top + dyScreen] } as any, false);
+                    if (!dragStartTransform.current) return;
+                    const origT = dragStartTransform.current;
+                    const rawRect = {
+                      x: origT[4] + dx,
+                      y: origT[5] + dy,
+                      w: (anno as TextReplaceAnno).width || 50,
+                      h: fontHeight / zoom,
+                    };
+                    const snapped = onDragSnap ? onDragSnap(rawRect, false, anno.id) : rawRect;
+                    const newTransform = [...origT];
+                    newTransform[4] = snapped.x;
+                    newTransform[5] = snapped.y;
+                    onUpdate({ transform: newTransform } as any, false);
                   }
                 }}
               />
