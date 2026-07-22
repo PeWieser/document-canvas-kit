@@ -1501,7 +1501,7 @@ function AnnoView({
     }
 
     const left = tx[4];
-    const top = transform ? tx[5] - fontHeight * 0.82 : tx[5];
+    const top = transform ? tx[5] - fontHeight : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const origWidth = anno.kind === "textReplace"
       ? (transform
@@ -1591,7 +1591,7 @@ function AnnoView({
             fontFamily: family,
             fontWeight: anno.bold ? 700 : 400,
             fontStyle: anno.italic ? "italic" : "normal",
-            lineHeight: 1.15,
+            lineHeight: 1,
             padding: 0,
             margin: 0,
             border: "none",
