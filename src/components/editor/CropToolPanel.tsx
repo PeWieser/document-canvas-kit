@@ -67,7 +67,9 @@ export function CropToolPanel({ doc }: Props) {
 
   useEffect(() => {
     if (pos) return;
-    setPos({ x: Math.max(20, window.innerWidth - 360), y: window.innerHeight - 420 });
+    const initialX = Math.max(10, Math.min(window.innerWidth - 330, window.innerWidth - 360));
+    const initialY = Math.max(60, window.innerHeight - 420);
+    setPos({ x: initialX, y: initialY });
   }, [pos]);
 
   // Resolve targets (display indices)
@@ -193,7 +195,7 @@ export function CropToolPanel({ doc }: Props) {
 
   return (
     <div
-      className="fixed z-40 w-[320px] rounded-lg border bg-background shadow-2xl select-none"
+      className="fixed z-40 w-[calc(100vw-1.25rem)] max-w-[320px] rounded-lg border bg-background shadow-2xl select-none"
       style={{ left: pos.x, top: pos.y }}
     >
       <div

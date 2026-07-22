@@ -202,3 +202,12 @@
     opacity: 1;
   }
 }
+
+/* Sub-toolbar horizontal scrollbar hide */
+.subtoolbar-scroll::-webkit-scrollbar {
+  display: none;
+}
+.subtoolbar-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

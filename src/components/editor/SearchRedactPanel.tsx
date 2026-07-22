@@ -133,7 +133,7 @@ export function SearchRedactPanel({ doc }: { doc: PdfDocumentProxy | null }) {
   if (!open) return null;
 
   return (
-    <div className="fixed right-4 top-20 z-40 flex w-[340px] flex-col rounded-lg border bg-background shadow-xl">
+    <div className="fixed right-2 top-16 z-40 flex w-[calc(100vw-1rem)] max-w-[340px] flex-col rounded-lg border bg-background shadow-xl md:right-4 md:top-20">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <input
@@ -170,20 +170,32 @@ export function SearchRedactPanel({ doc }: { doc: PdfDocumentProxy | null }) {
         {hits.map((h, i) => {
           const di = pageOrder.indexOf(h.page);
           return (
-            <button
+            <div
               key={i}
               onClick={() => jump(i)}
               onDoubleClick={() => redactHit(h)}
               className={cn(
-                "flex w-full items-start gap-2 border-b px-3 py-1.5 text-left text-xs hover:bg-muted",
+                "flex w-full items-center justify-between gap-2 border-b px-3 py-1.5 text-left text-xs hover:bg-muted cursor-pointer",
                 i === active && "bg-accent",
               )}
             >
-              <span className="mt-0.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                {di + 1}
-              </span>
-              <span className="line-clamp-2 flex-1 text-foreground/80">…{h.snippet}…</span>
-            </button>
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <span className="mt-0.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground shrink-0">
+                  {di + 1}
+                </span>
+                <span className="line-clamp-2 flex-1 text-foreground/80">…{h.snippet}…</span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  redactHit(h);
+                }}
+                className="shrink-0 rounded bg-destructive/10 px-1.5 py-1 text-[10px] font-medium text-destructive hover:bg-destructive/20"
+                title={t("redactCurrent")}
+              >
+                {t("redact")}
+              </button>
+            </div>
           );
         })}
       </div>

@@ -38,6 +38,10 @@ export function PdfStudio() {
   const removeAnnotation = useEditor((s) => s.removeAnnotation);
   const select = useEditor((s) => s.select);
   const setGridOpen = useEditor((s) => s.setGridOpen);
+  const sidebarOpen = useEditor((s) => s.sidebarOpen);
+  const commentsPanelOpen = useEditor((s) => s.commentsPanelOpen);
+  const toggleSidebar = useEditor((s) => s.toggleSidebar);
+  const toggleCommentsPanel = useEditor((s) => s.toggleCommentsPanel);
 
   const { doc, error } = useLoadedPdf(originalBytes);
   const [exporting, setExporting] = useState(false);
@@ -420,6 +424,57 @@ export function PdfStudio() {
     return () => document.removeEventListener("wheel", handleWheel);
   }, []);
 
+  // Mobile Touch Pinch-to-Zoom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let initialDist = 0;
+    let initialZoom = 1;
+
+    const getDist = (e: TouchEvent) => {
+      if (e.touches.length < 2) return 0;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        initialDist = getDist(e);
+        initialZoom = useEditor.getState().zoom;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && initialDist > 0) {
+        e.preventDefault();
+        const dist = getDist(e);
+        if (dist > 0) {
+          const ratio = dist / initialDist;
+          const newZoom = Math.min(6, Math.max(0.2, initialZoom * ratio));
+          prevZoomRef.current = newZoom;
+          useEditor.setState({ zoom: newZoom, viewMode: "custom" });
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        initialDist = 0;
+      }
+    };
+
+    el.addEventListener("touchstart", handleTouchStart, { passive: true });
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    el.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchmove", handleTouchMove);
+      el.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, []);
+
   // Track zoom changes to keep viewport center stable for button/keyboard zooms
   useEffect(() => {
     const el = scrollRef.current;
@@ -563,7 +618,19 @@ export function PdfStudio() {
         dark={dark}
         onToggleTheme={toggleTheme}
       />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 relative">
+        {doc && sidebarOpen && (
+          <div
+            onClick={() => toggleSidebar()}
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs md:hidden"
+          />
+        )}
+        {doc && commentsPanelOpen && (
+          <div
+            onClick={() => toggleCommentsPanel()}
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs md:hidden"
+          />
+        )}
         {doc && (
           <ThumbnailRail
             doc={doc}

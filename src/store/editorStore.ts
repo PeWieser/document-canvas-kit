@@ -141,6 +141,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       currentPage: 0,
       tool: "select",
       viewMode: "fit-width",
+      sidebarOpen: typeof window !== "undefined" && window.innerWidth < 768 ? false : get().sidebarOpen,
     });
   },
 

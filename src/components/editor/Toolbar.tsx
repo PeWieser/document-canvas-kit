@@ -314,6 +314,10 @@ export function Toolbar({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={toggleSearch} className={cn(searchOpen && "bg-accent")}>
+                    <Search className="mr-2 h-4 w-4" />
+                    <span>{t("searchRedact")}</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={toggleCommentsPanel} className={cn(commentsPanelOpen && "bg-accent")}>
                     <MessagesSquare className="mr-2 h-4 w-4" />
                     <span>{t("comments")}</span>
@@ -347,8 +351,8 @@ export function Toolbar({
         </div>
         {/* Sub-Toolbar Row */}
         {showSubToolbar && (
-          <div className="flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150">
-            <div className="flex items-center gap-4">
+          <div className="subtoolbar-scroll flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150 overflow-x-auto min-w-0 max-w-full">
+            <div className="flex items-center gap-4 min-w-max">
               <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
                 {activeTool?.label || t("tools")} Settings:
               </span>

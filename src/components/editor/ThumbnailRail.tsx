@@ -61,7 +61,7 @@ export function ThumbnailRail({
     selectedPages.includes(di) && selectedPages.length > 1 ? [...selectedPages].sort((a, b) => a - b) : [di];
 
   return (
-    <aside className="flex w-[140px] shrink-0 flex-col border-r border-border bg-sidebar select-none">
+    <aside className="fixed inset-y-0 left-0 z-50 flex w-[220px] max-w-[80vw] shrink-0 flex-col border-r border-border bg-sidebar shadow-2xl transition-all duration-200 select-none md:relative md:inset-auto md:z-auto md:w-[140px] md:shadow-none">
       <div className="flex items-center justify-between px-3 py-3.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         <span>{t("pages")}</span>
         <span className="font-mono text-xs">{pageOrder.length}</span>

@@ -45,7 +45,10 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
             <FileUp className="h-6 w-6" />
           </div>
-          <h3 className="mt-4 text-base font-medium text-foreground">{t("dropHere")}</h3>
+          <h3 className="mt-4 text-base font-medium text-foreground">
+            <span className="hidden sm:inline">{t("dropHere")}</span>
+            <span className="sm:hidden">{t("openFile")} (tippen)</span>
+          </h3>
           <p className="mt-1 text-xs text-muted-foreground">{t("dropHint")}</p>
           <input
             ref={inputRef}

@@ -44,7 +44,7 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
   };
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-sidebar">
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-[320px] max-w-[85vw] shrink-0 flex-col border-l border-border bg-sidebar shadow-2xl transition-all duration-200 md:relative md:inset-auto md:z-auto md:w-72 md:shadow-none">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t("commentsPanel")}
