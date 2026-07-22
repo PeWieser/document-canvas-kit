@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady, matchSingleFontOnPage } from "@/lib/pdf/fontVectorMatch";
 import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 import bunnyFamilies from "@/lib/pdf/font-families.json";
+import { detectParagraphs } from "@/lib/pdf/paragraphGroup";
 
 interface TextItem {
   str: string;
@@ -757,26 +758,48 @@ export function PageView({ doc, pageId }: Props) {
       setDefaultFontFamily(family);
     }
 
-    // Default color initially to black
     const defaultColor = "#111111";
-
     const annoId = uid();
-    addAnnotation({
-      id: annoId,
-      kind: "textReplace",
-      page: pageId,
-      rect,
-      text: item.str,
-      fontSize: Math.hypot(item.transform[2], item.transform[3]),
-      color: defaultColor,
-      fontFamily: family,
-      bold: isBold,
-      italic: isItalic,
-      transform: item.transform,
-      width: item.width,
-      lineHeight: item.height,
-      originalFontBytes: cachedInfo?.bytes,
-    } as Annotation);
+
+    // Detect if this item belongs to a multi-line paragraph group
+    const paras = detectParagraphs(items);
+    const para = paras.find((p) => p.lines.some((l) => l.itemIndices.includes(idx)));
+
+    if (para && para.lines.length > 1) {
+      addAnnotation({
+        id: annoId,
+        kind: "textReplace",
+        page: pageId,
+        rect: para.bounds,
+        text: para.fullText,
+        fontSize: para.fontSize,
+        color: defaultColor,
+        fontFamily: family,
+        bold: isBold,
+        italic: isItalic,
+        transform: para.transform,
+        width: para.bounds.w,
+        lineHeight: para.lineHeight,
+        originalFontBytes: cachedInfo?.bytes,
+      } as Annotation);
+    } else {
+      addAnnotation({
+        id: annoId,
+        kind: "textReplace",
+        page: pageId,
+        rect,
+        text: item.str,
+        fontSize: Math.hypot(item.transform[2], item.transform[3]),
+        color: defaultColor,
+        fontFamily: family,
+        bold: isBold,
+        italic: isItalic,
+        transform: item.transform,
+        width: item.width,
+        lineHeight: item.height,
+        originalFontBytes: cachedInfo?.bytes,
+      } as Annotation);
+    }
 
     // 1. Resolve page colors on-demand asynchronously
     let cachedColors = globalPageColors.get(pdfPage);
@@ -1478,7 +1501,7 @@ function AnnoView({
     }
 
     const left = tx[4];
-    const top = transform ? tx[5] - fontHeight : tx[5];
+    const top = transform ? tx[5] - fontHeight * 0.82 : tx[5];
     const angle = Math.atan2(tx[1], tx[0]);
     const origWidth = anno.kind === "textReplace"
       ? (transform
@@ -1487,13 +1510,16 @@ function AnnoView({
       : (anno as TextboxAnno).w * Math.hypot(tx[0], tx[1]);
 
     const family = cssFontStack(anno.fontFamily || "");
+    const isMultiline = anno.kind === "textReplace" && anno.text.includes("\n");
+    const numLines = isMultiline ? anno.text.split("\n").length : 1;
     
     // For textReplace annotations, measure unscaled text width to prevent right-clipping
     let containerWidth = origWidth;
     let textScaleX = 1;
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
-      const measured = getTextWidth(anno.text, fontSpec);
+      const firstLine = anno.text.split("\n")[0] || anno.text;
+      const measured = getTextWidth(firstLine, fontSpec);
       const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
       textScaleX = measured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / measured : 1;
       containerWidth = measured > 0 ? measured + 2 : pdfScreenWidth;
@@ -1505,7 +1531,7 @@ function AnnoView({
       width: anno.kind === "textReplace" ? `${containerWidth}px` : `${origWidth}px`,
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
-    if (anno.kind === "textReplace") {
+    if (anno.kind === "textReplace" && !isMultiline) {
        transformString = transformString ? `${transformString} scaleX(${textScaleX})` : `scaleX(${textScaleX})`;
     }
     const transformOriginString = transform ? `0 0` : undefined;
@@ -1536,7 +1562,7 @@ function AnnoView({
           value={anno.text}
           onChange={(e) => {
             const el = e.target as HTMLTextAreaElement;
-            if (anno.kind === "textbox") {
+            if (anno.kind === "textbox" || isMultiline) {
               // auto-grow the box to fit its content
               el.style.height = "auto";
               el.style.height = `${el.scrollHeight}px`;
@@ -1547,7 +1573,7 @@ function AnnoView({
           }}
           ref={(el) => {
             if (el) {
-              if (anno.kind === "textbox") {
+              if (anno.kind === "textbox" || isMultiline) {
                 el.style.height = "auto";
                 el.style.height = `${el.scrollHeight}px`;
               } else {
@@ -1557,7 +1583,7 @@ function AnnoView({
           }}
           onFocus={onSelect}
           placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
-          rows={anno.kind === "textReplace" ? 1 : undefined}
+          rows={anno.kind === "textReplace" ? numLines : undefined}
           className="w-full resize-none bg-transparent outline-none overflow-hidden"
           style={{
             fontSize: fontHeight,
@@ -1574,7 +1600,7 @@ function AnnoView({
             overflow: "hidden",
             scrollbarWidth: "none",
             msOverflowStyle: "none",
-            whiteSpace: anno.kind === "textReplace" ? "nowrap" : "pre-wrap",
+            whiteSpace: isMultiline ? "pre-wrap" : (anno.kind === "textReplace" ? "nowrap" : "pre-wrap"),
             width: "100%",
           }}
         />
