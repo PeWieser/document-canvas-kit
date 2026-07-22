@@ -129,6 +129,26 @@ export function FontPicker() {
           />
         ))}
       </div>
+
+      {/* Line Height (Zeilenabstand) */}
+      <div className="flex items-center gap-1 border-l border-toolbar-accent/50 pl-1.5">
+        <span className="text-[10px] text-muted-foreground font-mono">↕</span>
+        <select
+          value={anno?.lineHeight ? Number(anno.lineHeight.toFixed(2)) : 1.2}
+          onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+          className="rounded bg-toolbar-accent px-1 py-1 text-xs outline-none focus:ring-1 focus:ring-primary font-mono"
+          title={t("lineHeight") || "Zeilenabstand"}
+        >
+          <option value={1.0}>1.0</option>
+          <option value={1.15}>1.15</option>
+          <option value={1.2}>1.2</option>
+          <option value={1.3}>1.3</option>
+          <option value={1.4}>1.4</option>
+          <option value={1.5}>1.5</option>
+          <option value={1.8}>1.8</option>
+          <option value={2.0}>2.0</option>
+        </select>
+      </div>
     </div>
   );
 }

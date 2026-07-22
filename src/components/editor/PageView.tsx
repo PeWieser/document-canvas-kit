@@ -765,6 +765,21 @@ export function PageView({ doc, pageId }: Props) {
     const paras = detectParagraphs(items);
     const para = paras.find((p) => p.lines.some((l) => l.itemIndices.includes(idx)));
 
+    let paraBold = isBold;
+    let paraItalic = isItalic;
+    if (para && para.lines.length > 0) {
+      for (const l of para.lines) {
+        for (const i of l.itemIndices) {
+          const it = items[i];
+          if (it && it.fontName) {
+            const info = globalFontInfo[it.fontName] || resolvePDFCoreFontName(it.fontName);
+            if (info.isBold) paraBold = true;
+            if (info.isItalic) paraItalic = true;
+          }
+        }
+      }
+    }
+
     if (para && para.lines.length > 1) {
       addAnnotation({
         id: annoId,
@@ -775,8 +790,8 @@ export function PageView({ doc, pageId }: Props) {
         fontSize: para.fontSize,
         color: defaultColor,
         fontFamily: family,
-        bold: isBold,
-        italic: isItalic,
+        bold: paraBold,
+        italic: paraItalic,
         transform: para.transform,
         width: para.bounds.w,
         lineHeight: para.lineHeight,
@@ -1513,16 +1528,20 @@ function AnnoView({
     const isMultiline = anno.kind === "textReplace" && anno.text.includes("\n");
     const numLines = isMultiline ? anno.text.split("\n").length : 1;
     
-    // For textReplace annotations, measure unscaled text width to prevent right-clipping
+    // For textReplace annotations, measure unscaled text width across ALL lines to prevent line-wrapping & right-clipping
     let containerWidth = origWidth;
     let textScaleX = 1;
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
-      const firstLine = anno.text.split("\n")[0] || anno.text;
-      const measured = getTextWidth(firstLine, fontSpec);
+      const lines = anno.text.split("\n");
+      let maxMeasured = 0;
+      for (const lineText of lines) {
+        const w = getTextWidth(lineText, fontSpec);
+        if (w > maxMeasured) maxMeasured = w;
+      }
       const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
-      textScaleX = measured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / measured : 1;
-      containerWidth = measured > 0 ? measured + 2 : pdfScreenWidth;
+      textScaleX = maxMeasured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / maxMeasured : 1;
+      containerWidth = Math.max(maxMeasured + 14, pdfScreenWidth);
     }
 
     const s = {
@@ -1591,7 +1610,7 @@ function AnnoView({
             fontFamily: family,
             fontWeight: anno.bold ? 700 : 400,
             fontStyle: anno.italic ? "italic" : "normal",
-            lineHeight: 1,
+            lineHeight: anno.lineHeight ? (anno.lineHeight > 3 ? anno.lineHeight / anno.fontSize : anno.lineHeight) : 1.2,
             padding: 0,
             margin: 0,
             border: "none",
@@ -1601,6 +1620,8 @@ function AnnoView({
             scrollbarWidth: "none",
             msOverflowStyle: "none",
             whiteSpace: isMultiline ? "pre-wrap" : (anno.kind === "textReplace" ? "nowrap" : "pre-wrap"),
+            wordBreak: "keep-all",
+            overflowWrap: "normal",
             width: "100%",
           }}
         />
