@@ -15,6 +15,7 @@ import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
 import { CropToolPanel } from "./CropToolPanel";
+import { FeedbackWidget } from "./FeedbackWidget";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -614,6 +615,7 @@ export function PdfStudio() {
       </div>
       {doc && currentTool === "crop" && <CropToolPanel doc={doc} />}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
+      <FeedbackWidget />
     </div>
   );
 }
