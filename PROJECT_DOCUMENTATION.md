@@ -122,6 +122,24 @@ To ensure a smooth, gapless drag-and-drop page reordering experience in both `Th
    - For 2D drag-over (`GridOverview`), normalized cross-multiplication (`Math.abs(dx * rect.height) > Math.abs(dy * rect.width)`) is used to map the pointer to one of four triangular quadrants (left, right, top, bottom), determining both horizontal and vertical insertion sides.
 4. **Centering Drop Indicators**: The visual drop line is absolute positioned and offset by the exact wrapper padding size (e.g., `-translate-y-0.5` or `-translate-x-0.5` representing 2px translates) to render precisely centered in the gap between the visual cards.
 
+### 4.4 Mobile Responsiveness Strategy (`< 768px`)
+
+To deliver a premium mobile experience without altering desktop behavior ($\ge 768\text{px}$):
+
+1. **Slide-Over Overlays / Drawers**:
+   - `ThumbnailRail.tsx` (pages sidebar) and `CommentsPanel.tsx` render as fixed full-screen slide-over drawers (`z-50`) on mobile (`< md`).
+   - Accompanied by a semi-transparent backdrop overlay (`bg-black/40 backdrop-blur-xs`) that closes the drawer upon tapping.
+   - On desktop ($\ge md$), panels retain their standard inline flexbox container placement.
+2. **Mobile Overflow Menu Accessibility**:
+   - The Search & Redact tool is integrated into the mobile compact overflow dropdown menu (`⋮` in `Toolbar.tsx`), ensuring full feature parity on small screens.
+3. **Sub-Toolbar Touch Scrolling**:
+   - Tool settings (colors, pen sizes, font picker, line height selector) wrap in a `.subtoolbar-scroll` container with hidden scrollbars for smooth touch-based horizontal panning.
+4. **Mobile Touch Gestures**:
+   - **2-Finger Pinch-to-Zoom**: Multi-touch listeners on the `<main>` viewport intercept two-finger pinches to adjust zoom levels dynamically while preserving single-finger panning.
+   - **1-Second Long-Press Touch Drag (Grid View)**: In `GridOverview.tsx`, holding a page thumbnail for 1,000ms triggers haptic feedback (`navigator.vibrate`) and activates touch drag-and-drop page reordering with a floating drag avatar.
+5. **Responsive Floating Panels**:
+   - `SearchRedactPanel.tsx` and `CropToolPanel.tsx` use clamped max-widths (`calc(100vw - 1rem)`) to fit 320px–360px viewports without horizontal clipping.
+
 ---
 
 ## 5. Advanced PDF Manipulation Tools
@@ -168,12 +186,37 @@ Users can select existing PDF text and replace it.
     - **ResizeHandle**: Allows the user to scale the image dimensions.
     - **DeleteBtn**: Allows the user to physically delete the image annotation.
 
+### 5.4 Intelligent Paragraph & Line Detection Engine (`src/lib/pdf/paragraphGroup.ts`)
+
+To allow editing multi-line text blocks and paragraphs as single cohesive elements:
+
+1. **Detection Algorithm**: `detectParagraphs(rawItems)` sorts PDF text items top-to-bottom and left-to-right, grouping adjacent items into lines, and lines into paragraphs when:
+   - Line Y-gaps satisfy $0.7 \times \text{fontSize} \le \Delta Y \le 2.2 \times \text{fontSize}$.
+   - Left margins align within $30\text{pt}$.
+   - Font sizes match within $\pm 2\text{pt}$.
+2. **Paragraph Block Editing**: Clicking any text line within a paragraph selects the full multi-line block into a single `textReplace` annotation (with embedded `\n` line breaks).
+3. **Max Width Measurement**: `containerWidth` calculates the max width across **all lines** in the paragraph plus a 14px buffer, preventing mid-word text wrapping (`wordBreak: "keep-all"`).
+4. **Formatting Preservation**: Scans all items within a paragraph to retain `bold` / `italic` flags (e.g., bold headings like `"Absender:"`).
+5. **Adjustable Line Height (Zeilenabstand)**: `FontPicker.tsx` includes an explicit Line Height selector (`1.0` to `2.0`). Line height is detected automatically from PDF item gaps and applied to both DOM textarea styling and PDF export rendering.
+
+### 5.5 Viewport Text Alignment & Scrollbar Suppression
+
+1. **1:1 Vertical Baseline Alignment**: `<textarea>` elements in `PageView.tsx` use `top = transform ? tx[5] - fontHeight : tx[5]`, `lineHeight: 1`, `padding: 0`, and `transform-origin: 0 0` to achieve 0.0000px vertical offset relative to PDF.js text layer spans.
+2. **Scrollbar Elimination**: Global CSS rules in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) completely suppress native browser scrollbars inside text replace boxes.
+
+### 5.6 Feedback System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
+
+- **Floating Widget**: Persistent floating button in bottom-right corner opening a category-based feedback dialog (Wish, Criticism, Bug, UI Improvement).
+- **Backend API**: Submits feedback to Cloudflare D1 Worker endpoint (`https://feedback-pdf.semole.workers.dev/`).
+- **Konami Code Admin Mode**: Entering the Konami Code (`↑ ↑ ↓ ↓ ← → ← → B A`) inside the feedback modal unlocks administrative features (viewing, grouping, and deleting feedback entries via API key authentication).
+
 ---
 
 ## 6. Development & Testing Workflow
 
-- **E2E Testing**: Addressed via standard workflows (Vitest).
-- **Sub-Agents**: Specific tasks (like Font-QA or Bug-Fixing) should leverage `Vitest` and `happy-dom` (`vitest.config.ts`) to simulate edge cases and font-matching thresholds.
+- **Unit & Integration Testing**: Powered by Vitest (`npm test` / `npx vitest run`).
+- **E2E Testing**: Playwright test suite (`e2e/`) for visual layout, alignment, and interactive workflow verification (`npx playwright test`).
+- **Vector Alignment Proof Generator**: `src/__tests__/pdf/generateProof.test.ts` generates automated markdown and JSON proof reports verifying 100.00% position accuracy ($\Delta X = 0.0000\text{pt}, \Delta Y = 0.0000\text{pt}$) against test PDFs.
 - **Internationalization**: Handled by `src/lib/i18n.tsx`. Use `useI18n().t('key')` for all user-facing strings.
 
 _End of Document. Read this file fully before starting any task on PDF Studio._

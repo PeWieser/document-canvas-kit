@@ -61,6 +61,25 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
 - **Manuelle Font-Auswahl**: Alle 1.950+ Bunny-Schriftarten stehen dem Anwender in `FontPicker.tsx` (geladen aus `src/lib/pdf/font-families.json`) zur manuellen Auswahl zur Verfügung und werden bei Aktivierung on-the-fly geladen.
 - Fällt die Erkennung oder das Laden fehl, wird ein sicherer Fallback auf **Helvetica** angewendet.
 
+### 2.4 Intelligente Paragrafen- & Zeilenerkennungs-Engine (`src/lib/pdf/paragraphGroup.ts`)
+
+- **Automatische Block-Erkennung**: `detectParagraphs(rawItems)` gruppiert zusammengehörige PDF-Textzeilen anhand von vertikalen Abständen ($0.7 \times \text{fontSize} \le \Delta Y \le 2.2 \times \text{fontSize}$), Linksbündigkeit und Schriftgrößen-Übereinstimmung zu zusammenhängenden Absätzen.
+- **Mehrzeilige Textbearbeitung**: Das Anklicken einer Zeile wählt den gesamten Absatz als zusammenhängende `textReplace`-Annotation mit Zeilenumbrüchen (`\n`) aus.
+- **Zeilenbreiten-Messung**: Der Container berechnet die maximale Breite über **alle Zeilen** des Absatzes (`maxMeasured + 14px`), um ungewollten automatischen Zeilenumbruch mitten im Wort zu verhindern (`wordBreak: "keep-all"`).
+- **Formatierungs-Erhalt**: Prüft alle Zeilen im Absatz auf `bold`/`italic`-Flags, damit fette Überschriften (z. B. `"Absender:"`) korrekt im Eingabefeld erhalten bleiben.
+- **Einstellbarer Zeilenabstand**: `FontPicker.tsx` bietet einen expliziten Zeilenabstands-Wähler (`1.0` bis `2.0`). Der Abstand wird automatisch erkannt und sowohl im DOM als auch beim PDF-Export angewendet.
+
+### 2.5 1:1 Vertikale Ausrichtung & Scrollbar-Unterdrückung im Viewport
+
+- **Deckungsgleiche Grundlinie**: `<textarea>`-Elemente nutzen `top = transform ? tx[5] - fontHeight : tx[5]`, `lineHeight: 1`, `padding: 0` und `transform-origin: 0 0`, um eine 0.0000px vertikale Abweichung gegenüber den PDF.js-Textspans zu erreichen.
+- **Scrollbar-Eliminierung**: Globale CSS-Regeln in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) unterdrücken nativer Nativer Browser-Scrollbalken in Textboxen vollständig.
+
+### 2.6 Feedback-System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
+
+- **Schwebendes Widget**: Unten rechts befindet sich ein Button zum Öffnen des Feedback-Dialogs (Kategorien: Wunsch, Kritik, Bug, UI-Verbesserung).
+- **Cloudflare D1 Worker**: Sendet Feedbacks an ein Cloudflare-Backend (`https://feedback-pdf.semole.workers.dev/`).
+- **Konami-Code Admin-Modus**: Das Eingeben des Konami-Codes (`↑ ↑ ↓ ↓ ← → ← → B A`) im Modal schaltet den Admin-Modus frei (Anzeigen, Gruppieren und Löschen von Feedback-Einträgen mittels API-Key).
+
 ---
 
 ## 3. Zustand & Undo/Redo
@@ -81,7 +100,7 @@ Der Zustand der Anwendung wird in `src/store/editorStore.ts` gehalten.
 
 ---
 
-## 5. UI/UX & Design (Swiss / Notion / Apple-Style)
+## 5. UI/UX & Mobile Responsiveness
 
 Das Design wird minimalistisch und funktional gehalten:
 
@@ -89,21 +108,30 @@ Das Design wird minimalistisch und funktional gehalten:
 - **Kontextsensitivität**: Einstellungsmenüs (wie der Schriftartenwähler `FontPicker`) werden nur dann eingeblendet, wenn das dazugehörige Werkzeug oder Element selektiert ist.
 - **Dark Mode**: Reagiert auf die CSS-Klasse `.dark` im `html`-Element. Das Dokument-Canvas selbst bleibt immer weiß, während sich die Toolbar und Seitenleisten abdunkeln.
 
+### 5.1 Mobile Responsive Strategie (`< 768px`)
+
+- **Slide-Over Drawers**: `ThumbnailRail` (Seitenleiste) und `CommentsPanel` öffnen sich auf Mobile als fixed Overlays (`z-50`) mit einem halbtransparenten Backdrop (`bg-black/40`), ohne das PDF-Canvas einzustauchen. Auf Desktop ($\ge 768\text{px}$) bleiben sie inline.
+- **Mobile Werkzeugleiste**: Suche & Schwärzen ist im mobilen Kompakt-Menü (`⋮`) erreichbar. Die Sub-Toolbar scrollt touch-freundlich horizontal (`.subtoolbar-scroll`).
+- **Pinch-to-Zoom & Long-Press**: 2-Finger Touch Pinch-to-Zoom auf dem Canvas. 1-Sekunde Long-Press (1000ms Hold) mit haptischem Feedback (`vibrate`) schaltet Touch-Drag-and-Drop im Grid View frei.
+
 ---
 
 ## 6. Automatisierte Tests
 
-Das Projekt verfügt über eine Testsuite basierend auf **Vitest** mit der Browser-Simulation `happy-dom`.
+Das Projekt verfügt über eine umfassende Testsuite:
 
 ### Tests ausführen:
 
-- **Alle Tests einmalig ausführen**: `npm test`
-- **Watch-Modus für aktive Entwicklung**: `npm run test:watch`
-- **Test-UI im Browser öffnen**: `npm run test:ui`
-- **Abdeckungsbericht generieren**: `npm run test:coverage`
+- **Alle Vitest-Tests ausführen**: `npm test`
+- **Watch-Modus**: `npm run test:watch`
+- **Test-UI im Browser**: `npm run test:ui`
+- **Playwright E2E-Tests**: `npx playwright test`
 
 ### Test-Struktur:
 
-1. `src/__tests__/pdf/fontDetect.test.ts`: Validiert die Font-Erkennung und Style-Zuweisung.
-2. `src/__tests__/store/editorStore.test.ts`: Prüft das gesamte Annotations-Management, Undo/Redo und Seitensortierung.
-3. _Erweiterung für E2E-Tests_: Playwright-Konfiguration für Browser-End-to-End Workflows (`e2e/`).
+1. `src/__tests__/pdf/fontDetect.test.ts`: Validiert Font-Erkennung und Style-Zuweisung.
+2. `src/__tests__/pdf/paragraphGroup.test.ts`: Testet die Paragrafen- und Zeilenerkennungs-Engine.
+3. `src/__tests__/pdf/generateProof.test.ts`: Generiert automatische Vektor-Deckungsgleichheitsberichte ($\Delta X, \Delta Y = 0.0000\text{pt}$).
+4. `src/__tests__/ui/verticalAlignmentDOM.test.tsx`: Prüft mathematische 1:1 DOM-Parität der Textboxen.
+5. `e2e/verticalAlignment.spec.ts`: Playwright E2E-Visual & Position Alignment Test.
+

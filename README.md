@@ -7,21 +7,24 @@ PDF Studio is a high-performance, web-first PDF editor designed for edge deploym
 ## 🚀 Key Features
 
 - **Real Redaction**: Physically removes text glyphs from the PDF content stream rather than simply painting a black rectangle over them, ensuring data privacy.
-- **Text Replacement & Font Matching**: Detects embedded subset fonts, fetches matching TrueType fonts from CDN, and embeds them dynamically.
-- **Vector Annotation overlays**: Highlights, drawings (via freehand vectors), textboxes, and image overlays.
-- **Precision Placement & Rotation**: Mathematical integration of PDF coordinate matrices to handle text scaling, skewing, and rotation perfectly.
-- **Fluid UI/UX**: Swiss-style minimalist design with support for context-sensitive toolbars, multi-page layouts, and thumbnail sidebars.
+- **Intelligent Paragraph & Line Detection**: Automatically groups adjacent PDF text items into coherent multi-line paragraphs (`paragraphGroup.ts`), preserving line breaks, max-width formatting, and bold/italic headings.
+- **Text Replacement & Font Matching**: Detects embedded subset fonts via offline KNN matcher, fetches matching TrueType fonts from CDN, and embeds them dynamically.
+- **1:1 Vector Deckungsgleichheit Alignment**: Mathematically aligns replacement text boxes and exported glyphs to $0.0000\text{pt}$ position offset relative to original PDF baselines.
+- **Vector Annotation Overlays**: Highlights, drawings (via freehand vectors), textboxes, and image overlays.
+- **Mobile Touch Responsiveness**: Slide-over drawers for sidebars with backdrop blur, 2-finger touch pinch-to-zoom on main canvas, and 1-second long-press touch drag-and-drop page reordering in Grid View.
+- **Feedback System**: Floating feedback modal connected to Cloudflare D1 with Konami Code admin controls (`↑ ↑ ↓ ↓ ← → ← → B A`).
 
 ---
 
 ## 🛠️ Tech Stack & Infrastructure
 
 - **Framework**: React 19 + TanStack Start (SSR/Nitro)
-- **Hosting/Build**: Managed by Lovable, target Cloudflare pages
+- **Hosting/Build**: Managed by Lovable, target Cloudflare pages / workers
+- **Backend/DB**: Cloudflare D1 (Feedback endpoint)
 - **State Management**: Zustand v5 (Store with Undo/Redo history)
 - **PDF Rendering**: PDF.js (`pdfjs-dist`) via Web Workers
 - **PDF Editing**: `pdf-lib` + `@pdf-lib/fontkit` for font embedding
-- **Testing**: Vitest with `happy-dom` browser simulation
+- **Testing**: Vitest with `happy-dom` browser simulation + Playwright E2E
 
 ---
 
@@ -47,7 +50,7 @@ To achieve pixel-perfect congruency between the rendered PDF canvas and the inte
 2. Extracts screen font height ($\text{height} = \sqrt{tx_2^2 + tx_3^2}$) and rotation angle ($\text{angle} = \text{atan2}(tx_1, tx_0)$).
 3. Compensates for system font sizing discrepancies using a horizontal scale factor:
    $$\text{scaleX} = \frac{\text{width}_{\text{PDF}} \cdot \text{zoom}}{\text{width}_{\text{span}}}$$
-4. Appended via CSS: `transform: rotate(${angle}rad) scaleX(${scaleX})` with `left` and `top` positioning offsets.
+4. Appended via CSS: `transform: rotate(${angle}rad) scaleX(${scaleX})` with `left` and `top` positioning offsets (`top = tx[5] - fontHeight`, `lineHeight = 1`, `transform-origin = 0 0`) for 0.0000px vertical baseline parity.
 
 ### 3. Select Mode Pointer-Events Model
 
@@ -65,11 +68,19 @@ To support browser-native text selection and annotation editing concurrently:
   - **ResizeHandle** for scaling.
   - **DeleteBtn** for removing the image overlay.
 
+### 5. Intelligent Paragraph & Line Detection Engine (`paragraphGroup.ts`)
+
+- `detectParagraphs(rawItems)` groups adjacent text items top-to-bottom and left-to-right into cohesive multi-line paragraphs based on vertical line spacing ($0.7 \times \text{fontSize} \le \Delta Y \le 2.2 \times \text{fontSize}$) and font metrics.
+- Measures max line width across **all lines** in a paragraph block to prevent mid-word HTML line wrapping (`wordBreak: "keep-all"`).
+- Features adjustable Line Height controls (`FontPicker.tsx`) ranging from `1.0` to `2.0`.
+
 ---
 
 ## 5. Development & Test Commands
 
-- **Install dependencies**: `bun install` or `npm install`
-- **Start dev server**: `bun run dev`
-- **Run tests**: `bun test` or `npm test`
-- **Generate test font PDF**: `bun run scripts/generateTestPdf.ts`
+- **Install dependencies**: `npm install`
+- **Start dev server**: `npm run dev`
+- **Run Vitest unit tests**: `npm test` or `npx vitest run`
+- **Run Playwright E2E tests**: `npx playwright test`
+- **Run Deckungsgleichheit Proof generator**: `npx vitest run src/__tests__/pdf/generateProof.test.ts`
+
