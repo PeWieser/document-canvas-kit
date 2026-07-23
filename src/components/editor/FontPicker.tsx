@@ -1,5 +1,14 @@
 import { useMemo } from "react";
-import { Bold, Italic } from "lucide-react";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+} from "lucide-react";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
 import { COMMON_FONTS, loadWebFont } from "@/lib/pdf/fontDetect";
@@ -9,13 +18,7 @@ import fontFamilies from "@/lib/pdf/font-families.json";
 const TEXT_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b", "#ffffff"];
 
 /**
- * Compact inline font controls (Word / Pages / Notion style).
- *
- * Shown in the Toolbar when:
- *   - tool is "textbox" or "edit-text" (for new annotations), OR
- *   - tool is "select" and a text annotation is currently selected.
- *
- * All edits are written directly to the store via updateAnnotation.
+ * Compact inline font & paragraph controls toolbar (Word / InDesign / Notion style).
  */
 export function FontPicker() {
   const { t } = useI18n();
@@ -30,7 +33,7 @@ export function FontPicker() {
   const defaultFontSize = useEditor((s) => s.fontSize);
   const defaultColor = useEditor((s) => s.color);
 
-  // Font family dropdown: combine COMMON_FONTS, custom fingerprints, and all 1900+ Bunny Fonts
+  // Font family dropdown
   const families = useMemo(() => {
     const list = new Set([...COMMON_FONTS, ...fontFamilies]);
     for (const fp of fingerprints) {
@@ -45,7 +48,6 @@ export function FontPicker() {
     return sorted;
   }, [fingerprints, anno?.fontFamily]);
 
-  // Only render for text-carrying annotations if one is selected, but allow rendering for new text tools
   if (anno && anno.kind !== "textReplace" && anno.kind !== "textbox") return null;
 
   const patch = (p: Record<string, unknown>) => {
@@ -56,12 +58,16 @@ export function FontPicker() {
 
   const currentFontFamily = anno?.fontFamily || defaultFontFamily || "Helvetica";
   const currentFontSize = anno ? Math.round(anno.fontSize) : defaultFontSize || 16;
-  const currentBold = anno?.bold || false;
-  const currentItalic = anno?.italic || false;
-  const currentColor = anno?.color || defaultColor || TEXT_COLORS[0];
+  const currentBold = (anno as any)?.bold || false;
+  const currentItalic = (anno as any)?.italic || false;
+  const currentUnderline = (anno as any)?.underline || false;
+  const currentStrikethrough = (anno as any)?.strikethrough || false;
+  const currentColor = (anno as any)?.color || defaultColor || TEXT_COLORS[0];
+  const currentAlignment = (anno as any)?.alignment || "left";
+  const currentParagraphSpacing = (anno as any)?.paragraphSpacing || 0;
 
   return (
-    <div className="flex items-center gap-1 rounded-md bg-toolbar-accent/50 px-1.5 py-1">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md bg-toolbar-accent/50 px-2 py-1">
       {/* Font family */}
       <select
         value={currentFontFamily}
@@ -90,32 +96,102 @@ export function FontPicker() {
         title={t("fontSize")}
       />
 
-      {/* Bold */}
-      <button
-        onClick={() => patch({ bold: !currentBold })}
-        className={cn(
-          "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          currentBold ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
-        )}
-        title={t("bold")}
-      >
-        <Bold className="h-3.5 w-3.5" />
-      </button>
+      {/* Formatting Toggles: Bold, Italic, Underline, Strikethrough */}
+      <div className="flex items-center gap-0.5 border-l border-toolbar-accent/50 pl-1.5">
+        <button
+          onClick={() => patch({ bold: !currentBold })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentBold ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title={t("bold")}
+        >
+          <Bold className="h-3.5 w-3.5" />
+        </button>
 
-      {/* Italic */}
-      <button
-        onClick={() => patch({ italic: !currentItalic })}
-        className={cn(
-          "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          currentItalic ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
-        )}
-        title={t("italic")}
-      >
-        <Italic className="h-3.5 w-3.5" />
-      </button>
+        <button
+          onClick={() => patch({ italic: !currentItalic })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentItalic ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title={t("italic")}
+        >
+          <Italic className="h-3.5 w-3.5" />
+        </button>
 
-      {/* Color swatches */}
-      <div className="flex items-center gap-1 pl-1">
+        <button
+          onClick={() => patch({ underline: !currentUnderline })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentUnderline ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Underline"
+        >
+          <Underline className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          onClick={() => patch({ strikethrough: !currentStrikethrough })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentStrikethrough ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Strikethrough"
+        >
+          <Strikethrough className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Alignment Controls */}
+      <div className="flex items-center gap-0.5 border-l border-toolbar-accent/50 pl-1.5">
+        <button
+          onClick={() => patch({ alignment: "left" })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentAlignment === "left" ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Left Align"
+        >
+          <AlignLeft className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          onClick={() => patch({ alignment: "center" })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentAlignment === "center" ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Center Align"
+        >
+          <AlignCenter className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          onClick={() => patch({ alignment: "right" })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentAlignment === "right" ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Right Align"
+        >
+          <AlignRight className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          onClick={() => patch({ alignment: "justify" })}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            currentAlignment === "justify" ? "bg-primary text-primary-foreground" : "hover:bg-toolbar-accent",
+          )}
+          title="Justify Align"
+        >
+          <AlignJustify className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Text Color Picker */}
+      <div className="flex items-center gap-1 border-l border-toolbar-accent/50 pl-1.5">
         {TEXT_COLORS.map((c) => (
           <button
             key={c}
@@ -130,9 +206,9 @@ export function FontPicker() {
         ))}
       </div>
 
-      {/* Line Height (Zeilenabstand) */}
+      {/* Line Height Selector (1.0 - 2.0) */}
       <div className="flex items-center gap-1 border-l border-toolbar-accent/50 pl-1.5">
-        <span className="text-[10px] text-muted-foreground font-mono">↕</span>
+        <span className="text-[10px] text-muted-foreground font-mono" title="Zeilenabstand">↕</span>
         <select
           value={anno?.lineHeight ? Number(anno.lineHeight.toFixed(2)) : 1.2}
           onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
@@ -148,6 +224,20 @@ export function FontPicker() {
           <option value={1.8}>1.8</option>
           <option value={2.0}>2.0</option>
         </select>
+      </div>
+
+      {/* Paragraph Spacing */}
+      <div className="flex items-center gap-1 border-l border-toolbar-accent/50 pl-1.5">
+        <span className="text-[10px] text-muted-foreground font-mono" title="Absatzabstand">¶</span>
+        <input
+          type="number"
+          min={0}
+          max={48}
+          value={currentParagraphSpacing}
+          onChange={(e) => patch({ paragraphSpacing: Math.max(0, Math.min(48, Number(e.target.value))) })}
+          className="w-10 rounded bg-toolbar-accent px-1 py-1 text-center font-mono text-xs outline-none focus:ring-1 focus:ring-primary"
+          title="Absatzabstand (pt)"
+        />
       </div>
     </div>
   );

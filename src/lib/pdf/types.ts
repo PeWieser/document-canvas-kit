@@ -1,3 +1,5 @@
+import type { FontMetrics } from "./fontMetrics";
+
 // All geometry is stored in PDF user space (points, origin bottom-left, y up),
 // so annotations are zoom-independent and map 1:1 to pdf-lib on export.
 
@@ -31,6 +33,8 @@ export interface RedactAnno {
   rect: Rect;
 }
 
+import type { TextRun, ParagraphStyle } from "./paragraphGroup";
+
 export interface TextReplaceAnno {
   id: string;
   kind: "textReplace";
@@ -42,6 +46,12 @@ export interface TextReplaceAnno {
   fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  alignment?: "left" | "center" | "right" | "justify";
+  paragraphSpacing?: number;
+  runs?: TextRun[];
+  style?: ParagraphStyle;
   transform?: number[];
   width?: number;
   lineHeight?: number;
@@ -50,6 +60,7 @@ export interface TextReplaceAnno {
   originalFontBytes?: Uint8Array;
   weight?: number;
   italicAngle?: number;
+  pdfFontMetrics?: FontMetrics | null;
 }
 
 export interface TextboxAnno {
@@ -66,6 +77,12 @@ export interface TextboxAnno {
   fontFamily?: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  alignment?: "left" | "center" | "right" | "justify";
+  paragraphSpacing?: number;
+  runs?: TextRun[];
+  style?: ParagraphStyle;
 }
 
 export interface PenAnno {
@@ -113,6 +130,53 @@ export interface ImageAnno {
   dataUrl: string;
 }
 
+export interface BoundingBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export type HandlePosition = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "rotation";
+
+export interface VectorPathSegment {
+  op: string;
+  points: { x: number; y: number }[];
+}
+
+export interface VectorElement {
+  id: string;
+  page: number;
+  bounds: BoundingBox;
+  segments: VectorPathSegment[];
+  strokeColor?: string;
+  fillColor?: string;
+  strokeWidth?: number;
+  opacity?: number;
+  rotation?: number;
+  zIndex?: number;
+  coordTokens?: number[];
+  paintToken?: number;
+  closed?: boolean;
+}
+
+export interface SnapGuide {
+  id: string;
+  type: "vertical" | "horizontal";
+  position: number;
+  kind?: "margin" | "center" | "element";
+  start?: number;
+  end?: number;
+}
+
+export interface SelectionState {
+  selectedIds: string[];
+  activeHandle: HandlePosition | null;
+  dragStart?: { x: number; y: number };
+  initialBounds?: Record<string, Rect | BoundingBox>;
+  rotation?: number;
+}
+
 export type Annotation =
   | HighlightAnno
   | RedactAnno
@@ -122,3 +186,4 @@ export type Annotation =
   | CommentAnno
   | ImageAnno
   | CropAnno;
+

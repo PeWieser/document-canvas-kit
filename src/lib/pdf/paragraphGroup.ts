@@ -3,11 +3,34 @@
  * Automatically groups individual PDF text items into lines and multi-line paragraphs.
  */
 
+export interface TextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+  superscript?: boolean;
+  subscript?: boolean;
+}
+
+export interface ParagraphStyle {
+  alignment: "left" | "center" | "right" | "justify";
+  lineHeight: number;
+  paragraphSpacing?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+}
+
 export interface ParagraphLine {
   text: string;
   itemIndices: number[];
   transform: number[];
   width: number;
+  runs?: TextRun[];
 }
 
 export interface ParagraphGroup {
@@ -19,6 +42,8 @@ export interface ParagraphGroup {
   fontName: string;
   lineHeight: number;
   transform: number[];
+  runs?: TextRun[];
+  style?: ParagraphStyle;
 }
 
 export function detectParagraphs(rawItems: any[]): ParagraphGroup[] {
@@ -166,6 +191,22 @@ function createParagraphFromLines(lines: ParagraphLine[]): ParagraphGroup {
     avgLineHeight = totalGap / (lines.length - 1);
   }
 
+  const fontName = (firstLine as any).fontName || "";
+  const runs: TextRun[] = [
+    {
+      text: fullText,
+      fontFamily: fontName,
+      fontSize,
+    },
+  ];
+
+  const style: ParagraphStyle = {
+    alignment: "left",
+    lineHeight: avgLineHeight / fontSize,
+    fontSize,
+    fontFamily: fontName,
+  };
+
   return {
     id: `para-${firstLine.itemIndices.join("-")}`,
     lines,
@@ -177,8 +218,10 @@ function createParagraphFromLines(lines: ParagraphLine[]): ParagraphGroup {
       h: Math.max(fontSize, maxY - minY),
     },
     fontSize,
-    fontName: (firstLine as any).fontName || "",
+    fontName,
     lineHeight: avgLineHeight,
     transform: firstLine.transform,
+    runs,
+    style,
   };
 }

@@ -1,3 +1,6 @@
+import type { BoundingBox } from "./types";
+import { detectVectorElements } from "./vectorDetection";
+
 type TokenType =
   | "Whitespace"
   | "Comment"
@@ -1451,3 +1454,51 @@ export function deleteShapeObjects(tokens: Token[], shapes: ShapeObject[]): Toke
   });
   return result;
 }
+
+export function removeVectorOperators(tokens: Token[], vectorBounds: BoundingBox): Token[] {
+  const elements = detectVectorElements(tokens);
+  const indicesToRemove = new Set<number>();
+
+  for (const el of elements) {
+    const b = el.bounds;
+    const match =
+      Math.abs(b.minX - vectorBounds.minX) < 1.0 &&
+      Math.abs(b.minY - vectorBounds.minY) < 1.0 &&
+      Math.abs(b.maxX - vectorBounds.maxX) < 1.0 &&
+      Math.abs(b.maxY - vectorBounds.maxY) < 1.0;
+
+    const ixMin = Math.max(b.minX, vectorBounds.minX);
+    const ixMax = Math.min(b.maxX, vectorBounds.maxX);
+    const iyMin = Math.max(b.minY, vectorBounds.minY);
+    const iyMax = Math.min(b.maxY, vectorBounds.maxY);
+
+    const iWidth = Math.max(0, ixMax - ixMin);
+    const iHeight = Math.max(0, iyMax - iyMin);
+    const intersectionArea = iWidth * iHeight;
+
+    const elemArea = (b.maxX - b.minX) * (b.maxY - b.minY);
+    const highOverlap = elemArea > 0 ? (intersectionArea / elemArea) >= 0.8 : match;
+
+    if (match || highOverlap) {
+      if (el.coordTokens) {
+        el.coordTokens.forEach((idx) => indicesToRemove.add(idx));
+      }
+      if (el.paintToken !== undefined) {
+        indicesToRemove.add(el.paintToken);
+      }
+      if (el.coordTokens && el.coordTokens.length > 0 && el.paintToken !== undefined) {
+        const minIdx = Math.min(...el.coordTokens);
+        for (let k = minIdx; k <= el.paintToken; k++) {
+          const t = tokens[k];
+          if (t.type === "Operator" && ["m", "l", "c", "v", "y", "h", "re"].includes(t.text || "")) {
+            indicesToRemove.add(k);
+          }
+        }
+      }
+    }
+  }
+
+  if (indicesToRemove.size === 0) return tokens;
+  return tokens.filter((_, idx) => !indicesToRemove.has(idx));
+}
+

@@ -25,6 +25,7 @@ import {
 import { loadPdfDocument, getPageTextItems, type LoadedTextItem } from "./pdfjs";
 import { getFontBytes } from "./fontDetect";
 import type { Annotation, Rect } from "./types";
+import { drawRichTextParagraph } from "./richTextExport";
 
 function hexToRgb(hex: string) {
   let h = hex.replace("#", "").trim();
@@ -437,18 +438,54 @@ export async function exportPdf(
           color: rgb(0, 0, 0),
         });
       } else if (a.kind === "textReplace") {
-        const font = await resolveFont(a.fontFamily, a.bold, a.italic, a.originalFontBytes);
         const angle = a.transform ? Math.atan2(a.transform[1], a.transform[0]) : 0;
         const rawX = a.transform ? a.transform[4] : a.rect.x;
         const rawY = a.transform ? a.transform[5] : a.rect.y + a.rect.h * 0.18;
         const px = rawX;
         const py = rawY;
-        drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle, a.width);
+        if (a.runs && a.runs.length > 0) {
+          await drawRichTextParagraph(
+            page,
+            a.runs,
+            px,
+            py,
+            a.width || a.rect.w,
+            {
+              alignment: a.alignment || "left",
+              lineHeight: a.lineHeight || 1.2,
+              fontSize: a.fontSize,
+              fontFamily: a.fontFamily,
+              color: a.color,
+            },
+            resolveFont
+          );
+        } else {
+          const font = await resolveFont(a.fontFamily, a.bold, a.italic, a.originalFontBytes);
+          drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle, a.width);
+        }
       } else if (a.kind === "textbox") {
-        const font = await resolveFont(a.fontFamily, a.bold, a.italic);
         const p = xform.point(a.x, a.y - a.fontSize * 0.8);
         const angleRad = -xform.rotation * Math.PI / 180;
-        drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color), angleRad);
+        if (a.runs && a.runs.length > 0) {
+          await drawRichTextParagraph(
+            page,
+            a.runs,
+            p.x,
+            p.y,
+            a.w,
+            {
+              alignment: a.alignment || "left",
+              lineHeight: 1.2,
+              fontSize: a.fontSize,
+              fontFamily: a.fontFamily,
+              color: a.color,
+            },
+            resolveFont
+          );
+        } else {
+          const font = await resolveFont(a.fontFamily, a.bold, a.italic);
+          drawWrappedText(page, font, a.text, p.x, p.y, a.fontSize, hexToRgb(a.color), angleRad);
+        }
       } else if (a.kind === "image") {
         try {
           const img = await embedImage(outDoc, a.dataUrl);

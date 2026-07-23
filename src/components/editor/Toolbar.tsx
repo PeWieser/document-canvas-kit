@@ -30,6 +30,7 @@ import {
   Search,
   Palette,
   Crop,
+  Keyboard,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -54,6 +55,7 @@ interface Props {
   onSave: () => void;
   onSaveAs: () => void;
   onQuit: () => void;
+  onOpenShortcuts?: () => void;
   exporting: boolean;
   dark: boolean;
   onToggleTheme: () => void;
@@ -65,6 +67,7 @@ export function Toolbar({
   onSave,
   onSaveAs,
   onQuit,
+  onOpenShortcuts,
   exporting,
   dark,
   onToggleTheme,
@@ -133,7 +136,7 @@ export function Toolbar({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex flex-col border-b border-toolbar-accent/40 bg-toolbar text-toolbar-foreground">
+      <div className="flex flex-col border-b border-toolbar-accent/40 bg-toolbar/85 backdrop-blur-md sticky top-0 z-[100] transition-all duration-200 text-toolbar-foreground">
         {/* Main Toolbar Row */}
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 px-2 py-1.5">
           {/* LEFT: brand + menus */}
@@ -150,23 +153,23 @@ export function Toolbar({
             </TBtn>
 
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
+              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none transition-colors">
                 <FileText className="h-4 w-4" />
                 <span className="hidden sm:inline">{t("file")}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-52">
                 <DropdownMenuItem onClick={onOpen}>{t("openFile")}</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onSave}>{t("saveOverwrite")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onSave}>{t("saveOverwrite")} (Ctrl+S)</DropdownMenuItem>
                 <DropdownMenuItem onClick={onSaveAs}>{t("saveAs")}</DropdownMenuItem>
-                <DropdownMenuItem onClick={onExport}>{t("export")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExport}>{t("export")} (Ctrl+P)</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onQuit}>{t("quit")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none">
+              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none transition-colors">
                 <Wrench className="h-4 w-4" />
                 <span className="hidden sm:inline">{t("tools")}</span>
               </DropdownMenuTrigger>
@@ -175,7 +178,7 @@ export function Toolbar({
                   <DropdownMenuItem
                     key={tl.id}
                     onClick={() => setTool(tl.id)}
-                    className={cn("flex items-start gap-2", tool === tl.id && "bg-accent")}
+                    className={cn("flex items-start gap-2 transition-colors", tool === tl.id && "bg-accent")}
                   >
                     <tl.icon className="mt-0.5 h-4 w-4 shrink-0" />
                     <span className="flex flex-col">
@@ -189,9 +192,9 @@ export function Toolbar({
 
             {/* active tool indicator */}
             {activeTool && (
-              <div className="ml-1 hidden items-center gap-1.5 rounded-md bg-toolbar-accent/50 px-2 py-1 lg:flex">
+              <div className="ml-1 hidden items-center gap-1.5 rounded-md bg-toolbar-accent/50 px-2 py-1 lg:flex animate-fade-in">
                 <activeTool.icon className="h-3.5 w-3.5" />
-                <span className="text-xs">{activeTool.label}</span>
+                <span className="text-xs font-medium">{activeTool.label}</span>
               </div>
             )}
           </div>
@@ -201,7 +204,7 @@ export function Toolbar({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-toolbar-accent focus:outline-none border border-toolbar-accent/30 cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-toolbar-accent focus:outline-none border border-toolbar-accent/30 cursor-pointer transition-colors"
                   title={t("view") || "Ansicht"}
                 >
                   {viewMode === "fit-width" && <StretchHorizontal className="h-3.5 w-3.5" />}
@@ -274,15 +277,20 @@ export function Toolbar({
 
           {/* RIGHT */}
           <div className="flex items-center gap-1">
-            <TBtn title={t("undo")} onClick={undo} disabled={past === 0}>
+            <TBtn title={`${t("undo")} (Ctrl+Z)`} onClick={undo} disabled={past === 0}>
               <Undo2 className="h-4 w-4" />
             </TBtn>
-            <TBtn title={t("redo")} onClick={redo} disabled={future === 0}>
+            <TBtn title={`${t("redo")} (Ctrl+Y)`} onClick={redo} disabled={future === 0}>
               <Redo2 className="h-4 w-4" />
             </TBtn>
 
             {/* Desktop Settings */}
             <div className="hidden sm:flex items-center gap-1">
+              {onOpenShortcuts && (
+                <TBtn title="Tastaturkürzel (Ctrl+Shift+K)" onClick={onOpenShortcuts}>
+                  <Keyboard className="h-4 w-4" />
+                </TBtn>
+              )}
               <TBtn title={t("searchRedact")} active={searchOpen} onClick={toggleSearch}>
                 <Search className="h-4 w-4" />
               </TBtn>
@@ -298,7 +306,7 @@ export function Toolbar({
               </TBtn>
               <button
                 onClick={() => setLang(lang === "de" ? "en" : "de")}
-                className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70 cursor-pointer"
+                className="rounded-md bg-toolbar-accent px-2 py-1.5 font-mono text-xs uppercase hover:bg-toolbar-accent/70 cursor-pointer transition-colors"
                 title={t("language")}
               >
                 {lang}

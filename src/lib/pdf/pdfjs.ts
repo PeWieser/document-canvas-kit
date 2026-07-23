@@ -7,6 +7,9 @@ if (typeof window !== "undefined") {
   }).catch((err) => {
     console.error("Failed to load PDF worker:", err);
   });
+} else {
+  // In Node/Vitest test environment, avoid invalid filesystem path imports for pdf worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
 }
 
 export { pdfjsLib };

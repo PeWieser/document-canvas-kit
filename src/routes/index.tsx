@@ -14,9 +14,9 @@ function Index() {
 
   useEffect(() => {
     let mounted = true;
-    import("@/components/editor/PdfStudio")
+    import("@/components/editor/AppShell")
       .then((m) => {
-        if (mounted) setEditor(() => m.PdfStudio);
+        if (mounted) setEditor(() => m.AppShell);
       })
       .catch((err) => {
         if (mounted) setError(err);

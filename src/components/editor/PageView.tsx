@@ -22,6 +22,11 @@ import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady, mat
 import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 import bunnyFamilies from "@/lib/pdf/font-families.json";
 import { detectParagraphs } from "@/lib/pdf/paragraphGroup";
+import { RichTextEditor } from "@/components/editor/RichTextEditor";
+import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
+import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
+import { useAlignmentScaleX } from "@/hooks/useAlignmentScaleX";
+import { globalCanvasPool } from "@/hooks/useCanvasPool";
 
 interface TextItem {
   str: string;
@@ -397,10 +402,11 @@ export function PageView({ doc, pageId }: Props) {
     };
   }, [doc, pageId]);
 
-  // --- render page (double-buffered to eliminate white zoom flashes) ---
+  // --- render page (double-buffered with LRU canvas recycling to eliminate white zoom flashes) ---
   useEffect(() => {
     if (!pdfPage || !viewport) return;
     let renderTask: any = null;
+    const poolKey = `page_temp_${pageId}`;
 
     const canvas = canvasRef.current;
     if (canvas) {
@@ -412,34 +418,36 @@ export function PageView({ doc, pageId }: Props) {
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
 
-      // Render to an off-screen canvas buffer
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = targetW;
-      tempCanvas.height = targetH;
-      const tempCtx = tempCanvas.getContext("2d")!;
-      tempCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Render to an off-screen canvas buffer acquired from globalCanvasPool
+      const tempCanvas = globalCanvasPool.acquire(poolKey, targetW, targetH);
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      renderTask = pdfPage.render({ canvasContext: tempCtx, viewport: viewport as any });
+        renderTask = pdfPage.render({ canvasContext: tempCtx, viewport: viewport as any });
 
-      void renderTask.promise.then(() => {
-        // Update backing store and copy buffer image in a single frame tick
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(tempCanvas, 0, 0);
-        }
-      }).catch(() => {
-        /* task cancelled or interrupted */
-      });
+        void renderTask.promise.then(() => {
+          // Update backing store and copy buffer image in a single frame tick
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(tempCanvas, 0, 0);
+          }
+          globalCanvasPool.release(poolKey);
+        }).catch(() => {
+          globalCanvasPool.release(poolKey);
+        });
+      }
     }
 
     return () => {
       if (renderTask && typeof renderTask.cancel === "function") {
         renderTask.cancel();
       }
+      globalCanvasPool.release(poolKey);
     };
-  }, [pdfPage, zoom, viewport]);
+  }, [pdfPage, zoom, viewport, pageId]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -796,6 +804,9 @@ export function PageView({ doc, pageId }: Props) {
         width: para.bounds.w,
         lineHeight: para.lineHeight,
         originalFontBytes: cachedInfo?.bytes,
+        runs: para.runs,
+        style: para.style,
+        alignment: para.style?.alignment || "left",
       } as Annotation);
     } else {
       addAnnotation({
@@ -1487,50 +1498,32 @@ function AnnoView({
     const annoWidth = anno.kind === "textReplace" ? (anno as TextReplaceAnno).width : undefined;
     const textboxX = anno.kind === "textbox" ? (anno as TextboxAnno).x : 0;
     const textboxY = anno.kind === "textbox" ? (anno as TextboxAnno).y : 0;
-
-    const tx = transform
-      ? transformMatrix(
-          (vp as unknown as { transform: number[] }).transform,
-          transform,
-        )
-      : transformMatrix((vp as unknown as { transform: number[] }).transform, [
-          1,
-          0,
-          0,
-          1,
-          textboxX,
-          textboxY,
-        ]);
-
-    const fontHeight = transform
-      ? Math.hypot(tx[2], tx[3])
-      : anno.fontSize * Math.hypot(tx[2], tx[3]);
-
-    const annoLineHeight = anno.kind === "textReplace" ? (anno as TextReplaceAnno).lineHeight : undefined;
-    let screenLineHeight = fontHeight;
-    if (transform && annoLineHeight && annoLineHeight > 0) {
-      const pdfFontHeight = Math.hypot(transform[2], transform[3]);
-      if (pdfFontHeight > 0) {
-        screenLineHeight = annoLineHeight * (fontHeight / pdfFontHeight);
-      }
-    }
-
-    const left = tx[4];
-    const top = transform ? tx[5] - fontHeight : tx[5];
-    const angle = Math.atan2(tx[1], tx[0]);
-    const origWidth = anno.kind === "textReplace"
-      ? (transform
-          ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1])
-          : (annoWidth ?? 0) * zoom)
-      : (anno as TextboxAnno).w * Math.hypot(tx[0], tx[1]);
-
     const family = cssFontStack(anno.fontFamily || "");
     const isMultiline = anno.kind === "textReplace" && anno.text.includes("\n");
     const numLines = isMultiline ? anno.text.split("\n").length : 1;
-    
-    // For textReplace annotations, measure unscaled text width across ALL lines to prevent line-wrapping & right-clipping
+
+    // Use alignment engine to compute subpixel precise positioning
+    const pdfFontMetrics = (anno as TextReplaceAnno).pdfFontMetrics || null;
+    const alignment = computeAlignmentMetrics(
+      {
+        transform: transform ?? [1, 0, 0, 1, textboxX, textboxY],
+        width: annoWidth ?? (anno as TextboxAnno).w ?? 100,
+        str: anno.text,
+      },
+      vp,
+      pdfFontMetrics,
+      family
+    );
+
+    const fontHeight = alignment.fontHeight;
+    const left = alignment.domLeft;
+    const top = alignment.domTop;
+    const angle = alignment.angle;
+    const origWidth = alignment.domWidth;
+
     let containerWidth = origWidth;
-    let textScaleX = 1;
+    let predictedTextScale = alignment.initialScaleX;
+
     if (anno.kind === "textReplace") {
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
       const lines = anno.text.split("\n");
@@ -1539,10 +1532,20 @@ function AnnoView({
         const w = getTextWidth(lineText, fontSpec);
         if (w > maxMeasured) maxMeasured = w;
       }
-      const pdfScreenWidth = transform ? (annoWidth ?? 0) * Math.hypot(tx[0], tx[1]) / Math.hypot(transform[0], transform[1]) : (annoWidth ?? 0) * zoom;
-      textScaleX = maxMeasured > 0 && pdfScreenWidth > 0 ? pdfScreenWidth / maxMeasured : 1;
-      containerWidth = Math.max(maxMeasured + 14, pdfScreenWidth);
+      predictedTextScale = maxMeasured > 0 && origWidth > 0 ? origWidth / maxMeasured : 1;
+      containerWidth = Math.max(maxMeasured + 14, origWidth);
     }
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const scaleX = useAlignmentScaleX(textareaRef, {
+      initialScaleX: predictedTextScale,
+      targetWidth: origWidth,
+      text: anno.text,
+      fontSpec: `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`,
+      enabled: anno.kind === "textReplace" && !isMultiline,
+    });
+
+    const activeScaleX = anno.kind === "textReplace" && !isMultiline ? scaleX : 1;
 
     const s = {
       left: `${left}px`,
@@ -1551,7 +1554,7 @@ function AnnoView({
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
     if (anno.kind === "textReplace" && !isMultiline) {
-       transformString = transformString ? `${transformString} scaleX(${textScaleX})` : `scaleX(${textScaleX})`;
+       transformString = transformString ? `${transformString} scaleX(${activeScaleX})` : `scaleX(${activeScaleX})`;
     }
     const transformOriginString = transform ? `0 0` : undefined;
 
@@ -1577,54 +1580,65 @@ function AnnoView({
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <textarea
-          value={anno.text}
-          onChange={(e) => {
-            const el = e.target as HTMLTextAreaElement;
-            if (anno.kind === "textbox" || isMultiline) {
-              // auto-grow the box to fit its content
-              el.style.height = "auto";
-              el.style.height = `${el.scrollHeight}px`;
-            } else {
-              el.style.height = `${Math.ceil(fontHeight * 1.2)}px`;
-            }
-            onUpdate({ text: el.value } as any);
-          }}
-          ref={(el) => {
-            if (el) {
+        {isMultiline || anno.runs ? (
+          <RichTextEditor
+            initialRuns={anno.runs}
+            initialText={anno.text}
+            style={{
+              alignment: anno.alignment || "left",
+              lineHeight: anno.lineHeight || 1.2,
+              fontSize: anno.fontSize,
+              fontFamily: family,
+              color: anno.color,
+            }}
+            onChange={(runs, _html, plainText) => {
+              onUpdate({ runs, text: plainText } as any);
+            }}
+            onBlur={onSelect}
+            className="w-full bg-transparent p-0 ring-0 focus:ring-0 text-inherit border-none"
+          />
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={anno.text}
+            onChange={(e) => {
+              const el = e.target as HTMLTextAreaElement;
               if (anno.kind === "textbox" || isMultiline) {
+                // auto-grow the box to fit its content
                 el.style.height = "auto";
                 el.style.height = `${el.scrollHeight}px`;
               } else {
                 el.style.height = `${Math.ceil(fontHeight * 1.2)}px`;
               }
-            }
-          }}
-          onFocus={onSelect}
-          placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
-          rows={anno.kind === "textReplace" ? numLines : undefined}
-          className="w-full resize-none bg-transparent outline-none overflow-hidden"
-          style={{
-            fontSize: fontHeight,
-            color: anno.color,
-            fontFamily: family,
-            fontWeight: anno.bold ? 700 : 400,
-            fontStyle: anno.italic ? "italic" : "normal",
-            lineHeight: anno.lineHeight ? (anno.lineHeight > 3 ? anno.lineHeight / anno.fontSize : anno.lineHeight) : 1.2,
-            padding: 0,
-            margin: 0,
-            border: "none",
-            display: "block",
-            position: "relative",
-            overflow: "hidden",
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-            whiteSpace: isMultiline ? "pre-wrap" : (anno.kind === "textReplace" ? "nowrap" : "pre-wrap"),
-            wordBreak: "keep-all",
-            overflowWrap: "normal",
-            width: "100%",
-          }}
-        />
+              onUpdate({ text: el.value } as any);
+            }}
+            onFocus={onSelect}
+            placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
+            rows={anno.kind === "textReplace" ? numLines : undefined}
+            className="w-full resize-none bg-transparent outline-none overflow-hidden"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              fontSize: `${fontHeight}px`,
+              color: anno.color,
+              fontFamily: family,
+              fontWeight: anno.bold ? 700 : 400,
+              fontStyle: anno.italic ? "italic" : "normal",
+              lineHeight: 1,
+              padding: 0,
+              margin: 0,
+              border: "none",
+              outline: "none",
+              letterSpacing: 0,
+              whiteSpace: isMultiline ? "pre-wrap" : "pre",
+              overflow: "hidden",
+              wordBreak: "keep-all",
+              overflowWrap: "normal",
+              width: "100%",
+            }}
+          />
+        )}
         {selected && (() => {
           const height = anno.kind === "textReplace" ? fontHeight : anno.h;
           const width = anno.kind === "textReplace" ? containerWidth : anno.w;

@@ -16,6 +16,8 @@ import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
 import { CropToolPanel } from "./CropToolPanel";
 import { FeedbackWidget } from "./FeedbackWidget";
+import { ShortcutsPanel } from "./ShortcutsPanel";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -46,6 +48,7 @@ export function PdfStudio() {
   const { doc, error } = useLoadedPdf(originalBytes);
   const [exporting, setExporting] = useState(false);
   const [dark, setDark] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const setSelectedPages = useEditor((s) => s.setSelectedPages);
   const currentTool = useEditor((s) => s.tool);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
@@ -54,7 +57,6 @@ export function PdfStudio() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const prevZoomRef = useRef(zoom);
-
   const loadBytes = useCallback(
     async (name: string, buf: Uint8Array, handle: FileSystemFileHandle | null) => {
       try {
@@ -233,6 +235,14 @@ export function PdfStudio() {
       toast.error(t("printFail") || "Print failed");
     }
   }, [buildBytes, t]);
+
+  useKeyboardShortcuts({
+    onSave: handleSave,
+    onExport: handleExport,
+    onOpenShortcuts: () => setShortcutsOpen(true),
+    onCloseShortcuts: () => setShortcutsOpen(false),
+    isShortcutsOpen: shortcutsOpen,
+  });
 
   const selectAllPDFText = useCallback(() => {
     const selection = window.getSelection();
@@ -614,6 +624,7 @@ export function PdfStudio() {
         onSave={handleSave}
         onSaveAs={handleSaveAs}
         onQuit={handleQuit}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
         exporting={exporting}
         dark={dark}
         onToggleTheme={toggleTheme}
@@ -683,6 +694,7 @@ export function PdfStudio() {
       {doc && currentTool === "crop" && <CropToolPanel doc={doc} />}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}
       <FeedbackWidget />
+      <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }
