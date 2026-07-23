@@ -1,53 +1,18 @@
-import { useRef, useState, useEffect } from "react";
-import { FileUp, FileText, Sparkles, Clock, ArrowRight, ShieldCheck, Highlighter, Eraser, PenLine } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileUp, Sparkles, ArrowRight, Highlighter, Eraser, PenLine } from "lucide-react";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-
-interface RecentFile {
-  name: string;
-  size: number;
-  lastOpened: number;
-}
-
-const RECENT_FILES_KEY = "pdfstudio_recent_files_v1";
 
 export function DropZone({ onFile }: { onFile: (file: File) => void }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [creatingSample, setCreatingSample] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(RECENT_FILES_KEY);
-      if (stored) {
-        setRecentFiles(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.warn("Could not read recent files", e);
-    }
-  }, []);
-
-  const saveToRecent = (fileName: string, size: number) => {
-    try {
-      const existing: RecentFile[] = JSON.parse(localStorage.getItem(RECENT_FILES_KEY) || "[]");
-      const updated = [
-        { name: fileName, size, lastOpened: Date.now() },
-        ...existing.filter((f) => f.name !== fileName),
-      ].slice(0, 5);
-      localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(updated));
-      setRecentFiles(updated);
-    } catch (e) {
-      console.warn("Could not save recent file", e);
-    }
-  };
 
   const pick = (files: FileList | null) => {
     const f = files?.[0];
     if (f && f.type === "application/pdf") {
-      saveToRecent(f.name, f.size);
       onFile(f);
     }
   };
@@ -151,7 +116,6 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
         type: "application/pdf",
       });
 
-      saveToRecent(file.name, file.size);
       onFile(file);
     } catch (e) {
       console.error("Error creating sample PDF", e);
@@ -217,7 +181,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           />
         </div>
 
-        {/* Actions Grid: Sample PDF + Recent Files */}
+        {/* Actions Grid: Sample PDF + Feature Badges */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Sample PDF Action Card */}
           <button
@@ -255,36 +219,6 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
             </div>
           </div>
         </div>
-
-        {/* Recent Files Section */}
-        {recentFiles.length > 0 && (
-          <div className="space-y-2 pt-2 border-t border-border/50">
-            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                Zuletzt geöffnet
-              </span>
-              <span>{recentFiles.length} Datein</span>
-            </div>
-            <div className="space-y-1.5">
-              {recentFiles.map((rf, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => inputRef.current?.click()}
-                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/40 hover:bg-card hover:border-border transition-colors cursor-pointer text-xs"
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <FileText className="w-4 h-4 text-primary shrink-0" />
-                    <span className="font-medium text-foreground truncate">{rf.name}</span>
-                  </div>
-                  <span className="text-[11px] font-mono text-muted-foreground shrink-0 ml-2">
-                    {(rf.size / 1024).toFixed(0)} KB
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

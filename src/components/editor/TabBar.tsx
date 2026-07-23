@@ -103,7 +103,7 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
   };
 
   return (
-    <div className="relative flex items-center bg-slate-900 border-b border-slate-800 text-slate-200 select-none overflow-x-auto no-scrollbar h-10 px-2 gap-1">
+    <div className="relative flex items-center bg-card border-b border-border text-foreground select-none overflow-x-auto no-scrollbar h-10 px-2 gap-1">
       {/* Tabs */}
       <div className="flex items-center gap-1 flex-1 min-w-0">
         {tabOrder.map((id) => {
@@ -118,14 +118,13 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
               key={id}
               onClick={() => switchToDocument(id)}
               onDoubleClick={() => handleStartRename(id, displayName)}
-              className={`group relative flex items-center gap-2 h-8 px-3 rounded-t-md text-xs font-medium cursor-pointer transition-colors max-w-[200px] min-w-[120px] shrink flex-1 border-t border-x ${
+              className={`group relative flex items-center gap-2 h-8 px-3 rounded-t-md text-xs font-medium cursor-pointer transition-colors max-w-[200px] min-w-[120px] shrink flex-1 border-x ${
                 isActive
-                  ? "bg-slate-800 text-white border-slate-700 font-semibold shadow-sm"
-                  : "bg-slate-900/60 text-slate-400 border-transparent hover:bg-slate-800/50 hover:text-slate-200"
+                  ? "bg-background text-foreground border-t-2 border-t-primary border-x-border font-semibold shadow-xs"
+                  : "bg-muted/40 text-muted-foreground border-t border-t-transparent border-x-transparent hover:bg-muted/70 hover:text-foreground"
               }`}
-
             >
-              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-blue-400" : "text-slate-500"}`} />
+              <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
 
               {editingId === id ? (
                 <input
@@ -138,7 +137,7 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
                     if (e.key === "Enter") handleCommitRename(id);
                     if (e.key === "Escape") setEditingId(null);
                   }}
-                  className="w-full bg-slate-950 text-white px-1 py-0.5 rounded outline-none border border-blue-500 text-xs"
+                  className="w-full bg-background text-foreground px-1 py-0.5 rounded outline-none border border-primary text-xs"
                 />
               ) : (
                 <span className="truncate flex-1" title={displayName}>
@@ -157,18 +156,13 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
               {/* Close Button */}
               <button
                 onClick={(e) => handleCloseClick(e, id)}
-                className={`p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-opacity ${
+                className={`p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity ${
                   isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 }`}
                 title="Close tab (Ctrl+W)"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
-
-              {/* Active Underline Highlight */}
-              {isActive && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
-              )}
             </div>
           );
         })}
@@ -182,7 +176,7 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
               openDocument();
             }
           }}
-          className="flex items-center justify-center w-7 h-7 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
+          className="flex items-center justify-center w-7 h-7 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
           title="Open document in new tab (Ctrl+N)"
         >
           <Plus className="w-4 h-4" />
@@ -192,14 +186,14 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
       {/* Unsaved Changes Confirmation Modal / Dialog */}
       {confirmCloseId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 max-w-sm w-full shadow-xl text-slate-100 space-y-4">
-            <div className="flex items-center gap-3 text-amber-400 font-semibold text-sm">
+          <div className="bg-card border border-border rounded-lg p-5 max-w-sm w-full shadow-xl text-card-foreground space-y-4">
+            <div className="flex items-center gap-3 text-amber-500 font-semibold text-sm">
               <AlertTriangle className="w-5 h-5" />
               Unsaved Changes
             </div>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-muted-foreground">
               Document &quot;
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-foreground">
                 {documents.get(confirmCloseId)?.fileName || "Untitled"}
               </span>
               &quot; has unsaved changes. Are you sure you want to close it?
@@ -207,13 +201,13 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
             <div className="flex justify-end gap-2 text-xs">
               <button
                 onClick={() => setConfirmCloseId(null)}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+                className="px-3 py-1.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmClose}
-                className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
+                className="px-3 py-1.5 rounded bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium transition-colors"
               >
                 Discard &amp; Close
               </button>

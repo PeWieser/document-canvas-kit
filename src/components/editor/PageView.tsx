@@ -789,20 +789,35 @@ export function PageView({ doc, pageId }: Props) {
       }
     }
 
-    if (para && para.lines.length > 1) {
+    if (para && (para.lines.length > 1 || (para.lines.length === 1 && para.lines[0].itemIndices.length > 1))) {
+      const isSingleLineMultiItem = para.lines.length === 1 && para.lines[0].itemIndices.length > 1;
+      const targetLine = para.lines[0];
+
+      const annoRect = isSingleLineMultiItem
+        ? {
+            x: targetLine.transform[4],
+            y: targetLine.transform[5] - para.fontSize,
+            w: targetLine.width,
+            h: para.fontSize,
+          }
+        : para.bounds;
+      const annoText = isSingleLineMultiItem ? targetLine.text : para.fullText;
+      const annoTransform = isSingleLineMultiItem ? targetLine.transform : para.transform;
+      const annoWidth = isSingleLineMultiItem ? targetLine.width : para.bounds.w;
+
       addAnnotation({
         id: annoId,
         kind: "textReplace",
         page: pageId,
-        rect: para.bounds,
-        text: para.fullText,
+        rect: annoRect,
+        text: annoText,
         fontSize: para.fontSize,
         color: defaultColor,
         fontFamily: family,
         bold: paraBold,
         italic: paraItalic,
-        transform: para.transform,
-        width: para.bounds.w,
+        transform: annoTransform,
+        width: annoWidth,
         lineHeight: para.lineHeight,
         originalFontBytes: cachedInfo?.bytes,
         runs: para.runs,

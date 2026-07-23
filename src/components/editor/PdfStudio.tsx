@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useEditor } from "@/store/editorStore";
+import { useDocumentStore } from "@/store/documentStore";
 import { useI18n } from "@/lib/i18n";
 import { useLoadedPdf } from "@/hooks/useLoadedPdf";
 import { loadPdfDocument } from "@/lib/pdf/pdfjs";
@@ -28,6 +29,8 @@ interface PdfStudioProps {
 
 export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
   const { t } = useI18n();
+  const documents = useDocumentStore((s) => s.documents);
+  const activeDocId = useDocumentStore((s) => s.activeDocId);
   const fileName = useEditor((s) => s.fileName);
   const originalBytes = useEditor((s) => s.originalBytes);
   const pageOrder = useEditor((s) => s.pageOrder);
@@ -609,7 +612,6 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
           className="hidden"
           onChange={(e) => e.target.files && handleFile(e.target.files[0])}
         />
-        <TabBar onOpenPicker={onOpenPicker || openPicker} />
         <div className="flex-1 flex flex-col min-h-0 relative">
           <DropZone onFile={handleFile} />
         </div>
@@ -637,7 +639,9 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
         dark={dark}
         onToggleTheme={toggleTheme}
       />
-      <TabBar onOpenPicker={onOpenPicker || openPicker} />
+      {documents.size > 0 && activeDocId !== null && (
+        <TabBar onOpenPicker={onOpenPicker || openPicker} />
+      )}
       <div className="flex min-h-0 flex-1 relative">
         {doc && sidebarOpen && (
           <div
