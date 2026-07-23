@@ -70,34 +70,52 @@ export function useAlignmentScaleX(
   useIsomorphicLayoutEffect(() => {
     if (!enabled || targetWidth === undefined || targetWidth <= 0) return;
 
-    let unscaledWidth = 0;
+    let cancelled = false;
 
-    if (elementRef?.current) {
-      unscaledWidth = elementRef.current.scrollWidth;
-    }
+    const measureAndSetScale = () => {
+      let unscaledWidth = 0;
 
-    if (text !== undefined && currentFontSpec && typeof document !== "undefined") {
-      try {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.font = currentFontSpec;
-          const measured = ctx.measureText(text).width;
-          if (measured > 0) {
-            unscaledWidth = measured;
+      if (elementRef?.current) {
+        unscaledWidth = elementRef.current.scrollWidth;
+      }
+
+      if (text !== undefined && currentFontSpec && typeof document !== "undefined") {
+        try {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.font = currentFontSpec;
+            const measured = ctx.measureText(text).width;
+            if (measured > 0) {
+              unscaledWidth = measured;
+            }
           }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
+
+      if (unscaledWidth > 0 && targetWidth > 0) {
+        const computed = targetWidth / unscaledWidth;
+        if (Math.abs(computed - scaleX) > 0.001) {
+          setScaleX(computed);
+        }
+      }
+    };
+
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.ready.then(() => {
+        if (!cancelled) {
+          measureAndSetScale();
+        }
+      });
+    } else {
+      measureAndSetScale();
     }
 
-    if (unscaledWidth > 0 && targetWidth > 0) {
-      const computed = targetWidth / unscaledWidth;
-      if (Math.abs(computed - scaleX) > 0.001) {
-        setScaleX(computed);
-      }
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [text, targetWidth, currentFontSpec, enabled, scaleX]);
 
   return scaleX;

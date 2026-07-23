@@ -61,6 +61,7 @@ export interface TextReplaceAnno {
   weight?: number;
   italicAngle?: number;
   pdfFontMetrics?: FontMetrics | null;
+  ascentRatio?: number;
 }
 
 export interface TextboxAnno {

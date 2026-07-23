@@ -56,17 +56,17 @@
 :root {
   --radius: 6px;
 
-  /* Notion/Apple Light Mode Palette */
-  --background: #ffffff;
+  /* Notion/Apple Warm Light Mode Palette */
+  --background: #fafaf8;
   --foreground: #37352f;
-  --desk: #f7f7f5;
+  --desk: #f0efe9;
   --card: #ffffff;
   --card-foreground: #37352f;
   --popover: #ffffff;
   --popover-foreground: #37352f;
 
-  /* Apple Blue */
-  --primary: #007aff;
+  /* Soft Primary Blue */
+  --primary: #4a90d9;
   --primary-foreground: #ffffff;
 
   --secondary: #f1f1ef;
@@ -79,35 +79,35 @@
   --destructive: #df5b5b;
   --destructive-foreground: #ffffff;
 
-  --border: #e9e9e7;
-  --input: #e9e9e7;
-  --ring: #007aff;
+  --border: #e2e1dc;
+  --input: #e2e1dc;
+  --ring: #4a90d9;
 
   --toolbar: rgba(255, 255, 255, 0.85);
   --toolbar-foreground: #37352f;
   --toolbar-accent: #f1f1ef;
 
-  --sidebar: #f7f7f5;
+  --sidebar: #f0efe9;
   --sidebar-foreground: #37352f;
-  --sidebar-primary: #007aff;
+  --sidebar-primary: #4a90d9;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e8e8e6;
   --sidebar-accent-foreground: #37352f;
-  --sidebar-border: #e9e9e7;
-  --sidebar-ring: #007aff;
+  --sidebar-border: #e2e1dc;
+  --sidebar-ring: #4a90d9;
 }
 
 .dark {
-  /* Premium Dark Mode Palette */
-  --background: #191919;
+  /* Warm Dark Slate Palette */
+  --background: #1c1c24;
   --foreground: #e3e3e3;
-  --desk: #0f0f0f;
-  --card: #202020;
+  --desk: #16161c;
+  --card: #24242e;
   --card-foreground: #e3e3e3;
-  --popover: #202020;
+  --popover: #2a2a36;
   --popover-foreground: #e3e3e3;
 
-  --primary: #2f80ed;
+  --primary: #6ba3e8;
   --primary-foreground: #ffffff;
 
   --secondary: #252525;
@@ -120,22 +120,22 @@
   --destructive: #e25c5c;
   --destructive-foreground: #ffffff;
 
-  --border: #2a2a2a;
-  --input: #2a2a2a;
-  --ring: #2f80ed;
+  --border: #35354a;
+  --input: #35354a;
+  --ring: #6ba3e8;
 
-  --toolbar: rgba(25, 25, 25, 0.85);
+  --toolbar: rgba(36, 36, 46, 0.85);
   --toolbar-foreground: #e3e3e3;
   --toolbar-accent: #252525;
 
-  --sidebar: #202020;
+  --sidebar: #24242e;
   --sidebar-foreground: #e3e3e3;
-  --sidebar-primary: #2f80ed;
+  --sidebar-primary: #6ba3e8;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #2f2f2f;
   --sidebar-accent-foreground: #e3e3e3;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #2f80ed;
+  --sidebar-border: #35354a;
+  --sidebar-ring: #6ba3e8;
 }
 
 /* PDF document canvas container stays clean white paper background in all modes */

@@ -26,7 +26,6 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
 import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
 import { useAlignmentScaleX } from "@/hooks/useAlignmentScaleX";
-import { globalCanvasPool } from "@/hooks/useCanvasPool";
 
 interface TextItem {
   str: string;
@@ -402,11 +401,10 @@ export function PageView({ doc, pageId }: Props) {
     };
   }, [doc, pageId]);
 
-  // --- render page (double-buffered with LRU canvas recycling to eliminate white zoom flashes) ---
+  // --- render page (double-buffered to eliminate white zoom flashes) ---
   useEffect(() => {
     if (!pdfPage || !viewport) return;
     let renderTask: any = null;
-    const poolKey = `page_temp_${pageId}`;
 
     const canvas = canvasRef.current;
     if (canvas) {
@@ -418,8 +416,10 @@ export function PageView({ doc, pageId }: Props) {
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
 
-      // Render to an off-screen canvas buffer acquired from globalCanvasPool
-      const tempCanvas = globalCanvasPool.acquire(poolKey, targetW, targetH);
+      // Render to an off-screen canvas buffer
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = targetW;
+      tempCanvas.height = targetH;
       const tempCtx = tempCanvas.getContext("2d");
       if (tempCtx) {
         tempCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -434,9 +434,8 @@ export function PageView({ doc, pageId }: Props) {
           if (ctx) {
             ctx.drawImage(tempCanvas, 0, 0);
           }
-          globalCanvasPool.release(poolKey);
         }).catch(() => {
-          globalCanvasPool.release(poolKey);
+          /* task cancelled or interrupted */
         });
       }
     }
@@ -445,7 +444,6 @@ export function PageView({ doc, pageId }: Props) {
       if (renderTask && typeof renderTask.cancel === "function") {
         renderTask.cancel();
       }
-      globalCanvasPool.release(poolKey);
     };
   }, [pdfPage, zoom, viewport, pageId]);
 
@@ -720,11 +718,14 @@ export function PageView({ doc, pageId }: Props) {
   }, [tool, highlightColor, pageId, viewport]);
 
   // --- click a span to replace its text (font-aware) ---
-  const replaceSpan = (idx: number) => {
+  const replaceSpan = async (idx: number) => {
     const vp = getVp();
     const item = items[idx];
     if (!vp || !item || !pdfPage) return;
     const rect = getBoundingBoxInPdfSpace(item.transform, item.width);
+
+    const pdfFontMetrics = item.fontName ? await extractFontMetrics(pdfPage, item.fontName) : null;
+    const ascentRatio = pdfFontMetrics?.ascentRatio ?? 0.82;
 
     // Primary path: embedded font bytes → deckungsgleich re-embed on export.
     let family = "Helvetica";
@@ -807,6 +808,8 @@ export function PageView({ doc, pageId }: Props) {
         runs: para.runs,
         style: para.style,
         alignment: para.style?.alignment || "left",
+        pdfFontMetrics,
+        ascentRatio,
       } as Annotation);
     } else {
       addAnnotation({
@@ -824,6 +827,8 @@ export function PageView({ doc, pageId }: Props) {
         width: item.width,
         lineHeight: item.height,
         originalFontBytes: cachedInfo?.bytes,
+        pdfFontMetrics,
+        ascentRatio,
       } as Annotation);
     }
 
@@ -1533,7 +1538,7 @@ function AnnoView({
         if (w > maxMeasured) maxMeasured = w;
       }
       predictedTextScale = maxMeasured > 0 && origWidth > 0 ? origWidth / maxMeasured : 1;
-      containerWidth = Math.max(maxMeasured + 14, origWidth);
+      containerWidth = origWidth;
     }
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);

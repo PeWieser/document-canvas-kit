@@ -55,6 +55,52 @@ function getTextWidth(text: string, fontSpec: string): number {
 }
 
 /**
+ * Predicts text width directly from pdfFontMetrics.charWidths
+ * without relying on canvas measurement fallbacks.
+ */
+export function predictWidthFromFontMetrics(
+  text: string,
+  fontHeight: number,
+  pdfFontMetrics: FontMetrics | null | undefined
+): number | null {
+  if (!text || !fontHeight || !pdfFontMetrics || !pdfFontMetrics.charWidths) {
+    return null;
+  }
+
+  const { charWidths, unitsPerEm = 1000 } = pdfFontMetrics;
+  let totalWidthEm = 0;
+  let count = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const code = text.charCodeAt(i);
+    let w: number | undefined;
+
+    if (Array.isArray(charWidths)) {
+      w = charWidths[code] ?? charWidths[i];
+    } else if (typeof charWidths === "object" && charWidths !== null) {
+      w = (charWidths as Record<string, number>)[ch] ??
+          (charWidths as Record<string, number>)[code] ??
+          (charWidths as Record<string, number>)[String(code)];
+    }
+
+    if (typeof w === "number" && !isNaN(w) && w > 0) {
+      totalWidthEm += w;
+      count++;
+    }
+  }
+
+  if (count === 0 || totalWidthEm <= 0) return null;
+
+  if (count < text.length) {
+    const avgWidthEm = totalWidthEm / count;
+    totalWidthEm += avgWidthEm * (text.length - count);
+  }
+
+  return (totalWidthEm / unitsPerEm) * fontHeight;
+}
+
+/**
  * Computes subpixel-precise alignment metrics for a PDF text item.
  */
 export function computeAlignmentMetrics(
@@ -82,8 +128,14 @@ export function computeAlignmentMetrics(
 
   let initialScaleX = 1;
   if (item.str && domWidth > 0) {
-    const fontSpec = `${fontHeight}px ${fontFamily}`;
-    const measuredWidth = getTextWidth(item.str, fontSpec);
+    const predictedWidth = predictWidthFromFontMetrics(item.str, fontHeight, pdfFontMetrics);
+    let measuredWidth = predictedWidth ?? 0;
+
+    if (!measuredWidth) {
+      const fontSpec = `${fontHeight}px ${fontFamily}`;
+      measuredWidth = getTextWidth(item.str, fontSpec);
+    }
+
     if (measuredWidth > 0) {
       initialScaleX = domWidth / measuredWidth;
     }

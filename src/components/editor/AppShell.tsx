@@ -1,6 +1,4 @@
 import React, { useRef } from "react";
-import { TabBar } from "./TabBar";
-import { StatusBar } from "./StatusBar";
 import { PdfStudio } from "./PdfStudio";
 import { useDocumentStore } from "@/store/documentStore";
 import { loadPdfDocument } from "@/lib/pdf/pdfjs";
@@ -68,11 +66,9 @@ export function AppShell() {
         className="hidden"
         onChange={handleFileInputChange}
       />
-      <TabBar onOpenPicker={handleOpenPicker} />
       <div className="flex-1 flex flex-col min-h-0 relative">
-        <PdfStudio key={activeDocId ?? "empty"} />
+        <PdfStudio key={activeDocId ?? "empty"} onOpenPicker={handleOpenPicker} />
       </div>
-      <StatusBar />
     </div>
   );
 }

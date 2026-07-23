@@ -8,6 +8,7 @@ import { exportPdf, downloadBytes } from "@/lib/pdf/export";
 import type { Tool } from "@/lib/pdf/types";
 import { DropZone } from "./DropZone";
 import { Toolbar } from "./Toolbar";
+import { TabBar } from "./TabBar";
 import { ThumbnailRail } from "./ThumbnailRail";
 import { GridOverview } from "./GridOverview";
 import { PageView, clearGlobalFontCache } from "./PageView";
@@ -21,7 +22,11 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
-export function PdfStudio() {
+interface PdfStudioProps {
+  onOpenPicker?: () => void;
+}
+
+export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
   const { t } = useI18n();
   const fileName = useEditor((s) => s.fileName);
   const originalBytes = useEditor((s) => s.originalBytes);
@@ -596,7 +601,7 @@ export function PdfStudio() {
 
   if (!originalBytes) {
     return (
-      <div className="flex min-h-screen flex-col">
+      <div className="flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100">
         <input
           ref={inputRef}
           type="file"
@@ -604,13 +609,16 @@ export function PdfStudio() {
           className="hidden"
           onChange={(e) => e.target.files && handleFile(e.target.files[0])}
         />
-        <DropZone onFile={handleFile} />
+        <TabBar onOpenPicker={onOpenPicker || openPicker} />
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <DropZone onFile={handleFile} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       <input
         ref={inputRef}
         type="file"
@@ -629,6 +637,7 @@ export function PdfStudio() {
         dark={dark}
         onToggleTheme={toggleTheme}
       />
+      <TabBar onOpenPicker={onOpenPicker || openPicker} />
       <div className="flex min-h-0 flex-1 relative">
         {doc && sidebarOpen && (
           <div

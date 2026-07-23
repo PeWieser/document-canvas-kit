@@ -161,7 +161,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-desk p-6 animate-page-slide-in">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background via-background/80 to-desk p-6 animate-page-slide-in">
       <div className="w-full max-w-xl space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
@@ -191,10 +191,10 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
             pick(e.dataTransfer.files);
           }}
           className={cn(
-            "group relative cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card/80 p-8 sm:p-10 text-center transition-all duration-300 shadow-glass backdrop-blur-md",
+            "group relative cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card/60 p-8 sm:p-10 text-center transition-all duration-300 shadow-glass backdrop-blur-xl",
             over
               ? "border-primary bg-primary/10 ring-4 ring-primary/20 scale-[1.01]"
-              : "hover:border-primary/50 hover:bg-card hover:shadow-xl hover:scale-[1.005]",
+              : "hover:border-primary/50 hover:bg-card/80 hover:shadow-xl hover:scale-[1.005]",
           )}
         >
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-all duration-300 group-hover:bg-primary group-hover:text-primary-foreground group-hover:scale-110 shadow-xs">
@@ -223,9 +223,9 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           <button
             onClick={handleCreateSamplePdf}
             disabled={creatingSample}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card/70 hover:bg-card hover:border-primary/40 transition-all text-left shadow-xs hover:shadow-md group cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card/60 backdrop-blur-xl hover:bg-card/80 hover:border-primary/40 transition-all text-left shadow-xs hover:shadow-md group cursor-pointer disabled:opacity-50"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
               <Sparkles className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
@@ -240,17 +240,17 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           </button>
 
           {/* Quick Feature Badge Card */}
-          <div className="flex items-center justify-around p-4 rounded-xl border border-border bg-card/70 backdrop-blur-xs text-xs font-medium text-muted-foreground">
-            <div className="flex items-center gap-1.5" title={t("highlight")}>
-              <Highlighter className="w-4 h-4 text-primary" />
+          <div className="flex items-center justify-around p-3 rounded-xl border border-border bg-card/60 backdrop-blur-xl text-xs font-medium">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary" title={t("highlight")}>
+              <Highlighter className="w-3.5 h-3.5" />
               <span>Marker</span>
             </div>
-            <div className="flex items-center gap-1.5" title={t("redact")}>
-              <Eraser className="w-4 h-4 text-destructive" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary" title={t("redact")}>
+              <Eraser className="w-3.5 h-3.5" />
               <span>Schwärzen</span>
             </div>
-            <div className="flex items-center gap-1.5" title={t("editText")}>
-              <PenLine className="w-4 h-4 text-emerald-500" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary" title={t("editText")}>
+              <PenLine className="w-3.5 h-3.5" />
               <span>Text</span>
             </div>
           </div>

@@ -1,8 +1,29 @@
 import { describe, it, expect } from "vitest";
 import { extractFontMetrics } from "../../lib/pdf/fontMetrics";
-import { computeAlignmentMetrics } from "../../lib/pdf/alignmentEngine";
+import { computeAlignmentMetrics, predictWidthFromFontMetrics } from "../../lib/pdf/alignmentEngine";
 
 describe("Phase B Alignment Engine & Font Metrics", () => {
+  describe("predictWidthFromFontMetrics", () => {
+    it("returns null when text or metrics are missing", () => {
+      expect(predictWidthFromFontMetrics("", 12, null)).toBeNull();
+      expect(predictWidthFromFontMetrics("A", 12, null)).toBeNull();
+      expect(predictWidthFromFontMetrics("A", 12, { ascent: 0.8, descent: -0.2, ascentRatio: 0.8 })).toBeNull();
+    });
+
+    it("predicts text width from charWidths array", () => {
+      const metrics = {
+        ascent: 0.8,
+        descent: -0.2,
+        ascentRatio: 0.8,
+        unitsPerEm: 1000,
+        charWidths: { 65: 600, 66: 700 }, // 'A': 600, 'B': 700
+      };
+      // For 'AB' at fontHeight 10: (600 + 700) / 1000 * 10 = 13
+      const width = predictWidthFromFontMetrics("AB", 10, metrics);
+      expect(width).toBeCloseTo(13, 4);
+    });
+  });
+
   describe("extractFontMetrics", () => {
     it("returns null for missing page or fontName", async () => {
       expect(await extractFontMetrics(null as any, "font1")).toBeNull();
