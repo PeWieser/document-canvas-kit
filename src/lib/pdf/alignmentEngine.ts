@@ -118,7 +118,7 @@ export function computeAlignmentMetrics(
   const scale = itemScaleX > 0 ? txScaleX / itemScaleX : (viewport.scale || 1);
 
   const ascentRatio = pdfFontMetrics?.ascentRatio ?? 0.8;
-  const domTop = tx[5] - fontHeight * ascentRatio;
+  const domTop = tx[5] - fontHeight;
   const domLeft = tx[4];
   const domHeight = fontHeight;
   const domWidth = item.width * scale;

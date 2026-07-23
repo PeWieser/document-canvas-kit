@@ -199,12 +199,29 @@ To allow editing multi-line text blocks and paragraphs as single cohesive elemen
 4. **Formatting Preservation**: Scans all items within a paragraph to retain `bold` / `italic` flags (e.g., bold headings like `"Absender:"`).
 5. **Adjustable Line Height (Zeilenabstand)**: `FontPicker.tsx` includes an explicit Line Height selector (`1.0` to `2.0`). Line height is detected automatically from PDF item gaps and applied to both DOM textarea styling and PDF export rendering.
 
-### 5.5 Viewport Text Alignment & Scrollbar Suppression
+### 5.5 Locked System & Architecture Rules
 
-1. **1:1 Vertical Baseline Alignment**: `<textarea>` elements in `PageView.tsx` use `top = transform ? tx[5] - fontHeight : tx[5]`, `lineHeight: 1`, `padding: 0`, and `transform-origin: 0 0` to achieve 0.0000px vertical offset relative to PDF.js text layer spans.
+> [!IMPORTANT]
+> **Mandatory Architecture & Layout Rules (Locked Rules)**:
+>
+> 1. **Header Layout & Navigation**:
+>    - Layout hierarchy: `Toolbar` (top) -> `TabBar` (directly below) -> Canvas workspace.
+>    - `StatusBar` is permanently removed.
+>
+> 2. **Off-screen Canvas Rendering**:
+>    - Must use a clean `document.createElement("canvas")` buffer without `globalCanvasPool` eviction.
+>    - Prevents VRAM memory leaks, zoom lag, and white/blank pages.
+>
+> 3. **Subpixel Alignment Formula**:
+>    - Exact alignment calculation (`src/lib/pdf/alignmentEngine.ts`): `domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"`.
+>    - Guarantees 0.00px vertical deviation relative to PDF.js text layer spans.
+
+### 5.6 Viewport Text Alignment & Scrollbar Suppression
+
+1. **1:1 Vertical Baseline Alignment**: `<textarea>` elements in `PageView.tsx` and `computeAlignmentMetrics` in `alignmentEngine.ts` use the Subpixel Alignment Formula (`domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"` and `transform-origin: 0 0`) to achieve 0.00px vertical offset relative to PDF.js text layer spans.
 2. **Scrollbar Elimination**: Global CSS rules in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) completely suppress native browser scrollbars inside text replace boxes.
 
-### 5.6 Feedback System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
+### 5.7 Feedback System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
 
 - **Floating Widget**: Persistent floating button in bottom-right corner opening a category-based feedback dialog (Wish, Criticism, Bug, UI Improvement).
 - **Backend API**: Submits feedback to Cloudflare D1 Worker endpoint (`https://feedback-pdf.semole.workers.dev/`).

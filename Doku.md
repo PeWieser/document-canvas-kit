@@ -69,12 +69,29 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
 - **Formatierungs-Erhalt**: Prüft alle Zeilen im Absatz auf `bold`/`italic`-Flags, damit fette Überschriften (z. B. `"Absender:"`) korrekt im Eingabefeld erhalten bleiben.
 - **Einstellbarer Zeilenabstand**: `FontPicker.tsx` bietet einen expliziten Zeilenabstands-Wähler (`1.0` bis `2.0`). Der Abstand wird automatisch erkannt und sowohl im DOM als auch beim PDF-Export angewendet.
 
-### 2.5 1:1 Vertikale Ausrichtung & Scrollbar-Unterdrückung im Viewport
+### 2.5 Fixierte Architektur- & Layout-Regeln (Locked Rules)
 
-- **Deckungsgleiche Grundlinie**: `<textarea>`-Elemente nutzen `top = transform ? tx[5] - fontHeight : tx[5]`, `lineHeight: 1`, `padding: 0` und `transform-origin: 0 0`, um eine 0.0000px vertikale Abweichung gegenüber den PDF.js-Textspans zu erreichen.
-- **Scrollbar-Eliminierung**: Globale CSS-Regeln in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) unterdrücken nativer Nativer Browser-Scrollbalken in Textboxen vollständig.
+> [!IMPORTANT]
+> **Zwingend einzuhaltende System-Regeln**:
+>
+> 1. **Header Layout & Komponenten-Hierarchie**:
+>    - Vertikaler Aufbau: `Toolbar` (oben) -> `TabBar` (direkt darunter) -> Canvas Workspace.
+>    - `StatusBar` ist dauerhaft entfernt (permanently removed).
+>
+> 2. **Off-screen Canvas Rendering**:
+>    - Muss einen sauberen `document.createElement("canvas")`-Puffer ohne `globalCanvasPool`-Eviction verwenden.
+>    - Dies verhindert VRAM-Speicherlecks, Zoom-Lag sowie weiße/leere Seiten beim Rendern.
+>
+> 3. **Subpixel Alignment Formel**:
+>    - Exakte Ausrichtungsformel für DOM-Textschichten (`alignmentEngine.ts`): `domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"`.
+>    - Garantiert 0.00px vertikale Abweichung gegenüber den PDF.js Textlayer-Spans.
 
-### 2.6 Feedback-System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
+### 2.6 1:1 Vertikale Ausrichtung & Scrollbar-Unterdrückung im Viewport
+
+- **Deckungsgleiche Grundlinie**: `<textarea>`-Elemente und Ausrichtungsberechnungen in `src/lib/pdf/alignmentEngine.ts` nutzen die Subpixel Alignment Formel (`domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"` und `transform-origin: 0 0`), um eine 0.00px vertikale Abweichung gegenüber den PDF.js-Textspans zu erreichen.
+- **Scrollbar-Eliminierung**: Globale CSS-Regeln in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) unterdrücken native Browser-Scrollbalken in Textboxen vollständig.
+
+### 2.7 Feedback-System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
 
 - **Schwebendes Widget**: Unten rechts befindet sich ein Button zum Öffnen des Feedback-Dialogs (Kategorien: Wunsch, Kritik, Bug, UI-Verbesserung).
 - **Cloudflare D1 Worker**: Sendet Feedbacks an ein Cloudflare-Backend (`https://feedback-pdf.semole.workers.dev/`).

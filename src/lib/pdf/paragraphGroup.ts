@@ -60,7 +60,11 @@ export function detectParagraphs(rawItems: any[]): ParagraphGroup[] {
   const sorted = [...validItems].sort((a, b) => {
     const yA = a.item.transform[5];
     const yB = b.item.transform[5];
-    if (Math.abs(yA - yB) > 3) {
+    const fontA = Math.hypot(a.item.transform[0], a.item.transform[1]) || 12;
+    const fontB = Math.hypot(b.item.transform[0], b.item.transform[1]) || 12;
+    const fontSize = Math.max(fontA, fontB);
+    const yTol = Math.max(4, fontSize * 0.4);
+    if (Math.abs(yA - yB) > yTol) {
       return yB - yA; // Higher Y comes first (top of page)
     }
     return a.item.transform[4] - b.item.transform[4]; // Left to right
@@ -76,8 +80,10 @@ export function detectParagraphs(rawItems: any[]): ParagraphGroup[] {
     } else {
       const prevY = currentLineItems[0].item.transform[5];
       const currY = entry.item.transform[5];
+      const fontSize = Math.hypot(currentLineItems[0].item.transform[0], currentLineItems[0].item.transform[1]) || 12;
+      const yTol = Math.max(4, fontSize * 0.4);
 
-      if (Math.abs(prevY - currY) <= 4) {
+      if (Math.abs(prevY - currY) <= yTol) {
         currentLineItems.push(entry);
       } else {
         // Finalize line
@@ -110,7 +116,7 @@ export function detectParagraphs(rawItems: any[]): ParagraphGroup[] {
       const prevFontSize = Math.hypot(prevLine.transform[0], prevLine.transform[1]) || 12;
 
       const sameFont = Math.abs(fontSize - prevFontSize) <= 2;
-      const isNormalGap = deltaY > 0 && deltaY >= fontSize * 0.7 && deltaY <= fontSize * 2.2;
+      const isNormalGap = deltaY >= fontSize * 0.8 && deltaY <= fontSize * 1.5;
       const leftAligned = Math.abs(line.transform[4] - prevLine.transform[4]) <= 30;
 
       if (sameFont && isNormalGap && leftAligned) {
@@ -149,8 +155,8 @@ function createLineFromItems(entries: { item: any; originalIndex: number }[]): P
       const prev = entries[i - 1].item;
       const prevEnd = prev.transform[4] + (prev.width || 0);
       const gap = x - prevEnd;
-      const fontSize = Math.hypot(item.transform[0], item.transform[1]);
-      if (gap > fontSize * 0.2 && !combinedText.endsWith(" ") && !item.str.startsWith(" ")) {
+      const fontSize = Math.hypot(item.transform[0], item.transform[1]) || 12;
+      if (gap >= fontSize * 0.3 && !combinedText.endsWith(" ") && !item.str.startsWith(" ")) {
         combinedText += " ";
       }
     }
@@ -190,6 +196,7 @@ function createParagraphFromLines(lines: ParagraphLine[]): ParagraphGroup {
     const totalGap = firstLine.transform[5] - lines[lines.length - 1].transform[5];
     avgLineHeight = totalGap / (lines.length - 1);
   }
+  avgLineHeight = Math.min(avgLineHeight, fontSize * 1.3);
 
   const fontName = (firstLine as any).fontName || "";
   const runs: TextRun[] = [
