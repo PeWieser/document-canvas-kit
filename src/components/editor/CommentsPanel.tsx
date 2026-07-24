@@ -18,17 +18,17 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const comments = useMemo(
-    () => annotations.filter((a): a is CommentAnno => a.kind === "comment"),
+    () => annotations.filter((a) => a.kind === "comment" || (a as any).comment || (a as any).text),
     [annotations],
   );
 
   const filtered = comments.filter((c) =>
-    filter === "all" ? true : filter === "open" ? !c.resolved : c.resolved,
+    filter === "all" ? true : filter === "open" ? !(c as any).resolved : (c as any).resolved,
   );
 
   // group by display order of pages
   const byPage = useMemo(() => {
-    const groups: { pageId: number; index: number; items: CommentAnno[] }[] = [];
+    const groups: { pageId: number; index: number; items: any[] }[] = [];
     pageOrder.forEach((pageId, index) => {
       const items = filtered.filter((c) => c.page === pageId);
       if (items.length) groups.push({ pageId, index, items });
@@ -38,7 +38,7 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
 
   if (!open) return null;
 
-  const go = (c: CommentAnno, index: number) => {
+  const go = (c: any, index: number) => {
     onJump(index);
     select(c.id);
   };
@@ -105,12 +105,12 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
                       )}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm">
-                      {c.text || <span className="text-muted-foreground">…</span>}
+                      {c.text || c.comment || (c as any).content || <span className="text-muted-foreground">…</span>}
                     </span>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   </div>
                   <div className="mt-1 pl-5 text-xs text-muted-foreground">
-                    {c.replies.length > 0 ? `${c.replies.length} ${t("reply")}` : t("noReplies")}
+                    {c.replies && c.replies.length > 0 ? `${c.replies.length} ${t("reply")}` : t("noReplies")}
                   </div>
                 </button>
               ))}

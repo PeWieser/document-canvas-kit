@@ -597,6 +597,7 @@ export function PageView({ doc, pageId }: Props) {
         fontSize,
         color,
         fontFamily: defaultFontFamily || "Helvetica",
+        transform: [fontSize, 0, 0, fontSize, px, py],
       } as Annotation);
       return;
     }
@@ -1008,6 +1009,7 @@ export function PageView({ doc, pageId }: Props) {
       fontSize,
       color,
       fontFamily: defaultFontFamily || "Helvetica",
+      transform: [fontSize, 0, 0, fontSize, px, py],
     } as Annotation);
   };
 
@@ -1526,7 +1528,9 @@ function AnnoView({
   }
 
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
-    const transform = anno.kind === "textReplace" ? (anno as TextReplaceAnno).transform : undefined;
+    const transform = anno.kind === "textReplace"
+      ? (anno as TextReplaceAnno).transform
+      : ((anno as TextboxAnno).transform || [(anno as TextboxAnno).fontSize || 12, 0, 0, (anno as TextboxAnno).fontSize || 12, (anno as TextboxAnno).x, (anno as TextboxAnno).y]);
     const annoWidth = anno.kind === "textReplace" ? (anno as TextReplaceAnno).width : undefined;
     const textboxX = anno.kind === "textbox" ? (anno as TextboxAnno).x : 0;
     const textboxY = anno.kind === "textbox" ? (anno as TextboxAnno).y : 0;
@@ -1538,7 +1542,7 @@ function AnnoView({
     const pdfFontMetrics = (anno as TextReplaceAnno).pdfFontMetrics || null;
     const alignment = computeAlignmentMetrics(
       {
-        transform: transform ?? [1, 0, 0, 1, textboxX, textboxY],
+        transform: transform ?? [anno.fontSize || 12, 0, 0, anno.fontSize || 12, textboxX, textboxY],
         width: annoWidth ?? (anno as TextboxAnno).w ?? 100,
         str: anno.text,
       },
@@ -1565,7 +1569,7 @@ function AnnoView({
         if (w > maxMeasured) maxMeasured = w;
       }
       predictedTextScale = maxMeasured > 0 && origWidth > 0 ? origWidth / maxMeasured : 1;
-      containerWidth = origWidth;
+      containerWidth = Math.max(origWidth, maxMeasured + 4);
     }
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1640,18 +1644,20 @@ function AnnoView({
                 el.style.height = "auto";
                 el.style.height = `${el.scrollHeight}px`;
               } else {
-                el.style.height = `${Math.ceil(fontHeight * 1.2)}px`;
+                el.style.height = `${fontHeight}px`;
               }
               onUpdate({ text: el.value } as any);
             }}
             onFocus={onSelect}
             placeholder={anno.kind === "textbox" ? t("newTextbox") : ""}
             rows={anno.kind === "textReplace" ? numLines : undefined}
-            className="w-full resize-none bg-transparent outline-none overflow-hidden"
+            className="w-full resize-none bg-transparent outline-none"
             style={{
               position: "absolute",
               top: 0,
               left: 0,
+              width: "100%",
+              height: `${fontHeight}px`,
               fontSize: `${fontHeight}px`,
               color: anno.color,
               fontFamily: family,
@@ -1663,11 +1669,10 @@ function AnnoView({
               border: "none",
               outline: "none",
               letterSpacing: 0,
-              whiteSpace: isMultiline ? "pre-wrap" : "pre",
-              overflow: "hidden",
+              whiteSpace: "pre",
+              overflow: "visible",
               wordBreak: "keep-all",
               overflowWrap: "normal",
-              width: "100%",
             }}
           />
         )}
@@ -1727,19 +1732,136 @@ function AnnoView({
                 }}
               />
               {anno.kind === "textbox" && (
-                <ResizeHandle
-                  onDragStart={pushHistorySnapshot}
-                  onResize={(dxS, dyS) => {
-                    const p0 = vp.convertToPdfPoint(0, 0);
-                    const p1 = vp.convertToPdfPoint(dxS, dyS);
-                    const dw = p1[0] - p0[0];
-                    const dh = p1[1] - p0[1];
-                    onUpdate({
-                      w: Math.max(20, anno.w + dw),
-                      h: Math.max(20, anno.h - dh),
-                    } as any, false);
-                  }}
-                />
+                <>
+                  {[
+                    {
+                      pos: "nw",
+                      cursor: "nwse-resize",
+                      className: "-left-1.5 -top-1.5",
+                      onResize: (dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, dyS);
+                        const dw = p1[0] - p0[0];
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          x: anno.x + dw,
+                          w: Math.max(20, anno.w - dw),
+                          y: anno.y + dh,
+                          h: Math.max(10, anno.h + dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "n",
+                      cursor: "ns-resize",
+                      className: "left-[calc(50%-0.375rem)] -top-1.5",
+                      onResize: (_dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(0, dyS);
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          y: anno.y + dh,
+                          h: Math.max(10, anno.h + dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "ne",
+                      cursor: "nesw-resize",
+                      className: "-right-1.5 -top-1.5",
+                      onResize: (dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, dyS);
+                        const dw = p1[0] - p0[0];
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          w: Math.max(20, anno.w + dw),
+                          y: anno.y + dh,
+                          h: Math.max(10, anno.h + dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "e",
+                      cursor: "ew-resize",
+                      className: "-right-1.5 top-[calc(50%-0.375rem)]",
+                      onResize: (dxS: number, _dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, 0);
+                        const dw = p1[0] - p0[0];
+                        onUpdate({
+                          w: Math.max(20, anno.w + dw),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "se",
+                      cursor: "nwse-resize",
+                      className: "-right-1.5 -bottom-1.5",
+                      onResize: (dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, dyS);
+                        const dw = p1[0] - p0[0];
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          w: Math.max(20, anno.w + dw),
+                          h: Math.max(10, anno.h - dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "s",
+                      cursor: "ns-resize",
+                      className: "left-[calc(50%-0.375rem)] -bottom-1.5",
+                      onResize: (_dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(0, dyS);
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          h: Math.max(10, anno.h - dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "sw",
+                      cursor: "nesw-resize",
+                      className: "-left-1.5 -bottom-1.5",
+                      onResize: (dxS: number, dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, dyS);
+                        const dw = p1[0] - p0[0];
+                        const dh = p1[1] - p0[1];
+                        onUpdate({
+                          x: anno.x + dw,
+                          w: Math.max(20, anno.w - dw),
+                          h: Math.max(10, anno.h - dh),
+                        } as any, false);
+                      },
+                    },
+                    {
+                      pos: "w",
+                      cursor: "ew-resize",
+                      className: "-left-1.5 top-[calc(50%-0.375rem)]",
+                      onResize: (dxS: number, _dyS: number) => {
+                        const p0 = vp.convertToPdfPoint(0, 0);
+                        const p1 = vp.convertToPdfPoint(dxS, 0);
+                        const dw = p1[0] - p0[0];
+                        onUpdate({
+                          x: anno.x + dw,
+                          w: Math.max(20, anno.w - dw),
+                        } as any, false);
+                      },
+                    },
+                  ].map((h) => (
+                    <ResizeHandle
+                      key={h.pos}
+                      cursor={h.cursor}
+                      className={h.className}
+                      onDragStart={pushHistorySnapshot}
+                      onResize={h.onResize}
+                    />
+                  ))}
+                </>
               )}
               <button
                 onClick={(e) => {
@@ -1855,10 +1977,14 @@ function ResizeHandle({
   onResize,
   onDragStart,
   onDragEnd,
+  cursor,
+  className,
 }: {
   onResize: (dx: number, dy: number) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  cursor?: string;
+  className?: string;
 }) {
   const last = useRef<[number, number] | null>(null);
   return (
@@ -1880,7 +2006,11 @@ function ResizeHandle({
         last.current = null;
         onDragEnd?.();
       }}
-      className="absolute -bottom-2 -right-2 cursor-nwse-resize rounded bg-primary p-0.5 text-primary-foreground"
+      className={cn(
+        "absolute rounded bg-primary p-0.5 text-primary-foreground z-30",
+        className || "-bottom-2 -right-2 cursor-nwse-resize"
+      )}
+      style={cursor ? { cursor } : undefined}
     >
       <Move className="h-3 w-3" />
     </div>

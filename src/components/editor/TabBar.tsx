@@ -103,7 +103,7 @@ export function TabBar({ onOpenPicker }: TabBarProps) {
   };
 
   return (
-    <div className="relative flex items-center bg-card border-b border-border text-foreground select-none overflow-x-auto no-scrollbar h-10 px-2 gap-1">
+    <div className="relative z-[150] flex items-center bg-card border-b border-border text-foreground select-none overflow-x-auto no-scrollbar h-10 px-2 gap-1">
       {/* Tabs */}
       <div className="flex items-center gap-1 flex-1 min-w-0">
         {tabOrder.map((id) => {

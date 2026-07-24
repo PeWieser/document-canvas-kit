@@ -23,7 +23,7 @@ export function GridOverview({
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
-  const [dropSide, setDropSide] = useState<"left" | "right" | "top" | "bottom" | null>(null);
+  const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
 
   // Touch Long-Press Drag State (1 second hold on mobile)
   const [touchDragging, setTouchDragging] = useState<number | null>(null);
@@ -150,20 +150,8 @@ export function GridOverview({
             onDragOver={(e) => {
               e.preventDefault();
               const rect = e.currentTarget.getBoundingClientRect();
-              const dx = e.clientX - (rect.left + rect.width / 2);
-              const dy = e.clientY - (rect.top + rect.height / 2);
-
-              const isHorizontal = Math.abs(dx * rect.height) > Math.abs(dy * rect.width);
-              let target: "before" | "after";
-              let side: "left" | "right" | "top" | "bottom";
-
-              if (isHorizontal) {
-                target = dx < 0 ? "before" : "after";
-                side = dx < 0 ? "left" : "right";
-              } else {
-                target = dy < 0 ? "before" : "after";
-                side = dy < 0 ? "top" : "bottom";
-              }
+              const side: "left" | "right" = e.clientX < rect.left + rect.width / 2 ? "left" : "right";
+              const target: "before" | "after" = side === "left" ? "before" : "after";
 
               if (dragOver !== index || dropTarget !== target || dropSide !== side) {
                 setDragOver(index);
@@ -212,14 +200,8 @@ export function GridOverview({
               !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute z-50 bg-primary rounded-full pointer-events-none",
-                    dropSide === "left" || dropSide === "right"
-                      ? "top-2 bottom-2 w-1"
-                      : "left-2 right-2 h-1",
-                    dropSide === "left" && "left-0 -translate-x-0.5",
-                    dropSide === "right" && "right-0 translate-x-0.5",
-                    dropSide === "top" && "top-0 -translate-y-0.5",
-                    dropSide === "bottom" && "bottom-0 translate-y-0.5",
+                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2 bottom-2 w-1",
+                    dropSide === "left" ? "-left-[6px] -translate-x-1/2" : "-right-[6px] translate-x-1/2",
                   )}
                 />
               )}

@@ -84,6 +84,7 @@ export interface TextboxAnno {
   paragraphSpacing?: number;
   runs?: TextRun[];
   style?: ParagraphStyle;
+  transform?: number[];
 }
 
 export interface PenAnno {

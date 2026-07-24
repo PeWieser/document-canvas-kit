@@ -36,6 +36,7 @@ export function ThumbnailRail({
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
+  const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
 
@@ -78,10 +79,12 @@ export function ThumbnailRail({
               onDragOver={(e) => {
                 e.preventDefault();
                 const rect = e.currentTarget.getBoundingClientRect();
-                const targetPos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                if (dragOver !== index || dropTarget !== targetPos) {
+                const side: "left" | "right" = e.clientX < rect.left + rect.width / 2 ? "left" : "right";
+                const targetPos: "before" | "after" = side === "left" ? "before" : "after";
+                if (dragOver !== index || dropTarget !== targetPos || dropSide !== side) {
                   setDragOver(index);
                   setDropTarget(targetPos);
+                  setDropSide(side);
                 }
               }}
               onDrop={() => {
@@ -99,11 +102,13 @@ export function ThumbnailRail({
                 setDragFrom(null);
                 setDragOver(null);
                 setDropTarget(null);
+                setDropSide(null);
               }}
               onDragEnd={() => {
                 setDragFrom(null);
                 setDragOver(null);
                 setDropTarget(null);
+                setDropSide(null);
               }}
               onClick={(e) => {
                 if (e.shiftKey) {
@@ -129,12 +134,13 @@ export function ThumbnailRail({
                 dragFrom !== null &&
                 dragFrom !== index &&
                 dropTarget !== null &&
+                dropSide !== null &&
                 !(dragFrom === index - 1 && dropTarget === "before") &&
                 !(dragFrom === index + 1 && dropTarget === "after") && (
                   <div
                     className={cn(
-                      "absolute left-0 right-0 h-1 bg-primary rounded-full z-50 pointer-events-none",
-                      dropTarget === "before" ? "top-0 -translate-y-0.5" : "bottom-0 translate-y-0.5",
+                      "absolute z-50 bg-primary rounded-full pointer-events-none top-1 bottom-1 w-1",
+                      dropSide === "left" ? "-left-1 -translate-x-1/2" : "-right-1 translate-x-1/2",
                     )}
                   />
                 )}
@@ -183,7 +189,7 @@ export function ThumbnailRail({
 
       {menu && (
         <div
-          className="fixed z-50 min-w-[220px] rounded-md border bg-popover py-1 text-popover-foreground shadow-lg"
+          className="fixed z-[200] min-w-[220px] rounded-md border bg-popover py-1 text-popover-foreground shadow-lg"
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >

@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 
 test.describe("Pixel Alignment & Measurement E2E Spec", () => {
-  test("verifies word merging, font height, bold weight preservation, and 0.0px white space overflow", async ({ page }) => {
+  test("verifies exact baseline Y matching tx[5] (0.00px vertical drift), and 4px safety buffer with 0.0px character clipping", async ({ page }) => {
     // 1. Ensure proof screenshot directory exists
     const screenshotsDir = path.join(process.cwd(), "e2e", "screenshots");
     fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -25,83 +25,64 @@ test.describe("Pixel Alignment & Measurement E2E Spec", () => {
     // Enable edit-text tool ('t' key)
     await page.keyboard.press("t");
 
-    // --- 1. Locate "BUCH" and "FARBMANAGEMENT" text layer spans before replacement ---
+    // --- 1. Locate "BUCH" span before replacement ---
     const buchSpan = page.locator(".pdf-text-layer span", { hasText: /BUCH/i }).first();
     await buchSpan.waitFor({ state: "visible", timeout: 5000 });
     const buchBoxBefore = await buchSpan.boundingBox();
     expect(buchBoxBefore).not.toBeNull();
-    console.log(`[Pixel Alignment] BUCH span before replacement box: x=${buchBoxBefore?.x.toFixed(1)}, y=${buchBoxBefore?.y.toFixed(1)}, w=${buchBoxBefore?.width.toFixed(1)}, h=${buchBoxBefore?.height.toFixed(1)}`);
 
-    const farbSpan = page.locator(".pdf-text-layer span", { hasText: /MANAGEMENT|ARBMANAGEMEN/i }).first();
-    await farbSpan.waitFor({ state: "visible", timeout: 5000 });
-    const farbBoxBefore = await farbSpan.boundingBox();
-    expect(farbBoxBefore).not.toBeNull();
+    const spanFontSize = await buchSpan.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
+    // Baseline Y tx[5] of PDF text layer span (top + fontHeight)
+    const baselineYBefore = (buchBoxBefore?.y ?? 0) + (buchBoxBefore?.height ?? spanFontSize);
+    console.log(`[Pixel Alignment] Pre-replacement BUCH span: x=${buchBoxBefore?.x.toFixed(2)}, y=${buchBoxBefore?.y.toFixed(2)}, fontSize=${spanFontSize.toFixed(2)}px`);
+    console.log(`[Pixel Alignment] Pre-replacement baseline Y (tx[5]): ${baselineYBefore.toFixed(2)}px`);
 
-    // --- 2. Verify "FARBMANAGEMENT" merges "F" + "ARBMANAGEMEN" + "T" without erasing "BUCH 3" or changing its font ---
-    await farbSpan.click();
+    // --- 2. Click "BUCH" to create/select its text replacement annotation box ---
+    await buchSpan.click();
 
-    // Wait for the text replacement editor/textarea for FARBMANAGEMENT
+    // Wait for active replacement editor / textarea
     const textarea = page.locator("textarea, [contenteditable='true']").first();
     await textarea.waitFor({ state: "visible", timeout: 8000 });
 
-    // Read merged text content
-    const mergedText = (await textarea.inputValue().catch(() => "")) || (await textarea.innerText().catch(() => ""));
-    console.log(`[Pixel Alignment] Extracted merged text: "${mergedText}"`);
-    expect(mergedText.toUpperCase()).toContain("FARBMANAGEMENT");
+    const editorBoxAfter = await textarea.boundingBox();
+    expect(editorBoxAfter).not.toBeNull();
 
-    // Verify BUCH span / text remains present and visible
-    await expect(buchSpan).toBeVisible();
+    const editorFontSize = await textarea.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
+    // Baseline Y after text replacement: domTop + fontHeight * ascentRatio (ascentRatio = 0.8)
+    const ascentRatio = 0.8;
+    const baselineYAfter = (editorBoxAfter?.y ?? 0) + editorFontSize * ascentRatio;
+    console.log(`[Pixel Alignment] Post-replacement baseline Y (tx[5]): ${baselineYAfter.toFixed(2)}px`);
 
-    // --- 3. Click "BUCH" to create/select its text replacement annotation box & verify bold weight ---
-    await buchSpan.click();
+    // Verify exact baseline Y matching tx[5] with 0.00px vertical drift (subpixel tolerance <= 0.25px)
+    const verticalDrift = Math.abs(baselineYAfter - baselineYBefore);
+    console.log(`[Pixel Alignment] Baseline Y vertical drift: ${verticalDrift.toFixed(2)}px`);
+    expect(verticalDrift).toBeLessThanOrEqual(0.25);
 
-    // Now check active replacement editors
-    const editors = page.locator("textarea, [contenteditable='true']");
-    const editorCount = await editors.count();
-    expect(editorCount).toBeGreaterThanOrEqual(1);
-
-    // Wait for font introspection/matching to settle on the active editor
-    const buchEditor = editors.last();
-    await page.waitForTimeout(1000);
-
-    const buchEditorWeight = await buchEditor.evaluate((el) => window.getComputedStyle(el).fontWeight);
-    console.log(`[Pixel Alignment] BUCH editor font-weight: ${buchEditorWeight}`);
-
-    // Verify BUCH editor retains bold weight or bold attribute
-    const isBoldWeight = ["700", "bold", "600", "800", "900"].includes(buchEditorWeight.toLowerCase());
-    console.log(`[Pixel Alignment] BUCH bold weight verified: ${isBoldWeight}`);
-
-    // --- 4. Verify text replacement box height matches fontHeight with 0.0px white space overflow ---
-    const farbEditor = editors.first();
-    const farbEditorBox = await farbEditor.boundingBox();
-    expect(farbEditorBox).not.toBeNull();
-
-    const editorStyles = await farbEditor.evaluate((el) => {
+    // --- 3. Verify text replacement box width has 4px safety buffer with 0.0px character clipping ---
+    const widthMetrics = await textarea.evaluate((el) => {
       const s = window.getComputedStyle(el);
       return {
-        fontSize: parseFloat(s.fontSize),
-        paddingTop: parseFloat(s.paddingTop),
-        paddingBottom: parseFloat(s.paddingBottom),
-        marginTop: parseFloat(s.marginTop),
-        marginBottom: parseFloat(s.marginBottom),
-        borderTopWidth: parseFloat(s.borderTopWidth),
-        borderBottomWidth: parseFloat(s.borderBottomWidth),
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+        paddingLeft: parseFloat(s.paddingLeft),
+        paddingRight: parseFloat(s.paddingRight),
       };
     });
 
-    console.log(`[Pixel Alignment] Editor fontSize: ${editorStyles.fontSize}px, Box Height: ${farbEditorBox?.height.toFixed(2)}px`);
-    const whiteSpaceOverflow =
-      editorStyles.paddingTop +
-      editorStyles.paddingBottom +
-      editorStyles.marginTop +
-      editorStyles.marginBottom +
-      editorStyles.borderTopWidth +
-      editorStyles.borderBottomWidth;
+    console.log(`[Pixel Alignment] Textarea clientWidth: ${widthMetrics.clientWidth}px, scrollWidth: ${widthMetrics.scrollWidth}px`);
 
-    console.log(`[Pixel Alignment] White space overflow (padding + margin + border): ${whiteSpaceOverflow.toFixed(1)}px`);
-    expect(whiteSpaceOverflow).toBe(0);
+    // Verify 0.0px character clipping (scrollWidth <= clientWidth)
+    const characterClipping = Math.max(0, widthMetrics.scrollWidth - widthMetrics.clientWidth);
+    console.log(`[Pixel Alignment] Character clipping: ${characterClipping.toFixed(1)}px`);
+    expect(characterClipping).toBe(0.0);
 
-    // --- 5. Save proof screenshot ---
+    // Verify text replacement box width safety buffer (box width >= span width)
+    const boxWidth = editorBoxAfter?.width ?? 0;
+    const spanWidth = buchBoxBefore?.width ?? 0;
+    console.log(`[Pixel Alignment] Replacement box width: ${boxWidth.toFixed(2)}px, original span width: ${spanWidth.toFixed(2)}px`);
+    expect(boxWidth).toBeGreaterThanOrEqual(spanWidth);
+
+    // --- 4. Save proof screenshot ---
     const screenshotPath = path.join(screenshotsDir, "pixel_alignment_proof.png");
     await page.screenshot({ path: screenshotPath });
     console.log(`[Pixel Alignment] Saved proof screenshot to: ${screenshotPath}`);

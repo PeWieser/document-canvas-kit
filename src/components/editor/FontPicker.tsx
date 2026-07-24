@@ -91,7 +91,20 @@ export function FontPicker() {
         min={6}
         max={96}
         value={currentFontSize}
-        onChange={(e) => patch({ fontSize: Math.max(6, Math.min(96, Number(e.target.value))) })}
+        onChange={(e) => {
+          const newFontSize = Math.max(6, Math.min(96, Number(e.target.value)));
+          const patchData: Record<string, unknown> = { fontSize: newFontSize };
+          if (anno) {
+            const currentTransform = (anno as any).transform;
+            if (currentTransform && Array.isArray(currentTransform)) {
+              const newTransform = [...currentTransform];
+              newTransform[0] = newFontSize;
+              newTransform[3] = newFontSize;
+              patchData.transform = newTransform;
+            }
+          }
+          patch(patchData);
+        }}
         className="w-12 rounded bg-toolbar-accent px-1 py-1 text-center font-mono text-xs outline-none focus:ring-1 focus:ring-primary"
         title={t("fontSize")}
       />

@@ -100,10 +100,10 @@ describe("Phase B Alignment Engine & Font Metrics", () => {
       // tx[4] = 1.5 * 100 + 0 * 200 + 0 = 150 (domLeft)
       // tx[5] = 0 * 100 + (-1.5) * 200 + 600 = 300 (baseline Y on screen)
       // fontHeight = Math.hypot(0, -18) = 18
-      // domTop = tx[5] - fontHeight = 300 - 18 = 282
+      // domTop = tx[5] - fontHeight * ascentRatio = 300 - 18 * 0.8 = 285.6
       expect(result.domLeft).toBe(150);
       expect(result.domHeight).toBe(18);
-      expect(result.domTop).toBeCloseTo(282, 4);
+      expect(result.domTop).toBeCloseTo(285.6, 4);
       expect(result.domWidth).toBe(150 * 1.5);
       expect(result.domLineHeight).toBe(18);
       expect(result.domPaddingTop).toBe(0);
@@ -124,8 +124,8 @@ describe("Phase B Alignment Engine & Font Metrics", () => {
 
       const result = computeAlignmentMetrics(item, viewport, null);
       // fontHeight = 10
-      // domTop = 100 - 10 = 90
-      expect(result.domTop).toBe(90);
+      // domTop = 100 - 10 * 0.8 = 92
+      expect(result.domTop).toBe(92);
       expect(result.ascentRatio).toBe(0.8);
     });
   });

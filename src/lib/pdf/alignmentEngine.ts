@@ -118,10 +118,9 @@ export function computeAlignmentMetrics(
   const scale = itemScaleX > 0 ? txScaleX / itemScaleX : (viewport.scale || 1);
 
   const ascentRatio = pdfFontMetrics?.ascentRatio ?? 0.8;
-  // Baseline shift compensation: PDF.js text layer span top is positioned at (tx[5] - fontHeight).
-  // Using domTop = tx[5] - fontHeight with domPaddingTop = 0 and domLineHeight = fontHeight
-  // guarantees 0.00px vertical deviation relative to the PDF.js canvas text layer.
-  const domTop = tx[5] - fontHeight;
+  // Baseline shift compensation: PDF.js text layer span top is positioned relative to baseline (tx[5]).
+  // Using domTop = tx[5] - fontHeight * ascentRatio anchors domTop to the exact typographic baseline.
+  const domTop = tx[5] - fontHeight * ascentRatio;
   const domLeft = tx[4];
   const domHeight = fontHeight;
   const domWidth = item.width * scale;
