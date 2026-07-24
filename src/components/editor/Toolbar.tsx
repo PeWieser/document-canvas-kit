@@ -549,7 +549,9 @@ function TBtn({
           {children}
         </button>
       </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
+      <TooltipContent side="bottom" sideOffset={8}>
+        {title}
+      </TooltipContent>
     </Tooltip>
   );
 }

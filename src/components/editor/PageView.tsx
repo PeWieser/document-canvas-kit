@@ -886,87 +886,92 @@ export function PageView({ doc, pageId }: Props) {
     // 2. Resolve font matching on-demand asynchronously
     if (item.fontName && !cachedInfo) {
       const cacheKey = item.fontName || "";
-      void getFontInfo(pdfPage, item.fontName).then((info) => {
-        globalFontInfo[cacheKey] = info;
-        let fam = info.family;
-        let bld = info.isBold;
-        let itl = info.isItalic;
-        if (isGarbageFontName(fam)) {
-          const resolved = resolvePDFCoreFontName(item.fontName);
-          fam = resolved.family;
-          bld = resolved.isBold;
-          itl = resolved.isItalic;
-        }
-        if (fam) {
-          void loadWebFont(fam);
-          setDefaultFontFamily(fam);
-          updateAnnotation(annoId, {
-            fontFamily: fam,
-            bold: bld,
-            italic: itl,
-            originalFontBytes: info.bytes,
-          } as Partial<Annotation>);
-        }
-      }).catch(() => {});
+      void (async () => {
+        try {
+          const info = await getFontInfo(pdfPage, item.fontName!);
+          globalFontInfo[cacheKey] = info;
 
-      void matchSingleFontOnPage(pdfPage, item.fontName).then((knnMatch) => {
-        if (knnMatch && knnMatch.family !== "Unknown") {
-          globalFontMapping[cacheKey] = knnMatch;
-        }
-
-        const matchedFamily = knnMatch && knnMatch.family !== "Unknown" ? knnMatch.family : info.family;
-        const matchedBold = knnMatch ? knnMatch.isBold : info.isBold;
-        const matchedItalic = knnMatch ? knnMatch.isItalic : info.isItalic;
-
-        updateAnnotation(annoId, {
-          fontFamily: matchedFamily,
-          bold: matchedBold,
-          italic: matchedItalic,
-          originalFontBytes: info.bytes,
-          weight: info.weight,
-          italicAngle: info.italicAngle,
-        } as Partial<Annotation>);
-        void loadWebFont(matchedFamily);
-        setDefaultFontFamily(matchedFamily);
-        toast.success(
-          `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
-          { id: `font-match-${item.fontName}` }
-        );
-
-        // Check local system fonts permission if the font is not in the Bunny Font library
-        const isBunnyFont = bunnyFamilies.includes(matchedFamily);
-        if (!isBunnyFont && 'queryLocalFonts' in window) {
-          navigator.permissions.query({ name: 'local-fonts' as any }).then((result) => {
-            if (result.state === 'prompt') {
-              toast.info(
-                `Schriftart '${matchedFamily}' ist eine Systemschrift. Erlauben Sie Zugriff auf lokale Systemschriftarten, um diese zu nutzen.`,
-                {
-                  action: {
-                    label: "Zulassen",
-                    onClick: async () => {
-                      try {
-                        await (window as any).queryLocalFonts();
-                        toast.success("Zugriff auf Systemschriftarten erlaubt!");
-                      } catch (err) {
-                        toast.error("Zugriff verweigert.");
-                      }
-                    }
-                  },
-                  duration: 8000
-                }
-              );
-            } else if (result.state === 'granted') {
-              // Try to query to make sure it's available
-              (window as any).queryLocalFonts().catch(() => {});
+          let knnMatch = null;
+          try {
+            knnMatch = await matchSingleFontOnPage(pdfPage, item.fontName!);
+            if (knnMatch && knnMatch.family !== "Unknown") {
+              globalFontMapping[cacheKey] = knnMatch;
             }
-          }).catch(() => {
-            // navigator.permissions might throw in some configurations, fallback directly to call
-            (window as any).queryLocalFonts().catch(() => {});
-          });
+          } catch {
+            /* ignore KNN failure */
+          }
+
+          let matchedFamily = info.family;
+          let matchedBold = info.isBold;
+          let matchedItalic = info.isItalic;
+
+          if (knnMatch && knnMatch.family && knnMatch.family !== "Unknown") {
+            matchedFamily = knnMatch.family;
+            matchedBold = knnMatch.isBold;
+            matchedItalic = knnMatch.isItalic;
+          } else if (isGarbageFontName(matchedFamily)) {
+            const resolved = resolvePDFCoreFontName(item.fontName);
+            matchedFamily = resolved.family;
+            matchedBold = resolved.isBold;
+            matchedItalic = resolved.isItalic;
+          }
+
+          if (matchedFamily) {
+            void loadWebFont(matchedFamily);
+            setDefaultFontFamily(matchedFamily);
+            updateAnnotation(annoId, {
+              fontFamily: matchedFamily,
+              bold: matchedBold,
+              italic: matchedItalic,
+              originalFontBytes: info.bytes,
+              weight: info.weight,
+              italicAngle: info.italicAngle,
+            } as Partial<Annotation>);
+
+            toast.success(
+              `${matchedFamily}${matchedBold ? " Bold" : ""}${matchedItalic ? " Italic" : ""} (${info.source})`,
+              { id: `font-match-${item.fontName}` }
+            );
+
+            // Check local system fonts permission if the font is not in the Bunny Font library
+            const isBunnyFont = bunnyFamilies.includes(matchedFamily);
+            if (!isBunnyFont && "queryLocalFonts" in window) {
+              navigator.permissions
+                .query({ name: "local-fonts" as any })
+                .then((result) => {
+                  if (result.state === "prompt") {
+                    toast.info(
+                      `Schriftart '${matchedFamily}' ist eine Systemschrift. Erlauben Sie Zugriff auf lokale Systemschriftarten, um diese zu nutzen.`,
+                      {
+                        action: {
+                          label: "Zulassen",
+                          onClick: async () => {
+                            try {
+                              await (window as any).queryLocalFonts();
+                              toast.success("Zugriff auf Systemschriftarten erlaubt!");
+                            } catch (err) {
+                              toast.error("Zugriff verweigert.");
+                            }
+                          },
+                        },
+                        duration: 8000,
+                      }
+                    );
+                  } else if (result.state === "granted") {
+                    // Try to query to make sure it's available
+                    (window as any).queryLocalFonts().catch(() => {});
+                  }
+                })
+                .catch(() => {
+                  // navigator.permissions might throw in some configurations, fallback directly to call
+                  (window as any).queryLocalFonts().catch(() => {});
+                });
+            }
+          }
+        } catch (err) {
+          console.warn("[replaceSpan] Async font match failed:", err);
         }
-      }).catch((err) => {
-        console.warn("[replaceSpan] Async font match failed:", err);
-      });
+      })();
     } else if (cachedInfo) {
       toast.success(`Erkannt: ${family}`);
     }
@@ -1586,7 +1591,7 @@ function AnnoView({
 
     const s = {
       left: anno.kind === "textReplace" ? 0 : `${left}px`,
-      top: anno.kind === "textReplace" ? 0 : `${top}px`,
+      top: anno.kind === "textReplace" ? "-0.75px" : `${top}px`,
       width: anno.kind === "textReplace" ? `${containerWidth}px` : `${origWidth}px`,
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
@@ -1609,10 +1614,13 @@ function AnnoView({
           transform: transformString,
           transformOrigin: transformOriginString,
           minHeight: `${fontHeight}px`,
-          height: anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto",
+          height: anno.kind === "textReplace" ? "calc(100% + 1.5px)" : (anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto"),
           pointerEvents: selectable || tool === "edit-text" || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
+          WebkitFontSmoothing: "antialiased",
+          MozOsxFontSmoothing: "grayscale",
+          textRendering: "optimizeLegibility",
         }}
         onClick={(e) => {
           e.stopPropagation();
