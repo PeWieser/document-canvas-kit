@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { extractSubsetFontsPaths, isFontWorkerReady, subscribeToWorkerReady, matchSingleFontOnPage } from "@/lib/pdf/fontVectorMatch";
 import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 import bunnyFamilies from "@/lib/pdf/font-families.json";
-import { detectParagraphs } from "@/lib/pdf/paragraphGroup";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
 import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
@@ -722,7 +721,6 @@ export function PageView({ doc, pageId }: Props) {
     const vp = getVp();
     const item = items[idx];
     if (!vp || !item || !pdfPage) return;
-    const rect = getBoundingBoxInPdfSpace(item.transform, item.width);
 
     const pdfFontMetrics = item.fontName ? await extractFontMetrics(pdfPage, item.fontName) : null;
     const ascentRatio = pdfFontMetrics?.ascentRatio ?? 0.82;
@@ -770,82 +768,96 @@ export function PageView({ doc, pageId }: Props) {
     const defaultColor = "#111111";
     const annoId = uid();
 
-    // Detect if this item belongs to a multi-line paragraph group
-    const paras = detectParagraphs(items);
-    const para = paras.find((p) => p.lines.some((l) => l.itemIndices.includes(idx)));
+    const targetItem = item;
+    const targetFontSize =
+      Math.hypot(targetItem.transform[2], targetItem.transform[3]) ||
+      Math.hypot(targetItem.transform[0], targetItem.transform[1]) ||
+      12;
+    const targetBaselineY = targetItem.transform[5];
 
-    let paraBold = isBold;
-    let paraItalic = isItalic;
-    if (para && para.lines.length > 0) {
-      for (const l of para.lines) {
-        for (const i of l.itemIndices) {
-          const it = items[i];
-          if (it && it.fontName) {
-            const info = globalFontInfo[it.fontName] || resolvePDFCoreFontName(it.fontName);
-            if (info.isBold) paraBold = true;
-            if (info.isItalic) paraItalic = true;
-          }
+    // Find sibling items on the page that belong to the SAME word as items[idx]
+    const candidates = items.filter((it) => {
+      if (!it || typeof it.str !== "string" || !it.str) return false;
+      const itemFontSize =
+        Math.hypot(it.transform[2], it.transform[3]) ||
+        Math.hypot(it.transform[0], it.transform[1]) ||
+        12;
+      if (Math.abs(itemFontSize - targetFontSize) >= 0.5) return false;
+      const itemBaselineY = it.transform[5];
+      if (Math.abs(itemBaselineY - targetBaselineY) >= 1.0) return false;
+      return true;
+    });
+
+    candidates.sort((a, b) => a.transform[4] - b.transform[4]);
+
+    const targetCandIdx = candidates.indexOf(targetItem);
+    let mergedItems: TextItem[] = [targetItem];
+
+    if (targetCandIdx !== -1) {
+      let leftIdx = targetCandIdx;
+      while (leftIdx > 0) {
+        const curr = candidates[leftIdx];
+        const prev = candidates[leftIdx - 1];
+        const gap = curr.transform[4] - (prev.transform[4] + prev.width);
+        if (gap < targetFontSize * 0.4 && !prev.str.endsWith(" ") && !curr.str.startsWith(" ")) {
+          leftIdx--;
+        } else {
+          break;
         }
       }
+
+      let rightIdx = targetCandIdx;
+      while (rightIdx < candidates.length - 1) {
+        const curr = candidates[rightIdx];
+        const next = candidates[rightIdx + 1];
+        const gap = next.transform[4] - (curr.transform[4] + curr.width);
+        if (gap < targetFontSize * 0.4 && !curr.str.endsWith(" ") && !next.str.startsWith(" ")) {
+          rightIdx++;
+        } else {
+          break;
+        }
+      }
+
+      mergedItems = candidates.slice(leftIdx, rightIdx + 1);
     }
 
-    if (para && (para.lines.length > 1 || (para.lines.length === 1 && para.lines[0].itemIndices.length > 1))) {
-      const isSingleLineMultiItem = para.lines.length === 1 && para.lines[0].itemIndices.length > 1;
-      const targetLine = para.lines[0];
+    const mergedText = mergedItems.map((it) => it.str).join("");
+    const minX = mergedItems[0].transform[4];
+    const maxX =
+      mergedItems[mergedItems.length - 1].transform[4] +
+      mergedItems[mergedItems.length - 1].width;
+    const mergedWidth = Math.max(1, maxX - minX);
 
-      const annoRect = isSingleLineMultiItem
-        ? {
-            x: targetLine.transform[4],
-            y: targetLine.transform[5] - para.fontSize,
-            w: targetLine.width,
-            h: para.fontSize,
-          }
-        : para.bounds;
-      const annoText = isSingleLineMultiItem ? targetLine.text : para.fullText;
-      const annoTransform = isSingleLineMultiItem ? targetLine.transform : para.transform;
-      const annoWidth = isSingleLineMultiItem ? targetLine.width : para.bounds.w;
+    const mergedTransform = [
+      targetItem.transform[0],
+      targetItem.transform[1],
+      targetItem.transform[2],
+      targetItem.transform[3],
+      minX,
+      targetItem.transform[5],
+    ];
 
-      addAnnotation({
-        id: annoId,
-        kind: "textReplace",
-        page: pageId,
-        rect: annoRect,
-        text: annoText,
-        fontSize: para.fontSize,
-        color: defaultColor,
-        fontFamily: family,
-        bold: paraBold,
-        italic: paraItalic,
-        transform: annoTransform,
-        width: annoWidth,
-        lineHeight: para.lineHeight,
-        originalFontBytes: cachedInfo?.bytes,
-        runs: para.runs,
-        style: para.style,
-        alignment: para.style?.alignment || "left",
-        pdfFontMetrics,
-        ascentRatio,
-      } as Annotation);
-    } else {
-      addAnnotation({
-        id: annoId,
-        kind: "textReplace",
-        page: pageId,
-        rect,
-        text: item.str,
-        fontSize: Math.hypot(item.transform[2], item.transform[3]),
-        color: defaultColor,
-        fontFamily: family,
-        bold: isBold,
-        italic: isItalic,
-        transform: item.transform,
-        width: item.width,
-        lineHeight: item.height,
-        originalFontBytes: cachedInfo?.bytes,
-        pdfFontMetrics,
-        ascentRatio,
-      } as Annotation);
-    }
+    const rect = getBoundingBoxInPdfSpace(mergedTransform, mergedWidth);
+    rect.h = targetFontSize;
+
+    addAnnotation({
+      id: annoId,
+      kind: "textReplace",
+      page: pageId,
+      rect,
+      text: mergedText,
+      fontSize: targetFontSize,
+      color: defaultColor,
+      fontFamily: family,
+      bold: isBold,
+      italic: isItalic,
+      transform: mergedTransform,
+      width: mergedWidth,
+      lineHeight: targetFontSize,
+      originalFontBytes: cachedInfo?.bytes,
+      pdfFontMetrics,
+      ascentRatio,
+    } as Annotation);
 
     // 1. Resolve page colors on-demand asynchronously
     let cachedColors = globalPageColors.get(pdfPage);
