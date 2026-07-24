@@ -1,6 +1,7 @@
 import React from "react";
 import { VectorElement } from "../../lib/pdf/types";
 import { ArrowUp, ArrowDown, Trash2 } from "lucide-react";
+import { ColorPickerWithEyedropper } from "./ColorPickerWithEyedropper";
 
 export interface PropertiesPanelProps {
   selectedElement: VectorElement | any | null;
@@ -172,38 +173,22 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       <div className="space-y-2 mb-3 border-t border-zinc-200 dark:border-zinc-800 pt-3">
         <div className="flex items-center justify-between">
           <label className="text-zinc-500 text-[10px] uppercase font-bold">Stroke Color</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={strokeColor.startsWith("#") ? strokeColor : "#3b82f6"}
-              onChange={(e) => onUpdateProperty("strokeColor", e.target.value)}
-              className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-            />
-            <input
-              type="text"
-              value={strokeColor}
-              onChange={(e) => onUpdateProperty("strokeColor", e.target.value)}
-              className="w-20 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-[10px]"
-            />
-          </div>
+          <ColorPickerWithEyedropper
+            value={strokeColor}
+            onChange={(val) => onUpdateProperty("strokeColor", val)}
+            showHexInput
+            swatchSizeClassName="h-5 w-5"
+          />
         </div>
 
         <div className="flex items-center justify-between">
           <label className="text-zinc-500 text-[10px] uppercase font-bold">Fill Color</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={fillColor.startsWith("#") ? fillColor : "#ffffff"}
-              onChange={(e) => onUpdateProperty("fillColor", e.target.value)}
-              className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-            />
-            <input
-              type="text"
-              value={fillColor}
-              onChange={(e) => onUpdateProperty("fillColor", e.target.value)}
-              className="w-20 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-[10px]"
-            />
-          </div>
+          <ColorPickerWithEyedropper
+            value={fillColor}
+            onChange={(val) => onUpdateProperty("fillColor", val)}
+            showHexInput
+            swatchSizeClassName="h-5 w-5"
+          />
         </div>
 
         <div className="flex items-center justify-between">

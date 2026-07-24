@@ -31,6 +31,7 @@ import {
   Palette,
   Crop,
   Keyboard,
+  Magnet,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -45,6 +46,7 @@ import { useI18n } from "@/lib/i18n";
 import type { Tool } from "@/lib/pdf/types";
 import { cn } from "@/lib/utils";
 import { FontPicker } from "./FontPicker";
+import { ColorPickerWithEyedropper } from "./ColorPickerWithEyedropper";
 
 const HL_COLORS = ["#ffd54a", "#7ee787", "#7cc4ff", "#ff9ecb"];
 const PEN_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b"];
@@ -101,6 +103,8 @@ export function Toolbar({
   const setPenStyle = useEditor((s) => s.setPenStyle);
   const toggleSearch = useEditor((s) => s.toggleSearch);
   const searchOpen = useEditor((s) => s.searchOpen);
+  const snapToGuides = useEditor((s) => s.snapToGuides);
+  const toggleSnapToGuides = useEditor((s) => s.toggleSnapToGuides);
   const currentPage = useEditor((s) => s.currentPage);
   const numPages = useEditor((s) => s.pageOrder.length);
   const annotations = useEditor((s) => s.annotations);
@@ -291,6 +295,13 @@ export function Toolbar({
                   <Keyboard className="h-4 w-4" />
                 </TBtn>
               )}
+              <TBtn
+                title={t("snapToGuides")}
+                active={snapToGuides}
+                onClick={toggleSnapToGuides}
+              >
+                <Magnet className="h-4 w-4" />
+              </TBtn>
               <TBtn title={t("searchRedact")} active={searchOpen} onClick={toggleSearch}>
                 <Search className="h-4 w-4" />
               </TBtn>
@@ -322,6 +333,10 @@ export function Toolbar({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={toggleSnapToGuides} className={cn(snapToGuides && "bg-accent")}>
+                    <Magnet className="mr-2 h-4 w-4" />
+                    <span>{t("snapToGuides")}</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={toggleSearch} className={cn(searchOpen && "bg-accent")}>
                     <Search className="mr-2 h-4 w-4" />
                     <span>{t("searchRedact")}</span>
@@ -366,7 +381,13 @@ export function Toolbar({
               </span>
 
               {tool === "highlight" && (
-                <SwatchRow colors={HL_COLORS} value={highlightColor} onChange={setHighlightColor} />
+                <ColorPickerWithEyedropper
+                  value={highlightColor}
+                  onChange={setHighlightColor}
+                  swatches={HL_COLORS}
+                  swatchSizeClassName="h-5 w-5"
+                  title={t("highlight")}
+                />
               )}
 
               {(tool === "pen" ||
@@ -375,20 +396,13 @@ export function Toolbar({
                   className={cn("flex items-center gap-1 transition-opacity duration-150", tool === "edit-text" && !selectedId ? "pointer-events-none" : "")}
                   style={{ opacity: tool === "edit-text" && !selectedId ? 0.35 : undefined }}
                 >
-                  <SwatchRow colors={PEN_COLORS} value={color} onChange={setColor} />
-                  <label
-                    className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-full ring-1 ring-white/30"
-                    style={{ background: color }}
+                  <ColorPickerWithEyedropper
+                    value={color}
+                    onChange={setColor}
+                    swatches={PEN_COLORS}
+                    swatchSizeClassName="h-5 w-5"
                     title={t("pickColor")}
-                  >
-                    <Palette className="h-3 w-3 text-white mix-blend-difference" />
-                    <input
-                      type="color"
-                      value={color}
-                      onChange={(e) => setColor(e.target.value)}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                  </label>
+                  />
                 </div>
               )}
 

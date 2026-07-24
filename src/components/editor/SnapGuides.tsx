@@ -6,6 +6,7 @@ export interface SnapGuidesProps {
   pageWidth: number;
   pageHeight: number;
   scale?: number;
+  enabled?: boolean;
 }
 
 export const SnapGuides: React.FC<SnapGuidesProps> = ({
@@ -13,8 +14,9 @@ export const SnapGuides: React.FC<SnapGuidesProps> = ({
   pageWidth,
   pageHeight,
   scale = 1,
+  enabled = true,
 }) => {
-  if (!guides || guides.length === 0) return null;
+  if (!enabled || !guides || guides.length === 0) return null;
 
   return (
     <svg
@@ -81,8 +83,12 @@ export function computeSnapGuides(
   otherElementsBounds: BoundingBox[],
   pageWidth: number,
   pageHeight: number,
-  threshold: number = 5
+  threshold: number = 5,
+  enabled: boolean = true
 ): { snappedBounds: BoundingBox; guides: SnapGuide[] } {
+  if (!enabled) {
+    return { snappedBounds: { ...activeBounds }, guides: [] };
+  }
   const guides: SnapGuide[] = [];
   const snapped = { ...activeBounds };
   const width = activeBounds.maxX - activeBounds.minX;

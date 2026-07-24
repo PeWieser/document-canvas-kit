@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStroke } from "perfect-freehand";
 import { toast } from "sonner";
-import { GripVertical, X, MessageSquare, Check, Move } from "lucide-react";
+import { GripVertical, X, MessageSquare, Check } from "lucide-react";
 import type { PdfDocumentProxy, PdfPageProxy } from "@/lib/pdf/pdfjs";
 import { pdfjsLib } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
@@ -311,6 +311,7 @@ export function PageView({ doc, pageId }: Props) {
   const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
   const select = useEditor((s) => s.select);
   const setFingerprints = useEditor((s) => s.setFingerprints);
+  const snapToGuides = useEditor((s) => s.snapToGuides);
   const { t } = useI18n();
 
   const pageAnnos = annotations.filter((a) => a.page === pageId);
@@ -480,7 +481,7 @@ export function PageView({ doc, pageId }: Props) {
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }[]>([]);
 
   const handleDragSnap = useCallback((rawRect: Rect, skip: boolean, ignoreId: string) => {
-    if (skip || !viewport) {
+    if (skip || !viewport || !snapToGuides) {
       setSnapGuides([]);
       return rawRect;
     }
@@ -542,7 +543,7 @@ export function PageView({ doc, pageId }: Props) {
 
     setSnapGuides(guides);
     return { ...rawRect, x: newX, y: newY };
-  }, [pageAnnos, viewport, zoom]);
+  }, [pageAnnos, viewport, zoom, snapToGuides]);
 
   const localXY = (e: React.PointerEvent | React.MouseEvent) => {
     const rect = wrapRef.current!.getBoundingClientRect();
@@ -1605,7 +1606,7 @@ function AnnoView({
           transform: transformString,
           transformOrigin: transformOriginString,
           minHeight: `${fontHeight}px`,
-          height: "auto",
+          height: anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto",
           pointerEvents: selectable || tool === "edit-text" || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
@@ -1639,12 +1640,14 @@ function AnnoView({
             value={anno.text}
             onChange={(e) => {
               const el = e.target as HTMLTextAreaElement;
-              if (anno.kind === "textbox" || isMultiline) {
-                // auto-grow the box to fit its content
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
-              } else {
-                el.style.height = `${fontHeight}px`;
+              if (anno.kind !== "textbox") {
+                if (isMultiline) {
+                  // auto-grow the box to fit its content
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                } else {
+                  el.style.height = `${fontHeight}px`;
+                }
               }
               onUpdate({ text: el.value } as any);
             }}
@@ -1657,7 +1660,8 @@ function AnnoView({
               top: 0,
               left: 0,
               width: "100%",
-              height: `${fontHeight}px`,
+              height: anno.kind === "textbox" ? "100%" : `${fontHeight}px`,
+              minHeight: anno.kind === "textbox" ? "100%" : undefined,
               fontSize: `${fontHeight}px`,
               color: anno.color,
               fontFamily: family,
@@ -1743,11 +1747,12 @@ function AnnoView({
                         const p1 = vp.convertToPdfPoint(dxS, dyS);
                         const dw = p1[0] - p0[0];
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
                           x: anno.x + dw,
                           w: Math.max(20, anno.w - dw),
                           y: anno.y + dh,
-                          h: Math.max(10, anno.h + dh),
+                          h: Math.max(10, currentH + dh),
                         } as any, false);
                       },
                     },
@@ -1759,9 +1764,10 @@ function AnnoView({
                         const p0 = vp.convertToPdfPoint(0, 0);
                         const p1 = vp.convertToPdfPoint(0, dyS);
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
                           y: anno.y + dh,
-                          h: Math.max(10, anno.h + dh),
+                          h: Math.max(10, currentH + dh),
                         } as any, false);
                       },
                     },
@@ -1774,10 +1780,11 @@ function AnnoView({
                         const p1 = vp.convertToPdfPoint(dxS, dyS);
                         const dw = p1[0] - p0[0];
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
                           w: Math.max(20, anno.w + dw),
                           y: anno.y + dh,
-                          h: Math.max(10, anno.h + dh),
+                          h: Math.max(10, currentH + dh),
                         } as any, false);
                       },
                     },
@@ -1803,9 +1810,10 @@ function AnnoView({
                         const p1 = vp.convertToPdfPoint(dxS, dyS);
                         const dw = p1[0] - p0[0];
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
                           w: Math.max(20, anno.w + dw),
-                          h: Math.max(10, anno.h - dh),
+                          h: Math.max(10, currentH - dh),
                         } as any, false);
                       },
                     },
@@ -1817,8 +1825,9 @@ function AnnoView({
                         const p0 = vp.convertToPdfPoint(0, 0);
                         const p1 = vp.convertToPdfPoint(0, dyS);
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
-                          h: Math.max(10, anno.h - dh),
+                          h: Math.max(10, currentH - dh),
                         } as any, false);
                       },
                     },
@@ -1831,10 +1840,11 @@ function AnnoView({
                         const p1 = vp.convertToPdfPoint(dxS, dyS);
                         const dw = p1[0] - p0[0];
                         const dh = p1[1] - p0[1];
+                        const currentH = anno.h || anno.fontSize * 2;
                         onUpdate({
                           x: anno.x + dw,
                           w: Math.max(20, anno.w - dw),
-                          h: Math.max(10, anno.h - dh),
+                          h: Math.max(10, currentH - dh),
                         } as any, false);
                       },
                     },
@@ -2007,13 +2017,11 @@ function ResizeHandle({
         onDragEnd?.();
       }}
       className={cn(
-        "absolute rounded bg-primary p-0.5 text-primary-foreground z-30",
+        "absolute w-2 h-2 rounded-[1px] bg-white border border-primary shadow-2xs z-30",
         className || "-bottom-2 -right-2 cursor-nwse-resize"
       )}
       style={cursor ? { cursor } : undefined}
-    >
-      <Move className="h-3 w-3" />
-    </div>
+    />
   );
 }
 

@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n";
 import { COMMON_FONTS, loadWebFont } from "@/lib/pdf/fontDetect";
 import { cn } from "@/lib/utils";
 import fontFamilies from "@/lib/pdf/font-families.json";
+import { ColorPickerWithEyedropper } from "./ColorPickerWithEyedropper";
 
 const TEXT_COLORS = ["#111111", "#e5484d", "#2563eb", "#16a34a", "#f59e0b", "#ffffff"];
 
@@ -205,18 +206,12 @@ export function FontPicker() {
 
       {/* Text Color Picker */}
       <div className="flex items-center gap-1 border-l border-toolbar-accent/50 pl-1.5">
-        {TEXT_COLORS.map((c) => (
-          <button
-            key={c}
-            onClick={() => patch({ color: c })}
-            className={cn(
-              "h-4 w-4 rounded-full ring-offset-1 ring-offset-toolbar transition",
-              currentColor === c ? "ring-2 ring-primary" : "ring-1 ring-white/30",
-            )}
-            style={{ background: c }}
-            title={t("color")}
-          />
-        ))}
+        <ColorPickerWithEyedropper
+          value={currentColor}
+          onChange={(c) => patch({ color: c })}
+          swatches={TEXT_COLORS}
+          title={t("color")}
+        />
       </div>
 
       {/* Line Height Selector (1.0 - 2.0) */}

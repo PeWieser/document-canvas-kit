@@ -233,3 +233,19 @@ describe("editorStore – commentsPanel toggle", () => {
     expect(useEditor.getState().commentsPanelOpen).toBe(false);
   });
 });
+
+describe("editorStore – snapToGuides toggle", () => {
+  beforeEach(reset);
+
+  it("defaults snapToGuides to true", () => {
+    expect(useEditor.getState().snapToGuides).toBe(true);
+  });
+
+  it("toggles snapToGuides on and off", () => {
+    const { toggleSnapToGuides } = useEditor.getState();
+    toggleSnapToGuides();
+    expect(useEditor.getState().snapToGuides).toBe(false);
+    toggleSnapToGuides();
+    expect(useEditor.getState().snapToGuides).toBe(true);
+  });
+});

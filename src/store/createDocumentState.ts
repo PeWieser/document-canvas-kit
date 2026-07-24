@@ -35,10 +35,11 @@ export interface DocumentState {
   searchOpen: boolean;
   currentPage: number;
   selectedId: string | null;
-  selectedPages: number[];
   gridOpen: boolean;
   fingerprints: any[];
   setFingerprints: (fps: any[]) => void;
+  snapToGuides: boolean;
+  toggleSnapToGuides: () => void;
 
   past: Snapshot[];
   future: Snapshot[];
@@ -134,6 +135,7 @@ export function createDocumentState(
     selectedPages: [],
     gridOpen: false,
     fingerprints: [],
+    snapToGuides: true,
 
     past: [],
     future: [],
@@ -196,6 +198,7 @@ export function createDocumentState(
     toggleSearch: () => runUpdate((d) => { d.searchOpen = !d.searchOpen; }),
     setCurrentPage: (i) => runUpdate((d) => { d.currentPage = i; }),
     setGridOpen: (b) => runUpdate((d) => { d.gridOpen = b; }),
+    toggleSnapToGuides: () => runUpdate((d) => { d.snapToGuides = !d.snapToGuides; }),
     select: (id) => runUpdate((d) => { d.selectedId = id; }),
     setSelectedPages: (ids) => runUpdate((d) => { d.selectedPages = ids; }),
     toggleSelectedPage: (i, mode = "toggle") =>

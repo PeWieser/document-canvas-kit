@@ -17,10 +17,18 @@ export function CommentsPanel({ onJump }: { onJump: (index: number) => void }) {
   const selectedId = useEditor((s) => s.selectedId);
   const [filter, setFilter] = useState<Filter>("all");
 
-  const comments = useMemo(
-    () => annotations.filter((a) => a.kind === "comment" || (a as any).comment || (a as any).text),
-    [annotations],
-  );
+  const comments = useMemo(() => {
+    const ALLOWED_KINDS = ["comment", "highlight", "ink", "pen", "underline", "strikeout"];
+    return annotations.filter((a) => {
+      if (a.kind === "textReplace") return false;
+      if (!ALLOWED_KINDS.includes(a.kind)) return false;
+      if (a.kind === "comment") return true;
+
+      const hasCommentText = Boolean((a as any).comment || (a as any).text);
+      const hasReplies = Array.isArray((a as any).replies) && (a as any).replies.length > 0;
+      return hasCommentText || hasReplies;
+    });
+  }, [annotations]);
 
   const filtered = comments.filter((c) =>
     filter === "all" ? true : filter === "open" ? !(c as any).resolved : (c as any).resolved,

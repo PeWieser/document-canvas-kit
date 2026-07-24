@@ -5,6 +5,7 @@ import type { Rect } from "./types";
 export interface Viewport {
   width: number;
   height: number;
+  scale: number;
   convertToViewportPoint: (x: number, y: number) => number[];
   convertToPdfPoint: (x: number, y: number) => number[];
 }
