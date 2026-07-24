@@ -49,3 +49,8 @@ useEditor.subscribe = (
     }
   });
 };
+
+if (typeof window !== "undefined") {
+  (window as any).useEditor = useEditor;
+}
+

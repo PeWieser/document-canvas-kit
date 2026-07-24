@@ -117,10 +117,26 @@ export function computeAlignmentMetrics(
   const txScaleX = Math.hypot(tx[0], tx[1]);
   const scale = itemScaleX > 0 ? txScaleX / itemScaleX : (viewport.scale || 1);
 
-  const ascentRatio = pdfFontMetrics?.ascentRatio ?? 0.8;
+  let exactDomAscentRatio = pdfFontMetrics?.ascentRatio ?? 0.8;
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (ctx && typeof ctx.measureText === "function") {
+      ctx.font = `${fontHeight}px ${fontFamily}`;
+      const metrics = ctx.measureText("M");
+      if (metrics) {
+        const ascent = metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent;
+        const descent = metrics.fontBoundingBoxDescent || metrics.actualBoundingBoxDescent;
+        if (ascent && (ascent + descent > 0)) {
+          exactDomAscentRatio = ascent / (ascent + descent);
+        }
+      }
+    }
+  }
+
   // Baseline shift compensation: PDF.js text layer span top is positioned relative to baseline (tx[5]).
-  // Using domTop = tx[5] - fontHeight * ascentRatio anchors domTop to the exact typographic baseline.
-  const domTop = tx[5] - fontHeight * ascentRatio;
+  // Using domTop = tx[5] - fontHeight * exactDomAscentRatio anchors domTop to the exact typographic baseline.
+  const domTop = tx[5] - fontHeight * exactDomAscentRatio;
   const domLeft = tx[4];
   const domHeight = fontHeight;
   const domWidth = item.width * scale;
@@ -152,7 +168,7 @@ export function computeAlignmentMetrics(
     domPaddingTop,
     initialScaleX,
     fontHeight,
-    ascentRatio,
+    ascentRatio: exactDomAscentRatio,
     angle,
   };
 }

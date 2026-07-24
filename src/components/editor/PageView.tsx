@@ -1585,15 +1585,18 @@ function AnnoView({
     const activeScaleX = anno.kind === "textReplace" && !isMultiline ? scaleX : 1;
 
     const s = {
-      left: `${left}px`,
-      top: `${top}px`,
+      left: anno.kind === "textReplace" ? 0 : `${left}px`,
+      top: anno.kind === "textReplace" ? 0 : `${top}px`,
       width: anno.kind === "textReplace" ? `${containerWidth}px` : `${origWidth}px`,
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
-    if (anno.kind === "textReplace" && !isMultiline) {
-       transformString = transformString ? `${transformString} scaleX(${activeScaleX})` : `scaleX(${activeScaleX})`;
+    if (anno.kind === "textReplace") {
+      transformString = `translate3d(${left}px, ${top}px, 0px) rotate(${angle}rad)`;
+      if (!isMultiline) {
+        transformString = `${transformString} scaleX(${activeScaleX})`;
+      }
     }
-    const transformOriginString = transform ? `0 0` : undefined;
+    const transformOriginString = transform || anno.kind === "textReplace" ? `0 0` : undefined;
 
     return (
       <div

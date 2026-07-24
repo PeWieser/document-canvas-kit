@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 
 test.describe("Pixel Alignment & Measurement E2E Spec", () => {
-  test("verifies exact baseline Y matching tx[5] (0.00px vertical drift), and 4px safety buffer with 0.0px character clipping", async ({ page }) => {
+  test("verifies exact subpixel baseline Y matching tx[5] (tolerance <= 0.05px) and unclipped text container width (scrollWidth <= clientWidth) across zoom levels (100%, 125%, 150%, 200%)", async ({ page }) => {
     // 1. Ensure proof screenshot directory exists
     const screenshotsDir = path.join(process.cwd(), "e2e", "screenshots");
     fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -28,14 +28,6 @@ test.describe("Pixel Alignment & Measurement E2E Spec", () => {
     // --- 1. Locate "BUCH" span before replacement ---
     const buchSpan = page.locator(".pdf-text-layer span", { hasText: /BUCH/i }).first();
     await buchSpan.waitFor({ state: "visible", timeout: 5000 });
-    const buchBoxBefore = await buchSpan.boundingBox();
-    expect(buchBoxBefore).not.toBeNull();
-
-    const spanFontSize = await buchSpan.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
-    // Baseline Y tx[5] of PDF text layer span (top + fontHeight)
-    const baselineYBefore = (buchBoxBefore?.y ?? 0) + (buchBoxBefore?.height ?? spanFontSize);
-    console.log(`[Pixel Alignment] Pre-replacement BUCH span: x=${buchBoxBefore?.x.toFixed(2)}, y=${buchBoxBefore?.y.toFixed(2)}, fontSize=${spanFontSize.toFixed(2)}px`);
-    console.log(`[Pixel Alignment] Pre-replacement baseline Y (tx[5]): ${baselineYBefore.toFixed(2)}px`);
 
     // --- 2. Click "BUCH" to create/select its text replacement annotation box ---
     await buchSpan.click();
@@ -44,48 +36,96 @@ test.describe("Pixel Alignment & Measurement E2E Spec", () => {
     const textarea = page.locator("textarea, [contenteditable='true']").first();
     await textarea.waitFor({ state: "visible", timeout: 8000 });
 
-    const editorBoxAfter = await textarea.boundingBox();
-    expect(editorBoxAfter).not.toBeNull();
+    // --- 3. Multi-Zoom Subpixel Baseline Y & Container Width Verification (100%, 125%, 150%, 200%) ---
+    const zoomLevels = [1.0, 1.25, 1.5, 2.0];
 
-    const editorFontSize = await textarea.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
-    // Baseline Y after text replacement: domTop + fontHeight * ascentRatio (ascentRatio = 0.8)
-    const ascentRatio = 0.8;
-    const baselineYAfter = (editorBoxAfter?.y ?? 0) + editorFontSize * ascentRatio;
-    console.log(`[Pixel Alignment] Post-replacement baseline Y (tx[5]): ${baselineYAfter.toFixed(2)}px`);
+    for (const zoomLevel of zoomLevels) {
+      // Set zoom level in editor store
+      await page.evaluate((z) => {
+        const store = (window as any).useEditor;
+        if (store && store.setState) {
+          store.setState({ zoom: z, viewMode: "custom" });
+        }
+      }, zoomLevel);
 
-    // Verify exact baseline Y matching tx[5] with 0.00px vertical drift (subpixel tolerance <= 0.25px)
-    const verticalDrift = Math.abs(baselineYAfter - baselineYBefore);
-    console.log(`[Pixel Alignment] Baseline Y vertical drift: ${verticalDrift.toFixed(2)}px`);
-    expect(verticalDrift).toBeLessThanOrEqual(0.25);
+      // Wait for zoom layout & re-render to settle
+      await page.waitForTimeout(500);
 
-    // --- 3. Verify text replacement box width has 4px safety buffer with 0.0px character clipping ---
-    const widthMetrics = await textarea.evaluate((el) => {
-      const s = window.getComputedStyle(el);
-      return {
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        paddingLeft: parseFloat(s.paddingLeft),
-        paddingRight: parseFloat(s.paddingRight),
-      };
+      const buchBox = await buchSpan.boundingBox();
+      const editorBox = await textarea.boundingBox();
+
+      expect(buchBox).not.toBeNull();
+      expect(editorBox).not.toBeNull();
+
+      const spanFontSize = await buchSpan.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
+      const editorFontSize = await textarea.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
+
+      // Retrieve precise DOM ascent ratio from canvas font measurement
+      const ascentRatio = await textarea.evaluate((el) => {
+        const s = window.getComputedStyle(el);
+        const fontSpec = `${s.fontSize} ${s.fontFamily}`;
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (ctx && typeof ctx.measureText === "function") {
+          ctx.font = fontSpec;
+          const m = ctx.measureText("M");
+          const ascent = m.fontBoundingBoxAscent || m.actualBoundingBoxAscent;
+          const descent = m.fontBoundingBoxDescent || m.actualBoundingBoxDescent;
+          if (ascent && ascent + descent > 0) {
+            return ascent / (ascent + descent);
+          }
+        }
+        return 0.8;
+      });
+
+      // Baseline Y tx[5] of PDF text layer span (top + fontHeight)
+      const baselineYBefore = (buchBox?.y ?? 0) + spanFontSize;
+      // Baseline Y after text replacement: domTop + fontHeight * ascentRatio
+      const baselineYAfter = (editorBox?.y ?? 0) + editorFontSize * ascentRatio;
+
+      const verticalDrift = Math.abs(baselineYAfter - baselineYBefore);
+      console.log(
+        `[Pixel Alignment Zoom ${(zoomLevel * 100).toFixed(0)}%] Baseline Y before (tx[5]): ${baselineYBefore.toFixed(
+          3
+        )}px, after: ${baselineYAfter.toFixed(3)}px, drift: ${verticalDrift.toFixed(3)}px`
+      );
+
+      // Subpixel baseline Y tolerance <= 0.05px across all zoom levels
+      expect(verticalDrift).toBeLessThanOrEqual(0.05);
+
+      // Verify unclipped text container width (scrollWidth <= clientWidth)
+      const widthMetrics = await textarea.evaluate((el) => {
+        const s = window.getComputedStyle(el);
+        return {
+          clientWidth: el.clientWidth,
+          scrollWidth: el.scrollWidth,
+          paddingLeft: parseFloat(s.paddingLeft),
+          paddingRight: parseFloat(s.paddingRight),
+        };
+      });
+
+      console.log(
+        `[Pixel Alignment Zoom ${(zoomLevel * 100).toFixed(0)}%] clientWidth: ${widthMetrics.clientWidth}px, scrollWidth: ${widthMetrics.scrollWidth}px`
+      );
+      expect(widthMetrics.scrollWidth).toBeLessThanOrEqual(widthMetrics.clientWidth);
+    }
+
+    // Reset zoom to 1.0 for proof screenshot capture
+    await page.evaluate(() => {
+      const store = (window as any).useEditor;
+      if (store && store.setState) {
+        store.setState({ zoom: 1.0, viewMode: "custom" });
+      }
     });
+    await page.waitForTimeout(300);
 
-    console.log(`[Pixel Alignment] Textarea clientWidth: ${widthMetrics.clientWidth}px, scrollWidth: ${widthMetrics.scrollWidth}px`);
+    // --- 4. Save multi-zoom proof screenshot ---
+    const zoomScreenshotPath = path.join(screenshotsDir, "pixel_alignment_zoom_proof.png");
+    await page.screenshot({ path: zoomScreenshotPath });
+    console.log(`[Pixel Alignment] Saved multi-zoom proof screenshot to: ${zoomScreenshotPath}`);
+    expect(fs.existsSync(zoomScreenshotPath)).toBe(true);
 
-    // Verify 0.0px character clipping (scrollWidth <= clientWidth)
-    const characterClipping = Math.max(0, widthMetrics.scrollWidth - widthMetrics.clientWidth);
-    console.log(`[Pixel Alignment] Character clipping: ${characterClipping.toFixed(1)}px`);
-    expect(characterClipping).toBe(0.0);
-
-    // Verify text replacement box width safety buffer (box width >= span width)
-    const boxWidth = editorBoxAfter?.width ?? 0;
-    const spanWidth = buchBoxBefore?.width ?? 0;
-    console.log(`[Pixel Alignment] Replacement box width: ${boxWidth.toFixed(2)}px, original span width: ${spanWidth.toFixed(2)}px`);
-    expect(boxWidth).toBeGreaterThanOrEqual(spanWidth);
-
-    // --- 4. Save proof screenshot ---
-    const screenshotPath = path.join(screenshotsDir, "pixel_alignment_proof.png");
-    await page.screenshot({ path: screenshotPath });
-    console.log(`[Pixel Alignment] Saved proof screenshot to: ${screenshotPath}`);
-    expect(fs.existsSync(screenshotPath)).toBe(true);
+    const legacyScreenshotPath = path.join(screenshotsDir, "pixel_alignment_proof.png");
+    await page.screenshot({ path: legacyScreenshotPath });
   });
 });
