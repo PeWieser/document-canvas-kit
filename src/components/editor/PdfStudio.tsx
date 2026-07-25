@@ -21,6 +21,7 @@ import { FeedbackWidget } from "./FeedbackWidget";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { LowResPagePreview } from "./LowResPagePreview";
+import { cn } from "@/lib/utils";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -637,22 +638,103 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     setTool,
   ]);
 
-  if (!originalBytes) {
-    return (
-      <div className="flex h-full flex-col overflow-hidden bg-slate-950 text-slate-100">
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf"
-          className="hidden"
-          onChange={(e) => e.target.files && handleFile(e.target.files[0])}
-        />
-        <div className="flex-1 flex flex-col min-h-0 relative">
-          <DropZone onFile={handleFile} />
-        </div>
-      </div>
-    );
-  }
+  // Spacebar Panning State & References
+  const [isSpacebarPanning, setIsSpacebarPanning] = useState(false);
+  const [isSpacebarMouseDown, setIsSpacebarMouseDown] = useState(false);
+  const spacebarPanningRef = useRef(false);
+  const spacebarMouseDownRef = useRef(false);
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    spacebarPanningRef.current = isSpacebarPanning;
+  }, [isSpacebarPanning]);
+
+  useEffect(() => {
+    spacebarMouseDownRef.current = isSpacebarMouseDown;
+  }, [isSpacebarMouseDown]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if (typing) return;
+
+      if (e.key === " ") {
+        e.preventDefault();
+        if (!spacebarPanningRef.current) {
+          setIsSpacebarPanning(true);
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " ") {
+        setIsSpacebarPanning(false);
+        setIsSpacebarMouseDown(false);
+        lastMousePosRef.current = null;
+      }
+    };
+
+    const handleBlur = () => {
+      setIsSpacebarPanning(false);
+      setIsSpacebarMouseDown(false);
+      lastMousePosRef.current = null;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (
+        spacebarPanningRef.current &&
+        spacebarMouseDownRef.current &&
+        lastMousePosRef.current &&
+        scrollRef.current
+      ) {
+        const dx = e.clientX - lastMousePosRef.current.x;
+        const dy = e.clientY - lastMousePosRef.current.y;
+        scrollRef.current.scrollLeft -= dx;
+        scrollRef.current.scrollTop -= dy;
+        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (spacebarMouseDownRef.current) {
+        setIsSpacebarMouseDown(false);
+        lastMousePosRef.current = null;
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const handleMainMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (spacebarPanningRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsSpacebarMouseDown(true);
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -702,7 +784,22 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
             }}
           />
         )}
-        <main ref={scrollRef} className="flex-1 overflow-auto bg-desk" onClick={() => select(null)}>
+        <main
+          ref={scrollRef}
+          className={cn(
+            "flex-1 overflow-auto bg-desk",
+            isSpacebarPanning &&
+              (isSpacebarMouseDown
+                ? "!cursor-grabbing [&_*]:!cursor-grabbing"
+                : "!cursor-grab [&_*]:!cursor-grab")
+          )}
+          onMouseDown={handleMainMouseDown}
+          onClick={() => {
+            if (!spacebarPanningRef.current) {
+              select(null);
+            }
+          }}
+        >
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
           {!doc && !error && (
             <div className="p-8 text-center text-muted-foreground">{t("loading")}</div>

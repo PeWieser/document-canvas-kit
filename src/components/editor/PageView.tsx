@@ -288,8 +288,20 @@ export function PageView({ doc, pageId }: Props) {
   const highlightColor = useEditor((s) => s.highlightColor);
   const fontSize = useEditor((s) => s.fontSize);
 
+  // Debounce high-resolution canvas re-render by 150ms during fast active zooming
+  const [debouncedZoom, setDebouncedZoom] = useState(zoom);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedZoom(zoom);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [zoom]);
+
   // Synchronous viewport derived directly from pdfPage and zoom (zero-lag, no jitter)
   const viewport = pdfPage ? (pdfPage.getViewport({ scale: zoom }) as unknown as Viewport) : null;
+  // Viewport for high-res canvas rendering based on debouncedZoom
+  const renderedViewport = pdfPage ? (pdfPage.getViewport({ scale: debouncedZoom }) as unknown as Viewport) : null;
+  const zoomRatio = debouncedZoom > 0 ? zoom / debouncedZoom : 1;
 
   // Re-trigger layout measurement when web fonts complete loading
   const [, setFontCount] = useState(0);
@@ -403,18 +415,18 @@ export function PageView({ doc, pageId }: Props) {
 
   // --- render page (double-buffered to eliminate white zoom flashes) ---
   useEffect(() => {
-    if (!pdfPage || !viewport) return;
+    if (!pdfPage || !renderedViewport) return;
     let renderTask: any = null;
 
     const canvas = canvasRef.current;
     if (canvas) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const targetW = Math.floor(viewport.width * dpr);
-      const targetH = Math.floor(viewport.height * dpr);
+      const targetW = Math.floor(renderedViewport.width * dpr);
+      const targetH = Math.floor(renderedViewport.height * dpr);
 
       // Smoothly scale the existing canvas via CSS during zoom transitions
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
+      canvas.style.width = `${renderedViewport.width}px`;
+      canvas.style.height = `${renderedViewport.height}px`;
 
       // Render to an off-screen canvas buffer
       const tempCanvas = document.createElement("canvas");
@@ -424,7 +436,7 @@ export function PageView({ doc, pageId }: Props) {
       if (tempCtx) {
         tempCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        renderTask = pdfPage.render({ canvasContext: tempCtx, viewport: viewport as any });
+        renderTask = pdfPage.render({ canvasContext: tempCtx, viewport: renderedViewport as any });
 
         void renderTask.promise.then(() => {
           // Update backing store and copy buffer image in a single frame tick
@@ -445,7 +457,7 @@ export function PageView({ doc, pageId }: Props) {
         renderTask.cancel();
       }
     };
-  }, [pdfPage, zoom, viewport, pageId]);
+  }, [pdfPage, debouncedZoom, renderedViewport, pageId]);
 
   // --- position text-layer spans ---
   useEffect(() => {
@@ -786,7 +798,7 @@ export function PageView({ doc, pageId }: Props) {
         12;
       if (Math.abs(itemFontSize - targetFontSize) >= 0.5) return false;
       const itemBaselineY = it.transform[5];
-      if (Math.abs(itemBaselineY - targetBaselineY) >= 1.0) return false;
+      if (Math.abs(itemBaselineY - targetBaselineY) >= 0.5) return false;
       return true;
     });
 
@@ -805,7 +817,7 @@ export function PageView({ doc, pageId }: Props) {
           break;
         }
         const gap = curr.transform[4] - (prev.transform[4] + prev.width);
-        if (gap < targetFontSize * 0.4 && !prev.str.endsWith(" ") && !curr.str.startsWith(" ")) {
+        if (gap >= -2.0 && gap <= targetFontSize * 0.35 && !prev.str.endsWith(" ") && !curr.str.startsWith(" ")) {
           leftIdx--;
         } else {
           break;
@@ -821,7 +833,7 @@ export function PageView({ doc, pageId }: Props) {
           break;
         }
         const gap = next.transform[4] - (curr.transform[4] + curr.width);
-        if (gap < targetFontSize * 0.4 && !curr.str.endsWith(" ") && !next.str.startsWith(" ")) {
+        if (gap >= -2.0 && gap <= targetFontSize * 0.35 && !curr.str.endsWith(" ") && !next.str.startsWith(" ")) {
           rightIdx++;
         } else {
           break;
@@ -1123,7 +1135,17 @@ export function PageView({ doc, pageId }: Props) {
           style={{ width: viewport?.width, height: viewport?.height, background: "white" }}
           onContextMenu={onContextMenu}
         >
-          <canvas ref={canvasRef} className="block" />
+          <div
+            style={{
+              width: renderedViewport?.width,
+              height: renderedViewport?.height,
+              transform: zoomRatio !== 1 ? `scale(${zoomRatio})` : "none",
+              transformOrigin: "top left",
+              willChange: zoomRatio !== 1 ? "transform" : "auto",
+            }}
+          >
+            <canvas ref={canvasRef} className="block" />
+          </div>
           {workerLoading && (
             <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center pointer-events-auto">
               <div className="flex flex-col items-center gap-4 max-w-xs px-4">

@@ -239,6 +239,8 @@ export function GridOverview({
 
   const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     if (dragFrom === null) return;
 
     const clientX = e.clientX;
@@ -262,7 +264,10 @@ export function GridOverview({
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none"
+      className={cn(
+        "fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none",
+        isDragging && "cursor-move [&_*]:cursor-move",
+      )}
     >
       <div className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-4">
@@ -345,6 +350,11 @@ export function GridOverview({
             onDragEnd={() => {
               setDragFrom(null);
               resetDropState();
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
             }}
             onTouchStart={(e) => handleTouchStart(index, e)}
             onTouchMove={handleTouchMove}
