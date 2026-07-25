@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-test.describe("Grid Overview Deadzone & Matrix Card Zoom E2E Spec", () => {
-  test("verifies grid overview loading, matrix zoom slider scaling, and 0px deadzone drag indicator", async ({ page }) => {
+test.describe("Pages-per-Row Grid Zoom & Parent Container Drag Delegation E2E Spec", () => {
+  test("verifies grid matrix zoom scaling, 0px deadzone parent drag delegation, and page 5 high-res load", async ({ page }) => {
     fs.mkdirSync(path.join(process.cwd(), "e2e", "screenshots"), { recursive: true });
 
     await page.goto("http://localhost:5173/");
@@ -33,26 +33,27 @@ test.describe("Grid Overview Deadzone & Matrix Card Zoom E2E Spec", () => {
     const gridItem0 = page.locator('[data-testid="grid-item-0"]');
     await gridItem0.waitFor({ state: "visible", timeout: 10000 });
 
-    // Verify matrix zoom slider exists and scales thumbnail cards without lag
+    // Verify matrix zoom slider and buttons exist, toolbar shows "4 / Zeile"
     const zoomSlider = page.locator('[data-testid="matrix-zoom-slider"]');
     await expect(zoomSlider).toBeVisible();
 
-    const initialBox = await gridItem0.boundingBox();
-    expect(initialBox).not.toBeNull();
+    const minusButton = page.locator('[data-testid="pages-per-row-minus"]');
+    await expect(minusButton).toBeVisible();
 
-    // Scale matrix zoom slider to 180%
-    await zoomSlider.fill("180");
-    await zoomSlider.dispatchEvent("input");
-    await zoomSlider.dispatchEvent("change");
+    const zoomIndicator = page.locator('[data-testid="zoom-indicator"]');
+    await expect(zoomIndicator).toContainText("4 / Zeile");
 
-    // Allow UI to re-layout with new column width
-    await page.waitForTimeout(400);
+    // Click minus button to scale pages per row from 4 to 3
+    await minusButton.click();
+    await page.waitForTimeout(300);
 
-    const scaledBox = await gridItem0.boundingBox();
-    expect(scaledBox).not.toBeNull();
-    expect(scaledBox!.width).toBeGreaterThan(initialBox!.width);
+    // Verify zoom indicator in toolbar updates to "3 / Zeile"
+    await expect(zoomIndicator).toContainText("3 / Zeile");
 
-    // Drag page thumbnail over contiguous card (0px deadzone verification)
+    // Drag page thumbnail over parent grid container (0px deadzone verification)
+    const gridContainer = page.locator('[data-testid="grid-container"]');
+    await expect(gridContainer).toBeVisible();
+
     const gridItem2 = page.locator('[data-testid="grid-item-2"]');
     await expect(gridItem2).toBeVisible();
 
@@ -61,14 +62,30 @@ test.describe("Grid Overview Deadzone & Matrix Card Zoom E2E Spec", () => {
     const targetY = box2.y + box2.height / 2;
 
     await gridItem0.dispatchEvent("dragstart");
-    await gridItem2.dispatchEvent("dragover", { clientX: targetX, clientY: targetY });
+    // Dispatch dragover directly on the parent grid container element
+    await gridContainer.dispatchEvent("dragover", { clientX: targetX, clientY: targetY });
 
     // Verify dragOver indicator is active without flickering
     const dropIndicator = page.locator('[data-testid="drop-indicator"]');
     await expect(dropIndicator).toBeVisible();
 
+    // Jump to page 5 (index 4) by clicking grid-item-4
+    const gridItem4 = page.locator('[data-testid="grid-item-4"]');
+    await expect(gridItem4).toBeVisible();
+    await gridItem4.click();
+
+    // Verify Grid Overview modal closed and main view scrolled to page 5
+    await page.locator('.pdf-text-layer span, canvas').first().waitFor({ state: "visible", timeout: 10000 });
+    const page5Container = page.locator('div[data-index="4"]');
+    await expect(page5Container).toBeVisible();
+    
+    // Verify high-resolution <PageView> canvas rendered inside page 5
+    const page5Canvas = page5Container.locator('canvas');
+    await page5Canvas.waitFor({ state: "visible", timeout: 10000 });
+    await expect(page5Canvas).toBeVisible();
+
     // Save proof screenshot
-    const screenshotPath = path.join(process.cwd(), "e2e/screenshots/grid_matrix_proof.png");
+    const screenshotPath = path.join(process.cwd(), "e2e", "screenshots", "grid_matrix_proof.png");
     await page.screenshot({ path: screenshotPath, fullPage: true });
     expect(fs.existsSync(screenshotPath)).toBe(true);
     console.log(`[E2E Proof Screenshot Saved]: ${screenshotPath}`);

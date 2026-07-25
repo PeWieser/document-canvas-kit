@@ -36,6 +36,8 @@ export interface DocumentState {
   currentPage: number;
   selectedId: string | null;
   gridOpen: boolean;
+  pagesPerRow: number;
+  setPagesPerRow: (n: number) => void;
   fingerprints: any[];
   setFingerprints: (fps: any[]) => void;
   snapToGuides: boolean;
@@ -134,6 +136,7 @@ export function createDocumentState(
     selectedId: null,
     selectedPages: [],
     gridOpen: false,
+    pagesPerRow: 4,
     fingerprints: [],
     snapToGuides: true,
 
@@ -143,6 +146,7 @@ export function createDocumentState(
     ...initialProps,
 
     setFingerprints: (fps) => runUpdate((d) => { d.fingerprints = fps; }),
+    setPagesPerRow: (n) => runUpdate((d) => { d.pagesPerRow = Math.min(8, Math.max(1, Math.round(n))); }),
 
     loadDoc: (fileName, bytes, numPages, estimateSize, handle = null) =>
       runUpdate((d) => {

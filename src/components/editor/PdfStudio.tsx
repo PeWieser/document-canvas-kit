@@ -20,7 +20,6 @@ import { CropToolPanel } from "./CropToolPanel";
 import { FeedbackWidget } from "./FeedbackWidget";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { useVirtualizedPages } from "@/hooks/useVirtualizedPages";
 import { LowResPagePreview } from "./LowResPagePreview";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
@@ -62,6 +61,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
   const setSelectedPages = useEditor((s) => s.setSelectedPages);
   const currentTool = useEditor((s) => s.tool);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(() => new Set([0]));
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -288,6 +288,12 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     (index: number) => {
       const clamped = Math.max(0, Math.min(pageOrder.length - 1, index));
       setCurrentPage(clamped);
+      setVisiblePages((prev) => {
+        if (prev.has(clamped)) return prev;
+        const next = new Set(prev);
+        next.add(clamped);
+        return next;
+      });
       if (viewMode !== "two-page") {
         pageRefs.current[clamped]?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
@@ -348,18 +354,55 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     return { w: estimateSize.w * zoom, h: estimateSize.h * zoom };
   }, [estimateSize, zoom]);
 
-  const getPageHeight = useCallback(
-    (_index: number) => slotDims.h,
-    [slotDims.h],
-  );
+  // IntersectionObserver observing each page wrapper for high-res rendering (400px lead)
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!doc || !root) return;
 
-  const { visibleRange } = useVirtualizedPages({
-    totalCount: doc && viewMode !== "two-page" ? pageOrder.length : 0,
-    getPageHeight,
-    containerRef: scrollRef,
-    gap: PAGE_PAD,
-    overscan: 2,
-  });
+    if (typeof IntersectionObserver === "undefined") {
+      setVisiblePages(new Set(pageOrder.map((_, i) => i)));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisiblePages((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          entries.forEach((entry) => {
+            const indexAttr = entry.target.getAttribute("data-index");
+            if (indexAttr !== null) {
+              const idx = parseInt(indexAttr, 10);
+              if (entry.isIntersecting) {
+                if (!next.has(idx)) {
+                  next.add(idx);
+                  changed = true;
+                }
+              } else {
+                if (next.has(idx)) {
+                  next.delete(idx);
+                  changed = true;
+                }
+              }
+            }
+          });
+          return changed ? next : prev;
+        });
+      },
+      {
+        root,
+        rootMargin: "400px 0px",
+      },
+    );
+
+    pageRefs.current.forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [doc, pageOrder]);
 
   // active page tracking on scroll
   useEffect(() => {
@@ -673,8 +716,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
               style={{ gap: PAGE_PAD, paddingBlock: PAGE_PAD }}
             >
               {pageOrder.map((pageId, index) => {
-                const isVisible =
-                  index >= visibleRange.startIndex && index <= visibleRange.endIndex;
+                const isVisible = visiblePages.has(index);
                 return (
                   <div
                     key={pageId}

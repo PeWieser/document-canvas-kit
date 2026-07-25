@@ -19,8 +19,9 @@ export function GridOverview({
   const pageOrder = useEditor((s) => s.pageOrder);
   const reorderPages = useEditor((s) => s.reorderPages);
   const deletePage = useEditor((s) => s.deletePage);
+  const pagesPerRow = useEditor((s) => s.pagesPerRow ?? 4);
+  const setPagesPerRow = useEditor((s) => s.setPagesPerRow);
 
-  const [matrixZoom, setMatrixZoom] = useState<number>(100);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
@@ -32,6 +33,30 @@ export function GridOverview({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Wheel listener for Ctrl + Scroll to adjust pagesPerRow
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl || !open) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const current = useEditor.getState().pagesPerRow ?? 4;
+        if (e.deltaY > 0) {
+          setPagesPerRow(current + 1);
+        } else if (e.deltaY < 0) {
+          setPagesPerRow(current - 1);
+        }
+      }
+    };
+
+    modalEl.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      modalEl.removeEventListener("wheel", handleWheel);
+    };
+  }, [open, setPagesPerRow]);
 
   useEffect(() => {
     return () => {
@@ -41,18 +66,12 @@ export function GridOverview({
 
   if (!open) return null;
 
-  const baseCardWidth = 180;
-  const cardWidth = Math.round(baseCardWidth * (matrixZoom / 100));
-  const baseThumbWidth = 220;
-  const thumbWidth = Math.round(baseThumbWidth * (matrixZoom / 100));
-
   const handleTouchStart = (index: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    // 1-second (1000ms) long-press threshold
     timerRef.current = setTimeout(() => {
       navigator.vibrate?.(50);
       setDragFrom(index);
@@ -64,7 +83,6 @@ export function GridOverview({
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
 
-    // If long-press hasn't triggered yet, check if user scrolled (> 10px movement)
     if (touchDragging === null && touchStartPos.current) {
       const dx = Math.abs(touch.clientX - touchStartPos.current.x);
       const dy = Math.abs(touch.clientY - touchStartPos.current.y);
@@ -77,12 +95,10 @@ export function GridOverview({
       return;
     }
 
-    // Active long-press dragging mode
     if (touchDragging !== null) {
       e.preventDefault();
       setTouchPos({ x: touch.clientX, y: touch.clientY });
 
-      // Find element under touch point
       for (let i = 0; i < itemRefs.current.length; i++) {
         const el = itemRefs.current[i];
         if (!el) continue;
@@ -130,8 +146,77 @@ export function GridOverview({
     setDropSide(null);
   };
 
+  const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (dragFrom === null) return;
+
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    let targetIndex: number | null = null;
+    const element = document.elementFromPoint(clientX, clientY);
+    if (element) {
+      const itemEl = element.closest("[data-grid-item-index]");
+      if (itemEl) {
+        const idxStr = itemEl.getAttribute("data-grid-item-index");
+        if (idxStr !== null) {
+          targetIndex = parseInt(idxStr, 10);
+        }
+      }
+    }
+
+    if (targetIndex === null && itemRefs.current.length > 0) {
+      let minDistance = Infinity;
+      let closestIndex = 0;
+      itemRefs.current.forEach((el, idx) => {
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dist = Math.hypot(clientX - centerX, clientY - centerY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIndex = idx;
+        }
+      });
+      targetIndex = closestIndex;
+    }
+
+    if (targetIndex !== null && itemRefs.current[targetIndex]) {
+      const el = itemRefs.current[targetIndex]!;
+      const rect = el.getBoundingClientRect();
+      const side: "left" | "right" = clientX < rect.left + rect.width / 2 ? "left" : "right";
+      const dropTgt: "before" | "after" = side === "left" ? "before" : "after";
+
+      if (dragOver !== targetIndex || dropTarget !== dropTgt || dropSide !== side) {
+        setDragOver(targetIndex);
+        setDropTarget(dropTgt);
+        setDropSide(side);
+      }
+    }
+  };
+
+  const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (dragFrom !== null && dragOver !== null && dropTarget !== null) {
+      let targetIndex = dragFrom;
+      if (dragOver < dragFrom) {
+        targetIndex = dropTarget === "before" ? dragOver : dragOver + 1;
+      } else if (dragOver > dragFrom) {
+        targetIndex = dropTarget === "before" ? dragOver - 1 : dragOver;
+      }
+      if (targetIndex !== dragFrom) {
+        reorderPages(dragFrom, targetIndex);
+      }
+    }
+    setDragFrom(null);
+    setDragOver(null);
+    setDropTarget(null);
+    setDropSide(null);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur select-none">
+    <div ref={modalRef} className="fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none">
       <div className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold">{t("gridView")}</h2>
@@ -142,18 +227,40 @@ export function GridOverview({
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 border-r border-border pr-4">
-            <span className="text-xs text-muted-foreground font-mono w-10 text-right">{matrixZoom}%</span>
+            <span className="text-xs text-muted-foreground font-mono w-28 text-right font-medium">
+              {pagesPerRow} Seiten / Zeile
+            </span>
+            <button
+              type="button"
+              onClick={() => setPagesPerRow(pagesPerRow - 1)}
+              disabled={pagesPerRow <= 1}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-bold disabled:opacity-40 transition-colors cursor-pointer"
+              data-testid="pages-per-row-minus"
+              aria-label="Fewer pages per row"
+            >
+              -
+            </button>
             <input
               type="range"
-              min="100"
-              max="250"
-              step="5"
-              value={matrixZoom}
-              onChange={(e) => setMatrixZoom(Number(e.target.value))}
+              min="1"
+              max="8"
+              step="1"
+              value={pagesPerRow}
+              onChange={(e) => setPagesPerRow(Number(e.target.value))}
               className="w-24 sm:w-36 cursor-pointer accent-primary"
               data-testid="matrix-zoom-slider"
-              aria-label="Matrix Zoom"
+              aria-label="Pages per row"
             />
+            <button
+              type="button"
+              onClick={() => setPagesPerRow(pagesPerRow + 1)}
+              disabled={pagesPerRow >= 8}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-bold disabled:opacity-40 transition-colors cursor-pointer"
+              data-testid="pages-per-row-plus"
+              aria-label="More pages per row"
+            >
+              +
+            </button>
           </div>
 
           <button onClick={() => setGridOpen(false)} className="rounded-md p-2 hover:bg-muted" aria-label="Close grid overview">
@@ -163,10 +270,13 @@ export function GridOverview({
       </div>
 
       <div
-        className="grid flex-1 overflow-y-auto p-6"
+        onDragOver={handleParentDragOver}
+        onDrop={handleParentDrop}
+        className="grid flex-1 overflow-y-auto p-6 gap-4"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))`,
+          gridTemplateColumns: `repeat(${pagesPerRow}, minmax(0, 1fr))`,
         }}
+        data-testid="grid-container"
       >
         {pageOrder.map((pageId, index) => (
           <div
@@ -174,37 +284,9 @@ export function GridOverview({
             ref={(el) => {
               itemRefs.current[index] = el;
             }}
+            data-grid-item-index={index}
             draggable
             onDragStart={() => setDragFrom(index)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const side: "left" | "right" = e.clientX < rect.left + rect.width / 2 ? "left" : "right";
-              const target: "before" | "after" = side === "left" ? "before" : "after";
-
-              if (dragOver !== index || dropTarget !== target || dropSide !== side) {
-                setDragOver(index);
-                setDropTarget(target);
-                setDropSide(side);
-              }
-            }}
-            onDrop={() => {
-              if (dragFrom !== null && dragFrom !== index && dropTarget !== null) {
-                let targetIndex = dragFrom;
-                if (index < dragFrom) {
-                  targetIndex = dropTarget === "before" ? index : index + 1;
-                } else if (index > dragFrom) {
-                  targetIndex = dropTarget === "before" ? index - 1 : index;
-                }
-                if (targetIndex !== dragFrom) {
-                  reorderPages(dragFrom, targetIndex);
-                }
-              }
-              setDragFrom(null);
-              setDragOver(null);
-              setDropTarget(null);
-              setDropSide(null);
-            }}
             onDragEnd={() => {
               setDragFrom(null);
               setDragOver(null);
@@ -248,7 +330,7 @@ export function GridOverview({
               )}
               title={t("reorderHint")}
             >
-              <PageThumb doc={doc} pageId={pageId} width={thumbWidth} />
+              <PageThumb doc={doc} pageId={pageId} width={240} />
               <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
                 <span>{index + 1}</span>
               </div>

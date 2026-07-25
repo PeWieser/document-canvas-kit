@@ -85,6 +85,9 @@ export function Toolbar({
   const redo = useEditor((s) => s.redo);
   const past = useEditor((s) => s.past.length);
   const future = useEditor((s) => s.future.length);
+  const gridOpen = useEditor((s) => s.gridOpen);
+  const pagesPerRow = useEditor((s) => s.pagesPerRow ?? 4);
+  const setPagesPerRow = useEditor((s) => s.setPagesPerRow);
   const setGridOpen = useEditor((s) => s.setGridOpen);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const toggleSidebar = useEditor((s) => s.toggleSidebar);
@@ -247,11 +250,34 @@ export function Toolbar({
 
             <Divider className="hidden sm:block" />
 
-            <TBtn title={t("zoomOut")} onClick={() => setZoom(zoom - 0.15)}>
+            <TBtn
+              title={gridOpen ? "Weniger Seiten pro Zeile" : t("zoomOut")}
+              onClick={() => {
+                if (gridOpen) {
+                  setPagesPerRow(pagesPerRow - 1);
+                } else {
+                  setZoom(zoom - 0.15);
+                }
+              }}
+            >
               <ZoomOut className="h-4 w-4" />
             </TBtn>
-            <span className="w-10 text-center font-mono text-xs hidden sm:inline">{Math.round(zoom * 100)}%</span>
-            <TBtn title={t("zoomIn")} onClick={() => setZoom(zoom + 0.15)}>
+            <span
+              className="min-w-10 px-1 text-center font-mono text-xs hidden sm:inline whitespace-nowrap"
+              data-testid="zoom-indicator"
+            >
+              {gridOpen ? `${pagesPerRow} / Zeile` : `${Math.round(zoom * 100)}%`}
+            </span>
+            <TBtn
+              title={gridOpen ? "Mehr Seiten pro Zeile" : t("zoomIn")}
+              onClick={() => {
+                if (gridOpen) {
+                  setPagesPerRow(pagesPerRow + 1);
+                } else {
+                  setZoom(zoom + 0.15);
+                }
+              }}
+            >
               <ZoomIn className="h-4 w-4" />
             </TBtn>
 
