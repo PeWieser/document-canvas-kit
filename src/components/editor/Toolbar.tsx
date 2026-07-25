@@ -133,7 +133,6 @@ export function Toolbar({
     tool === "pen" ||
     tool === "edit-text" ||
     tool === "textbox" ||
-    tool === "comment" ||
     (tool === "select" && hasTextSelected);
 
   const jumpTo = (i: number) => {
@@ -176,7 +175,7 @@ export function Toolbar({
             </DropdownMenu>
 
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none transition-colors">
+              <DropdownMenuTrigger data-testid="tools-menu-trigger" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-toolbar-accent focus:outline-none transition-colors">
                 <Wrench className="h-4 w-4" />
                 <span className="hidden sm:inline">{t("tools")}</span>
               </DropdownMenuTrigger>
@@ -184,6 +183,7 @@ export function Toolbar({
                 {tools.map((tl) => (
                   <DropdownMenuItem
                     key={tl.id}
+                    data-testid={`tool-item-${tl.id}`}
                     onClick={() => setTool(tl.id)}
                     className={cn("flex items-start gap-2 transition-colors", tool === tl.id && "bg-accent")}
                   >
@@ -401,7 +401,7 @@ export function Toolbar({
         </div>
         {/* Sub-Toolbar Row */}
         {showSubToolbar && (
-          <div className="subtoolbar-scroll flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150 overflow-x-auto min-w-0 max-w-full">
+          <div data-testid="sub-toolbar" className="subtoolbar-scroll flex items-center justify-between border-t border-toolbar-accent/20 bg-toolbar-accent/5 px-4 py-1.5 text-xs animate-in slide-in-from-top-1 duration-150 overflow-x-auto min-w-0 max-w-full">
             <div className="flex items-center gap-4 min-w-max">
               <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
                 {activeTool?.label || t("tools")} Settings:
@@ -417,12 +417,8 @@ export function Toolbar({
                 />
               )}
 
-              {(tool === "pen" ||
-                ((tool === "textbox" || tool === "edit-text") && !selectedId)) && (
-                <div 
-                  className={cn("flex items-center gap-1 transition-opacity duration-150", tool === "edit-text" && !selectedId ? "pointer-events-none" : "")}
-                  style={{ opacity: tool === "edit-text" && !selectedId ? 0.35 : undefined }}
-                >
+              {(tool === "pen" || (tool === "textbox" && !selectedId)) && (
+                <div data-testid="subtoolbar-color-picker" className="flex items-center gap-1">
                   <ColorPickerWithEyedropper
                     value={color}
                     onChange={setColor}
@@ -498,12 +494,6 @@ export function Toolbar({
                 </div>
               )}
             </div>
-
-            {tool === "comment" && (
-              <div className="text-muted-foreground flex items-center gap-2 text-[11px]">
-                <span>{t("toolCommentHint")}</span>
-              </div>
-            )}
           </div>
         )}
       </div>

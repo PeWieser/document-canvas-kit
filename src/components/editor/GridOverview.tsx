@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Trash2 } from "lucide-react";
+import { X, Trash2, Plus, Minus } from "lucide-react";
 import type { PdfDocumentProxy } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
@@ -34,6 +34,8 @@ export function GridOverview({
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const isDragging = dragFrom !== null || touchDragging !== null;
 
   // Wheel listener for Ctrl + Scroll to adjust pagesPerRow
   useEffect(() => {
@@ -234,11 +236,11 @@ export function GridOverview({
               type="button"
               onClick={() => setPagesPerRow(pagesPerRow - 1)}
               disabled={pagesPerRow <= 1}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-bold disabled:opacity-40 transition-colors cursor-pointer"
+              className="flex items-center justify-center border border-border bg-card shadow-2xs hover:bg-muted text-foreground p-1.5 rounded-md disabled:opacity-40 transition-colors cursor-pointer"
               data-testid="pages-per-row-minus"
               aria-label="Fewer pages per row"
             >
-              -
+              <Minus className="h-4 w-4" />
             </button>
             <input
               type="range"
@@ -255,16 +257,21 @@ export function GridOverview({
               type="button"
               onClick={() => setPagesPerRow(pagesPerRow + 1)}
               disabled={pagesPerRow >= 8}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-bold disabled:opacity-40 transition-colors cursor-pointer"
+              className="flex items-center justify-center border border-border bg-card shadow-2xs hover:bg-muted text-foreground p-1.5 rounded-md disabled:opacity-40 transition-colors cursor-pointer"
               data-testid="pages-per-row-plus"
               aria-label="More pages per row"
             >
-              +
+              <Plus className="h-4 w-4" />
             </button>
           </div>
 
-          <button onClick={() => setGridOpen(false)} className="rounded-md p-2 hover:bg-muted" aria-label="Close grid overview">
-            <X className="h-5 w-5" />
+          <button
+            type="button"
+            onClick={() => setGridOpen(false)}
+            className="flex items-center justify-center border border-border bg-card shadow-2xs hover:bg-muted text-foreground p-1.5 rounded-md transition-colors cursor-pointer"
+            aria-label="Close grid overview"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -313,8 +320,12 @@ export function GridOverview({
                 <div
                   className={cn(
                     "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1",
-                    dropSide === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2",
+                    dropSide === "left" ? "-left-2" : "-right-2"
                   )}
+                  style={{
+                    left: dropSide === "left" ? "-8px" : undefined,
+                    right: dropSide === "right" ? "-8px" : undefined,
+                  }}
                   data-testid="drop-indicator"
                 />
               )}
@@ -327,6 +338,7 @@ export function GridOverview({
               }}
               className={cn(
                 "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
+                isDragging && "pointer-events-none"
               )}
               title={t("reorderHint")}
             >
@@ -336,6 +348,7 @@ export function GridOverview({
               </div>
               {pageOrder.length > 1 && (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     deletePage(index);
@@ -369,3 +382,4 @@ export function GridOverview({
     </div>
   );
 }
+
