@@ -68,6 +68,88 @@ export function GridOverview({
 
   if (!open) return null;
 
+  type MeasuredGridItem = {
+    index: number;
+    rect: DOMRect;
+  };
+
+  const getInsertionIndexAtPoint = (clientX: number, clientY: number): number | null => {
+    const items: MeasuredGridItem[] = [];
+    itemRefs.current.slice(0, pageOrder.length).forEach((el, index) => {
+      if (el) items.push({ index, rect: el.getBoundingClientRect() });
+    });
+
+    if (items.length === 0) return null;
+
+    const rows: MeasuredGridItem[][] = [];
+    for (let i = 0; i < items.length; i += pagesPerRow) {
+      rows.push(items.slice(i, i + pagesPerRow));
+    }
+
+    let nearestRow = rows[0];
+    let nearestRowDistance = Infinity;
+
+    for (const row of rows) {
+      const top = Math.min(...row.map((item) => item.rect.top));
+      const bottom = Math.max(...row.map((item) => item.rect.bottom));
+      const centerY = (top + bottom) / 2;
+      const outsideDistance =
+        clientY < top ? top - clientY : clientY > bottom ? clientY - bottom : 0;
+      // Use a tiny center tie-breaker so vertical gaps are split stably between rows.
+      const distance = outsideDistance + Math.abs(clientY - centerY) * 0.001;
+
+      if (distance < nearestRowDistance) {
+        nearestRowDistance = distance;
+        nearestRow = row;
+      }
+    }
+
+    const sortedRow = [...nearestRow].sort((a, b) => a.rect.left - b.rect.left);
+    const first = sortedRow[0];
+    const last = sortedRow[sortedRow.length - 1];
+    const inferredHalfGap =
+      sortedRow.length > 1
+        ? Math.max(0, (sortedRow[1].rect.left - sortedRow[0].rect.right) / 2)
+        : 8;
+
+    const slots: { x: number; insertionIndex: number }[] = [
+      { x: first.rect.left - inferredHalfGap, insertionIndex: first.index },
+    ];
+
+    for (let i = 0; i < sortedRow.length - 1; i++) {
+      const current = sortedRow[i];
+      const next = sortedRow[i + 1];
+      slots.push({
+        x: (current.rect.right + next.rect.left) / 2,
+        insertionIndex: next.index,
+      });
+    }
+
+    slots.push({
+      x: last.rect.right + inferredHalfGap,
+      insertionIndex: last.index + 1,
+    });
+
+    return slots.reduce((nearest, slot) =>
+      Math.abs(clientX - slot.x) < Math.abs(clientX - nearest.x) ? slot : nearest,
+    ).insertionIndex;
+  };
+
+  const updateDropStateAtPoint = (clientX: number, clientY: number) => {
+    const insertionIndex = getInsertionIndexAtPoint(clientX, clientY);
+    if (insertionIndex === null || pageOrder.length === 0) return;
+
+    const targetIndex = Math.min(insertionIndex, pageOrder.length - 1);
+    const dropTgt: "before" | "after" = insertionIndex >= pageOrder.length ? "after" : "before";
+    const side: "left" | "right" = dropTgt === "before" ? "left" : "right";
+
+    if (dragOver !== targetIndex || dropTarget !== dropTgt || dropSide !== side) {
+      setDragOver(targetIndex);
+      setDropTarget(dropTgt);
+      setDropSide(side);
+    }
+  };
+
   const handleTouchStart = (index: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
@@ -101,24 +183,7 @@ export function GridOverview({
       e.preventDefault();
       setTouchPos({ x: touch.clientX, y: touch.clientY });
 
-      for (let i = 0; i < itemRefs.current.length; i++) {
-        const el = itemRefs.current[i];
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        if (
-          touch.clientX >= rect.left &&
-          touch.clientX <= rect.right &&
-          touch.clientY >= rect.top &&
-          touch.clientY <= rect.bottom
-        ) {
-          if (i !== touchDragging) {
-            setDragOver(i);
-            setDropTarget(i < touchDragging ? "before" : "after");
-            setDropSide(i < touchDragging ? "left" : "right");
-          }
-          break;
-        }
-      }
+      updateDropStateAtPoint(touch.clientX, touch.clientY);
     }
   };
 
@@ -155,47 +220,7 @@ export function GridOverview({
     const clientX = e.clientX;
     const clientY = e.clientY;
 
-    let targetIndex: number | null = null;
-    const element = document.elementFromPoint(clientX, clientY);
-    if (element) {
-      const itemEl = element.closest("[data-grid-item-index]");
-      if (itemEl) {
-        const idxStr = itemEl.getAttribute("data-grid-item-index");
-        if (idxStr !== null) {
-          targetIndex = parseInt(idxStr, 10);
-        }
-      }
-    }
-
-    if (targetIndex === null && itemRefs.current.length > 0) {
-      let minDistance = Infinity;
-      let closestIndex = 0;
-      itemRefs.current.forEach((el, idx) => {
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const dist = Math.hypot(clientX - centerX, clientY - centerY);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestIndex = idx;
-        }
-      });
-      targetIndex = closestIndex;
-    }
-
-    if (targetIndex !== null && itemRefs.current[targetIndex]) {
-      const el = itemRefs.current[targetIndex]!;
-      const rect = el.getBoundingClientRect();
-      const side: "left" | "right" = clientX < rect.left + rect.width / 2 ? "left" : "right";
-      const dropTgt: "before" | "after" = side === "left" ? "before" : "after";
-
-      if (dragOver !== targetIndex || dropTarget !== dropTgt || dropSide !== side) {
-        setDragOver(targetIndex);
-        setDropTarget(dropTgt);
-        setDropSide(side);
-      }
-    }
+    updateDropStateAtPoint(clientX, clientY);
   };
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -218,7 +243,10 @@ export function GridOverview({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none">
+    <div
+      ref={modalRef}
+      className="fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none"
+    >
       <div className="flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold">{t("gridView")}</h2>
@@ -319,7 +347,7 @@ export function GridOverview({
               !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md"
+                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
                   )}
                   style={{
                     left: dropSide === "left" ? "-0.625rem" : undefined,
@@ -337,7 +365,7 @@ export function GridOverview({
               }}
               className={cn(
                 "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
-                isDragging && "pointer-events-none"
+                isDragging && "pointer-events-none",
               )}
               title={t("reorderHint")}
             >
@@ -381,4 +409,3 @@ export function GridOverview({
     </div>
   );
 }
-
