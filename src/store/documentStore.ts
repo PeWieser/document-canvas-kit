@@ -88,6 +88,7 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => {
         if (
           state.tabOrder.length === 1 &&
           currentActive &&
+          currentActive.originalBytes === null &&
           currentActive.fileName === null &&
           currentActive.numPages === 0
         ) {

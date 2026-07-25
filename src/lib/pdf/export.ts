@@ -83,6 +83,59 @@ function decodeContents(page: any): Uint8Array {
   return combined;
 }
 
+function drawTextLineWithCharacterSpacing(
+  page: any,
+  font: PDFFont,
+  line: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  color: ReturnType<typeof rgb>,
+  angleRad: number = 0,
+  targetWidth?: number,
+  charSpacing?: number,
+) {
+  let tcApplied = false;
+  let tzApplied = false;
+
+  if (charSpacing && charSpacing !== 0) {
+    page.pushOperators(PDFOperator.of("Tc", [PDFNumber.of(charSpacing)]));
+    tcApplied = true;
+  }
+
+  if (targetWidth && targetWidth > 0) {
+    try {
+      let unscaledWidth = font.widthOfTextAtSize(line, fontSize);
+      if (charSpacing && line.length > 1) {
+        unscaledWidth += charSpacing * (line.length - 1);
+      }
+      if (unscaledWidth > 0) {
+        const horizScalePercent = (targetWidth / unscaledWidth) * 100;
+        page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(horizScalePercent)]));
+        tzApplied = true;
+      }
+    } catch {
+      /* font measurement fallback */
+    }
+  }
+
+  page.drawText(line, {
+    x,
+    y,
+    size: fontSize,
+    font,
+    color,
+    rotate: radians(angleRad),
+  });
+
+  if (tzApplied) {
+    page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(100)]));
+  }
+  if (tcApplied) {
+    page.pushOperators(PDFOperator.of("Tc", [PDFNumber.of(0)]));
+  }
+}
+
 function drawWrappedText(
   page: any,
   font: PDFFont,
@@ -93,6 +146,7 @@ function drawWrappedText(
   color: ReturnType<typeof rgb>,
   angleRad: number = 0,
   targetWidth?: number,
+  charSpacing?: number,
 ) {
   const lines = sanitize(text).split("\n");
   const lineHeight = fontSize * 1.2;
@@ -102,30 +156,18 @@ function drawWrappedText(
     const line = lines[i];
     const lx = x + i * lineHeight * sin;
     const ly = baselineTop - i * lineHeight * cos;
-    let tzApplied = false;
-    if (targetWidth && targetWidth > 0) {
-      try {
-        const unscaledWidth = font.widthOfTextAtSize(line, fontSize);
-        if (unscaledWidth > 0) {
-          const horizScalePercent = (targetWidth / unscaledWidth) * 100;
-          page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(horizScalePercent)]));
-          tzApplied = true;
-        }
-      } catch {
-        /* font measurement fallback */
-      }
-    }
-    page.drawText(line, {
-      x: lx,
-      y: ly,
-      size: fontSize,
+    drawTextLineWithCharacterSpacing(
+      page,
       font,
+      line,
+      lx,
+      ly,
+      fontSize,
       color,
-      rotate: radians(angleRad),
-    });
-    if (tzApplied) {
-      page.pushOperators(PDFOperator.of("Tz", [PDFNumber.of(100)]));
-    }
+      angleRad,
+      targetWidth,
+      charSpacing,
+    );
   }
 }
 
@@ -461,7 +503,7 @@ export async function exportPdf(
           );
         } else {
           const font = await resolveFont(a.fontFamily, a.bold, a.italic, a.originalFontBytes);
-          drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle, a.width);
+          drawWrappedText(page, font, a.text, px, py, a.fontSize, hexToRgb(a.color), angle, a.width, a.charSpacing);
         }
       } else if (a.kind === "textbox") {
         const p = xform.point(a.x, a.y - a.fontSize * 0.8);

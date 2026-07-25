@@ -4,7 +4,12 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export function DropZone({ onFile }: { onFile: (file: File) => void }) {
+interface DropZoneProps {
+  onFile: (file: File) => void;
+  onOpen?: () => void;
+}
+
+export function DropZone({ onFile, onOpen }: DropZoneProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -143,7 +148,13 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
 
         {/* Drag & Drop Main Card */}
         <div
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {
+            if (onOpen) {
+              onOpen();
+            } else {
+              inputRef.current?.click();
+            }
+          }}
           onDragOver={(e) => {
             e.preventDefault();
             setOver(true);

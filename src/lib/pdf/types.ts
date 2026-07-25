@@ -62,6 +62,7 @@ export interface TextReplaceAnno {
   italicAngle?: number;
   pdfFontMetrics?: FontMetrics | null;
   ascentRatio?: number;
+  charSpacing?: number;
 }
 
 export interface TextboxAnno {

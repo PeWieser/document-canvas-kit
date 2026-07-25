@@ -6,6 +6,7 @@ export interface UseAlignmentScaleXOptions {
   text?: string;
   fontSpec?: string;
   enabled?: boolean;
+  letterSpacing?: number;
 }
 
 /**
@@ -23,6 +24,7 @@ export function useAlignmentScaleX(
   let text: string | undefined;
   let currentFontSpec: string | undefined = fontSpec;
   let enabled = true;
+  let letterSpacing: number | undefined;
 
   if (
     elementRefOrOptions &&
@@ -37,6 +39,7 @@ export function useAlignmentScaleX(
       text = opts.text;
       currentFontSpec = opts.fontSpec ?? fontSpec;
       enabled = opts.enabled ?? true;
+      letterSpacing = opts.letterSpacing;
     } else if (typeof optionsOrText === "string") {
       text = optionsOrText;
     }
@@ -47,6 +50,7 @@ export function useAlignmentScaleX(
     text = opts.text;
     currentFontSpec = opts.fontSpec;
     enabled = opts.enabled ?? true;
+    letterSpacing = opts.letterSpacing;
   } else if (typeof elementRefOrOptions === "number") {
     targetWidth = elementRefOrOptions;
     if (typeof optionsOrText === "string") {
@@ -87,7 +91,9 @@ export function useAlignmentScaleX(
             ctx.font = currentFontSpec;
             const measured = ctx.measureText(text).width;
             if (measured > 0) {
-              unscaledWidth = measured;
+              const spacingCount = text.length > 1 ? text.length - 1 : 0;
+              const spacingOffset = (letterSpacing ?? 0) * spacingCount;
+              unscaledWidth = measured + spacingOffset;
             }
           }
         } catch {
@@ -116,7 +122,7 @@ export function useAlignmentScaleX(
     return () => {
       cancelled = true;
     };
-  }, [text, targetWidth, currentFontSpec, enabled, scaleX]);
+  }, [text, targetWidth, currentFontSpec, letterSpacing, enabled, scaleX]);
 
   return scaleX;
 }

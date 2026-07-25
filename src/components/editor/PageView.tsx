@@ -25,6 +25,7 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
 import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
 import { useAlignmentScaleX } from "@/hooks/useAlignmentScaleX";
+import { extractTextLayoutHints } from "@/lib/pdf/textLayoutHints";
 
 interface TextItem {
   str: string;
@@ -33,6 +34,7 @@ interface TextItem {
   height: number;
   fontName?: string;
   color?: Uint8ClampedArray | number[];
+  charSpacing?: number;
 }
 
 function rgbToHex(color: Uint8ClampedArray | number[] | undefined): string {
@@ -388,6 +390,9 @@ export function PageView({ doc, pageId }: Props) {
       const content = await page.getTextContent();
       if (cancelled) return;
       
+      const hints = await extractTextLayoutHints(page, content.items);
+      if (cancelled) return;
+
       const its: TextItem[] = [];
       for (let i = 0; i < content.items.length; i++) {
         const it = content.items[i];
@@ -399,6 +404,7 @@ export function PageView({ doc, pageId }: Props) {
             height: it.height as number,
             fontName: (it as any).fontName,
             color: undefined, // Resolved lazily on-demand
+            charSpacing: hints.get(i)?.charSpacing ?? (it as any).charSpacing ?? 0,
           });
         }
       }
@@ -879,6 +885,7 @@ export function PageView({ doc, pageId }: Props) {
       originalFontBytes: cachedInfo?.bytes,
       pdfFontMetrics,
       ascentRatio,
+      charSpacing: targetItem.charSpacing ?? 0,
     } as Annotation);
 
     // 1. Resolve page colors on-demand asynchronously
@@ -1617,6 +1624,7 @@ function AnnoView({
 
     const angle = alignment.angle;
     const origWidth = alignment.domWidth;
+    const letterSpacing = anno.kind === "textReplace" ? ((anno as TextReplaceAnno).charSpacing ?? 0) * vp.scale : 0;
 
     let containerWidth = origWidth;
     let predictedTextScale = alignment.initialScaleX;
@@ -1626,7 +1634,10 @@ function AnnoView({
       const lines = anno.text.split("\n");
       let maxMeasured = 0;
       for (const lineText of lines) {
-        const w = getTextWidth(lineText, fontSpec);
+        let w = getTextWidth(lineText, fontSpec);
+        if (w > 0 && letterSpacing !== 0 && lineText.length > 1) {
+          w += letterSpacing * (lineText.length - 1);
+        }
         if (w > maxMeasured) maxMeasured = w;
       }
       predictedTextScale = maxMeasured > 0 && origWidth > 0 ? origWidth / maxMeasured : 1;
@@ -1639,6 +1650,7 @@ function AnnoView({
       targetWidth: origWidth,
       text: anno.text,
       fontSpec: `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`,
+      letterSpacing,
       enabled: anno.kind === "textReplace" && !isMultiline,
     });
 
@@ -1738,7 +1750,7 @@ function AnnoView({
               margin: 0,
               border: "none",
               outline: "none",
-              letterSpacing: 0,
+              letterSpacing: `${letterSpacing}px`,
               whiteSpace: "pre",
               overflow: "visible",
               wordBreak: "keep-all",

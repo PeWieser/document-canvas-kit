@@ -800,8 +800,11 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
             }
           }}
         >
+          {!originalBytes && (
+            <DropZone onFile={handleFile} onOpen={onOpenPicker || openPicker} />
+          )}
           {error && <div className="p-8 text-center text-destructive">{t("exportFail")}</div>}
-          {!doc && !error && (
+          {originalBytes && !doc && !error && (
             <div className="p-8 text-center text-muted-foreground">{t("loading")}</div>
           )}
           {doc && viewMode === "two-page" && (
