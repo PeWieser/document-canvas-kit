@@ -319,12 +319,11 @@ export function GridOverview({
               !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1",
-                    dropSide === "left" ? "-left-2" : "-right-2"
+                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md"
                   )}
                   style={{
-                    left: dropSide === "left" ? "-8px" : undefined,
-                    right: dropSide === "right" ? "-8px" : undefined,
+                    left: dropSide === "left" ? "-18px" : undefined,
+                    right: dropSide === "right" ? "-18px" : undefined,
                   }}
                   data-testid="drop-indicator"
                 />
