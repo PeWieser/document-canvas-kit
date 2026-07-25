@@ -322,8 +322,8 @@ export function GridOverview({
                     "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md"
                   )}
                   style={{
-                    left: dropSide === "left" ? "-18px" : undefined,
-                    right: dropSide === "right" ? "-18px" : undefined,
+                    left: dropSide === "left" ? "-0.625rem" : undefined,
+                    right: dropSide === "right" ? "-0.625rem" : undefined,
                   }}
                   data-testid="drop-indicator"
                 />
