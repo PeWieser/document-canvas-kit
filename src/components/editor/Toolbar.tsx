@@ -208,6 +208,7 @@ export function Toolbar({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
+                  data-testid="view-mode-trigger"
                   className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-toolbar-accent focus:outline-none border border-toolbar-accent/30 cursor-pointer transition-colors"
                   title={t("view") || "Ansicht"}
                 >
@@ -237,7 +238,7 @@ export function Toolbar({
                   <span>{t("twoPage")}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setGridOpen(true)}>
+                <DropdownMenuItem data-testid="grid-overview-item" onClick={() => setGridOpen(true)}>
                   <LayoutGrid className="mr-2 h-4 w-4" />
                   <span>{t("gridView")}</span>
                 </DropdownMenuItem>

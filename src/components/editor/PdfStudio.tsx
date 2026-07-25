@@ -20,6 +20,8 @@ import { CropToolPanel } from "./CropToolPanel";
 import { FeedbackWidget } from "./FeedbackWidget";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useVirtualizedPages } from "@/hooks/useVirtualizedPages";
+import { LowResPagePreview } from "./LowResPagePreview";
 
 const PAGE_PAD = 32; // px of breathing room around a fit page
 
@@ -60,7 +62,6 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
   const setSelectedPages = useEditor((s) => s.setSelectedPages);
   const currentTool = useEditor((s) => s.tool);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
-  const [visible, setVisible] = useState<Set<number>>(new Set([0, 1, 2]));
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -347,27 +348,18 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     return { w: estimateSize.w * zoom, h: estimateSize.h * zoom };
   }, [estimateSize, zoom]);
 
-  // virtualization: which slots are mounted
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (!root || !doc || viewMode === "two-page") return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        setVisible((prev) => {
-          const next = new Set(prev);
-          for (const e of entries) {
-            const idx = Number((e.target as HTMLElement).dataset.index);
-            if (e.isIntersecting) next.add(idx);
-            else next.delete(idx);
-          }
-          return next;
-        });
-      },
-      { root, rootMargin: "800px 0px" },
-    );
-    pageRefs.current.forEach((el) => el && io.observe(el));
-    return () => io.disconnect();
-  }, [doc, pageOrder, viewMode, slotDims.h]);
+  const getPageHeight = useCallback(
+    (_index: number) => slotDims.h,
+    [slotDims.h],
+  );
+
+  const { visibleRange } = useVirtualizedPages({
+    totalCount: doc && viewMode !== "two-page" ? pageOrder.length : 0,
+    getPageHeight,
+    containerRef: scrollRef,
+    gap: PAGE_PAD,
+    overscan: 2,
+  });
 
   // active page tracking on scroll
   useEffect(() => {
@@ -680,24 +672,35 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
               className="flex flex-col items-center"
               style={{ gap: PAGE_PAD, paddingBlock: PAGE_PAD }}
             >
-              {pageOrder.map((pageId, index) => (
-                <div
-                  key={pageId}
-                  data-index={index}
-                  ref={(el) => {
-                    pageRefs.current[index] = el;
-                  }}
-                  style={{
-                    width: slotDims.w,
-                    minHeight: slotDims.h,
-                    contentVisibility: visible.has(index) ? "visible" : "hidden",
-                    containIntrinsicSize: `${slotDims.w}px ${slotDims.h}px`
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <PageView doc={doc} pageId={pageId} />
-                </div>
-              ))}
+              {pageOrder.map((pageId, index) => {
+                const isVisible =
+                  index >= visibleRange.startIndex && index <= visibleRange.endIndex;
+                return (
+                  <div
+                    key={pageId}
+                    data-index={index}
+                    ref={(el) => {
+                      pageRefs.current[index] = el;
+                    }}
+                    style={{
+                      width: slotDims.w,
+                      minHeight: slotDims.h,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {isVisible ? (
+                      <PageView doc={doc} pageId={pageId} />
+                    ) : (
+                      <LowResPagePreview
+                        doc={doc}
+                        pageId={pageId}
+                        height={slotDims.h}
+                        width={slotDims.w}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </main>

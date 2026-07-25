@@ -20,6 +20,7 @@ export function GridOverview({
   const reorderPages = useEditor((s) => s.reorderPages);
   const deletePage = useEditor((s) => s.deletePage);
 
+  const [matrixZoom, setMatrixZoom] = useState<number>(100);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
@@ -39,6 +40,11 @@ export function GridOverview({
   }, []);
 
   if (!open) return null;
+
+  const baseCardWidth = 180;
+  const cardWidth = Math.round(baseCardWidth * (matrixZoom / 100));
+  const baseThumbWidth = 220;
+  const thumbWidth = Math.round(baseThumbWidth * (matrixZoom / 100));
 
   const handleTouchStart = (index: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -127,18 +133,41 @@ export function GridOverview({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur select-none">
       <div className="flex items-center justify-between border-b px-5 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold">{t("gridView")}</h2>
           <span className="text-xs text-muted-foreground hidden sm:inline">
             (Lange drücken zum Umsortieren per Touch)
           </span>
         </div>
-        <button onClick={() => setGridOpen(false)} className="rounded-md p-2 hover:bg-muted">
-          <X className="h-5 w-5" />
-        </button>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 border-r border-border pr-4">
+            <span className="text-xs text-muted-foreground font-mono w-10 text-right">{matrixZoom}%</span>
+            <input
+              type="range"
+              min="100"
+              max="250"
+              step="5"
+              value={matrixZoom}
+              onChange={(e) => setMatrixZoom(Number(e.target.value))}
+              className="w-24 sm:w-36 cursor-pointer accent-primary"
+              data-testid="matrix-zoom-slider"
+              aria-label="Matrix Zoom"
+            />
+          </div>
+
+          <button onClick={() => setGridOpen(false)} className="rounded-md p-2 hover:bg-muted" aria-label="Close grid overview">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-2 overflow-y-auto p-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div
+        className="grid flex-1 overflow-y-auto p-6"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))`,
+        }}
+      >
         {pageOrder.map((pageId, index) => (
           <div
             key={pageId}
@@ -186,9 +215,10 @@ export function GridOverview({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             className={cn(
-              "group relative p-2 outline-none rounded-lg transition-transform duration-150",
+              "group relative p-2.5 outline-none rounded-lg transition-transform duration-150",
               touchDragging === index && "opacity-40 scale-95",
             )}
+            data-testid={`grid-item-${index}`}
           >
             {/* Drop indicator line */}
             {dragOver === index &&
@@ -200,9 +230,10 @@ export function GridOverview({
               !(dragFrom === index + 1 && dropTarget === "after") && (
                 <div
                   className={cn(
-                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2 bottom-2 w-1",
-                    dropSide === "left" ? "-left-[6px] -translate-x-1/2" : "-right-[6px] translate-x-1/2",
+                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1",
+                    dropSide === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2",
                   )}
+                  data-testid="drop-indicator"
                 />
               )}
             <div
@@ -217,7 +248,7 @@ export function GridOverview({
               )}
               title={t("reorderHint")}
             >
-              <PageThumb doc={doc} pageId={pageId} width={220} />
+              <PageThumb doc={doc} pageId={pageId} width={thumbWidth} />
               <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
                 <span>{index + 1}</span>
               </div>
