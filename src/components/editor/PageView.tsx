@@ -800,6 +800,10 @@ export function PageView({ doc, pageId }: Props) {
       while (leftIdx > 0) {
         const curr = candidates[leftIdx];
         const prev = candidates[leftIdx - 1];
+        // If prev overlaps with curr (duplicate text layer), break
+        if (curr.transform[4] < prev.transform[4] + prev.width * 0.3) {
+          break;
+        }
         const gap = curr.transform[4] - (prev.transform[4] + prev.width);
         if (gap < targetFontSize * 0.4 && !prev.str.endsWith(" ") && !curr.str.startsWith(" ")) {
           leftIdx--;
@@ -812,6 +816,10 @@ export function PageView({ doc, pageId }: Props) {
       while (rightIdx < candidates.length - 1) {
         const curr = candidates[rightIdx];
         const next = candidates[rightIdx + 1];
+        // If next overlaps with curr (duplicate text layer), break
+        if (next.transform[4] < curr.transform[4] + curr.width * 0.3) {
+          break;
+        }
         const gap = next.transform[4] - (curr.transform[4] + curr.width);
         if (gap < targetFontSize * 0.4 && !curr.str.endsWith(" ") && !next.str.startsWith(" ")) {
           rightIdx++;

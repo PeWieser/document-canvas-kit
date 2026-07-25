@@ -26,6 +26,7 @@ export function GridOverview({
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
   const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
+  const [dropInsertionIndex, setDropInsertionIndex] = useState<number | null>(null);
 
   // Touch Long-Press Drag State (1 second hold on mobile)
   const [touchDragging, setTouchDragging] = useState<number | null>(null);
@@ -73,7 +74,14 @@ export function GridOverview({
     rect: DOMRect;
   };
 
-  const getInsertionIndexAtPoint = (clientX: number, clientY: number): number | null => {
+  const isNoopInsertionIndex = (from: number | null, insertionIndex: number) =>
+    from !== null && (insertionIndex === from || insertionIndex === from + 1);
+
+  const getInsertionIndexAtPoint = (
+    clientX: number,
+    clientY: number,
+    from: number | null,
+  ): number | null => {
     const items: MeasuredGridItem[] = [];
     itemRefs.current.slice(0, pageOrder.length).forEach((el, index) => {
       if (el) items.push({ index, rect: el.getBoundingClientRect() });
@@ -130,23 +138,46 @@ export function GridOverview({
       insertionIndex: last.index + 1,
     });
 
-    return slots.reduce((nearest, slot) =>
+    const validSlots = slots.filter((slot) => !isNoopInsertionIndex(from, slot.insertionIndex));
+    if (validSlots.length === 0) return null;
+
+    return validSlots.reduce((nearest, slot) =>
       Math.abs(clientX - slot.x) < Math.abs(clientX - nearest.x) ? slot : nearest,
     ).insertionIndex;
   };
 
+  const resetDropState = () => {
+    setDragOver(null);
+    setDropTarget(null);
+    setDropSide(null);
+    setDropInsertionIndex(null);
+  };
+
+  const getTargetIndexFromInsertionIndex = (from: number, insertionIndex: number) =>
+    insertionIndex > from ? insertionIndex - 1 : insertionIndex;
+
   const updateDropStateAtPoint = (clientX: number, clientY: number) => {
-    const insertionIndex = getInsertionIndexAtPoint(clientX, clientY);
-    if (insertionIndex === null || pageOrder.length === 0) return;
+    const activeFrom = dragFrom ?? touchDragging;
+    const insertionIndex = getInsertionIndexAtPoint(clientX, clientY, activeFrom);
+    if (insertionIndex === null || pageOrder.length === 0) {
+      resetDropState();
+      return;
+    }
 
     const targetIndex = Math.min(insertionIndex, pageOrder.length - 1);
     const dropTgt: "before" | "after" = insertionIndex >= pageOrder.length ? "after" : "before";
     const side: "left" | "right" = dropTgt === "before" ? "left" : "right";
 
-    if (dragOver !== targetIndex || dropTarget !== dropTgt || dropSide !== side) {
+    if (
+      dragOver !== targetIndex ||
+      dropTarget !== dropTgt ||
+      dropSide !== side ||
+      dropInsertionIndex !== insertionIndex
+    ) {
       setDragOver(targetIndex);
       setDropTarget(dropTgt);
       setDropSide(side);
+      setDropInsertionIndex(insertionIndex);
     }
   };
 
@@ -193,13 +224,8 @@ export function GridOverview({
       timerRef.current = null;
     }
 
-    if (touchDragging !== null && dragOver !== null && touchDragging !== dragOver) {
-      let targetIndex = touchDragging;
-      if (dragOver < touchDragging) {
-        targetIndex = dropTarget === "before" ? dragOver : dragOver + 1;
-      } else if (dragOver > touchDragging) {
-        targetIndex = dropTarget === "before" ? dragOver - 1 : dragOver;
-      }
+    if (touchDragging !== null && dropInsertionIndex !== null) {
+      const targetIndex = getTargetIndexFromInsertionIndex(touchDragging, dropInsertionIndex);
       if (targetIndex !== touchDragging) {
         reorderPages(touchDragging, targetIndex);
       }
@@ -208,9 +234,7 @@ export function GridOverview({
     setTouchDragging(null);
     setTouchPos(null);
     setDragFrom(null);
-    setDragOver(null);
-    setDropTarget(null);
-    setDropSide(null);
+    resetDropState();
   };
 
   const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -225,21 +249,14 @@ export function GridOverview({
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (dragFrom !== null && dragOver !== null && dropTarget !== null) {
-      let targetIndex = dragFrom;
-      if (dragOver < dragFrom) {
-        targetIndex = dropTarget === "before" ? dragOver : dragOver + 1;
-      } else if (dragOver > dragFrom) {
-        targetIndex = dropTarget === "before" ? dragOver - 1 : dragOver;
-      }
+    if (dragFrom !== null && dropInsertionIndex !== null) {
+      const targetIndex = getTargetIndexFromInsertionIndex(dragFrom, dropInsertionIndex);
       if (targetIndex !== dragFrom) {
         reorderPages(dragFrom, targetIndex);
       }
     }
     setDragFrom(null);
-    setDragOver(null);
-    setDropTarget(null);
-    setDropSide(null);
+    resetDropState();
   };
 
   return (
@@ -321,12 +338,13 @@ export function GridOverview({
             }}
             data-grid-item-index={index}
             draggable
-            onDragStart={() => setDragFrom(index)}
+            onDragStart={() => {
+              setDragFrom(index);
+              resetDropState();
+            }}
             onDragEnd={() => {
               setDragFrom(null);
-              setDragOver(null);
-              setDropTarget(null);
-              setDropSide(null);
+              resetDropState();
             }}
             onTouchStart={(e) => handleTouchStart(index, e)}
             onTouchMove={handleTouchMove}
@@ -340,11 +358,8 @@ export function GridOverview({
             {/* Drop indicator line */}
             {dragOver === index &&
               dragFrom !== null &&
-              dragFrom !== index &&
               dropTarget !== null &&
-              dropSide !== null &&
-              !(dragFrom === index - 1 && dropTarget === "before") &&
-              !(dragFrom === index + 1 && dropTarget === "after") && (
+              dropSide !== null && (
                 <div
                   className={cn(
                     "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
