@@ -736,6 +736,25 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     }
   };
 
+  const tabOrder = useDocumentStore((s) => s.tabOrder);
+  const hasLoadedDoc = Boolean(originalBytes);
+  const showEditorHeader = hasLoadedDoc || tabOrder.length > 1;
+
+  if (!showEditorHeader) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden bg-background">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => e.target.files && handleFile(e.target.files[0])}
+        />
+        <DropZone onFile={handleFile} onOpen={onOpenPicker || openPicker} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <input
