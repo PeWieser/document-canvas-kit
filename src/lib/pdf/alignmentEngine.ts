@@ -136,24 +136,8 @@ export function computeAlignmentMetrics(
 
   // Baseline shift compensation: PDF.js text layer span top is positioned relative to baseline (tx[5]).
   // Using domTop = tx[5] - fontHeight * exactDomAscentRatio anchors domTop to the exact typographic baseline.
-  let domTop = tx[5] - fontHeight * exactDomAscentRatio;
+  const domTop = tx[5] - fontHeight * exactDomAscentRatio;
 
-  if (typeof document !== "undefined") {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (ctx && typeof ctx.measureText === "function") {
-      ctx.font = `${fontHeight}px ${fontFamily}`;
-      const metrics = ctx.measureText(item.str || "M");
-      if (metrics) {
-        const ascent = metrics.actualBoundingBoxAscent || metrics.fontBoundingBoxAscent;
-        const descent = metrics.actualBoundingBoxDescent || metrics.fontBoundingBoxDescent;
-        if (ascent && descent !== undefined) {
-          const glyphCenterY = tx[5] - (ascent - descent) / 2;
-          domTop = glyphCenterY - fontHeight / 2;
-        }
-      }
-    }
-  }
   const domLeft = tx[4];
   const domHeight = fontHeight;
   const domWidth = item.width * scale;

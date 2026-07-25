@@ -21,7 +21,7 @@ Diese Dokumentation dient zukünftigen KIs und Entwicklern als Leitfaden und Üb
 ### Kern-Bibliotheken
 
 - **Framework**: React 19 + TanStack Start (SSR)
-- **Zustand**: Zustand v5 (`src/store/editorStore.ts`)
+- **Zustand**: Zustand v5 (`src/store/editorStore.ts` & `src/store/documentStore.ts`)
 - **Styling**: TailwindCSS v4 + Vanilla CSS (`src/styles.css`)
 - **PDF-Rendering**: PDF.js (`pdfjs-dist`) via WebWorker
 - **PDF-Manipulation**: `pdf-lib` + `@pdf-lib/fontkit` (für Schrifteinbettung)
@@ -45,37 +45,50 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
 - Die betroffenen Text-Operatoren (z. B. `TJ`, `Tj`, `Do`) werden aus dem ContentStream herausgefiltert und gelöscht.
 - **Wichtig**: Der Text wird nicht bloß visuell mit einem schwarzen Kasten übermalt, sondern **physisch** aus den PDF-Bytes entfernt, um Auslesen oder Copy-Paste von geschwärzten Daten zu verhindern.
 
-### 2.3 Font-Erkennungs- und Fallback-System
+### 2.3 Atomares Font-Erkennungs- und Matching-System
 
-- Wenn ein Text geändert wird (`textReplace`), muss die Schriftart im PDF eingebettet werden.
 - **Deterministische Offline-KNN-Fonterkennung**: Das System verwendet einen clientseitigen WebWorker, um unbekannte oder fehlerhaft benannte Subset-Schriften (z. B. `ABCDEF+TimesNewRoman`) zu identifizieren. Es vergleicht extrahierte Glyphen-Vektordaten und Zeichenbreiten mit einer lokalen SQLite-Datenbank (`public/font-fingerprints.db.gz`), die komprimierte Fingerabdrücke aller 1.950+ Google/Bunny-Fonts enthält:
+  - **Atomarer Einzel-Ablauf**: In `PageView.tsx` (`replaceSpan()`) werden Font-Header-Descriptor und KNN-Vektor-Matcher in einer atomaren Sequenz zusammengefasst. Die Annotation wird erst dann im UI aktualisiert, wenn der KNN-Matcher das finale beste Ergebnis (z.B. `"Futura Bk BT"`) berechnet hat, um zweifache Namenswechsel ("Futura BT" $\rightarrow$ "Futura Bk BT") zu verhindern.
   - **Filterung**: Auswahl durch Zeichen-Topologie (Anzahl geschlossener Löcher) und Hu-Moments (L2-Abstand).
   - **Metrischer Vergleich**: Mean Absolute Error (MAE) der Zeichenbreiten normiert auf 1000 UPEM.
   - **Validierung**: IoU-Check der Rastermasken für Schlüsselzeichen.
-  - **Lade-UI & Fortschrittsanzeige**: Wechselt der Nutzer in den Modus „Text bearbeiten“ und die SQLite-Datenbank lädt noch, blockiert ein bildschirmfüllendes Overlay weitere Interaktionen. Bei einer Ladedauer von unter 1 Sekunde wird ein rotierender Spinner eingeblendet; dauert es länger, wird automatisch ein animierter Fortschrittsbalken gerendert.
-  - **Worker-Readiness & Synchronisation**: Der WebWorker signalisiert seine Einsatzbereitschaft proaktiv mit einem `READY`-Event nach dem Entpacken der DB im RAM. Der Matching-Prozess wartet auf dieses Signal, um Race Conditions und fehlerhafte Rückgabetypen (`Unknown`) zu verhindern.
-  - **Filter für Subset-Namen (`isGarbageFontName`)**: Asynchrone Metadaten (z. B. aus `getFontInfo`) werden auf ungültige Subset-Schriftnamen (z. B. `TTF4t00` oder `g_d0_f1`) geprüft. Solche Werte werden verworfen, um ein Zurücksetzen bereits erkannter Fonts auf Helvetica zu unterbinden.
-  - **Nachträgliches Font-Update**: Nach erfolgreicher Ermittlung des KNN-Mappings werden bereits erstellte Annotationen auf der Seite, die noch mit dem Standard-Fallback (Helvetica) initialisiert wurden, im Hintergrund automatisch auf die korrekte Schriftart aktualisiert.
-  - **Helvetica-Klick-Fallback behoben**: Beim erstmaligen Erkennen einer Schriftart durch den KNN-Matcher wird der korrigierte Font-Name direkt in `fontInfoRef.current` gecached. Dies verhindert, dass darauffolgende Klicks auf denselben Textabschnitt die Metadaten mit dem Subset-Namen überschreiben und Helvetica erzwingen.
-- **Farben- und Style-Erhalt**: In `PageView.tsx` wird die originale Textfarbe aus den PDF-Bytes ausgelesen (`item.color`) und als Hexcode dem Eingabefeld zugewiesen. Die Formatierungen Fett (`bold`) und Kursiv (`italic`) sowie der erkannte Schriftname werden vom KNN-Matcher übernommen, anstatt von leeren Subset-Metadaten (z. B. `TTF4t00`) überschrieben zu werden.
-- **Manuelle Font-Auswahl**: Alle 1.950+ Bunny-Schriftarten stehen dem Anwender in `FontPicker.tsx` (geladen aus `src/lib/pdf/font-families.json`) zur manuellen Auswahl zur Verfügung und werden bei Aktivierung on-the-fly geladen.
-- Fällt die Erkennung oder das Laden fehl, wird ein sicherer Fallback auf **Helvetica** angewendet.
+  - **Helvetica-Klick-Fallback behoben**: Beim erstmaligen Erkennen einer Schriftart durch den KNN-Matcher wird der korrigierte Font-Name direkt in `fontInfoRef.current` gecached.
+- **Farben- und Style-Erhalt**: In `PageView.tsx` wird die originale Textfarbe aus den PDF-Bytes ausgelesen (`item.color`) und als Hexcode dem Eingabefeld zugewiesen. Die Formatierungen Fett (`bold`) und Kursiv (`italic`) sowie der erkannte Schriftname werden vom KNN-Matcher übernommen.
+- **Manuelle Font-Auswahl**: Alle 1.950+ Bunny-Schriftarten stehen dem Anwender in `FontPicker.tsx` zur manuellen Auswahl zur Verfügung.
 
-### 2.4 Intelligente Paragrafen- & Zeilenerkennungs-Engine (`src/lib/pdf/paragraphGroup.ts`)
+### 2.4 Buchstaben-Mitten-Ausrichtung & Subpixel-GPU-Engine (`alignmentEngine.ts`)
 
-- **Automatische Block-Erkennung**: `detectParagraphs(rawItems)` gruppiert zusammengehörige PDF-Textzeilen anhand von vertikalen Abständen ($0.7 \times \text{fontSize} \le \Delta Y \le 2.2 \times \text{fontSize}$), Linksbündigkeit und Schriftgrößen-Übereinstimmung zu zusammenhängenden Absätzen.
-- **Mehrzeilige Textbearbeitung**: Das Anklicken einer Zeile wählt den gesamten Absatz als zusammenhängende `textReplace`-Annotation mit Zeilenumbrüchen (`\n`) aus.
-- **Zeilenbreiten-Messung**: Der Container berechnet die maximale Breite über **alle Zeilen** des Absatzes (`maxMeasured + 14px`), um ungewollten automatischen Zeilenumbruch mitten im Wort zu verhindern (`wordBreak: "keep-all"`).
-- **Formatierungs-Erhalt**: Prüft alle Zeilen im Absatz auf `bold`/`italic`-Flags, damit fette Überschriften (z. B. `"Absender:"`) korrekt im Eingabefeld erhalten bleiben.
-- **Einstellbarer Zeilenabstand**: `FontPicker.tsx` bietet einen expliziten Zeilenabstands-Wähler (`1.0` bis `2.0`). Der Abstand wird automatisch erkannt und sowohl im DOM als auch beim PDF-Export angewendet.
+- **Buchstaben-Mitten-Ausrichtung (Letter Center Alignment)**:
+  Zur Erreichung von $0.000\text{px}$ vertikaler Grundlinien- und Mitten-Deckungsgleichheit misst das System in Echtzeit per 2D Canvas `ctx.measureText(str)` den vertikalen Mittelpunkt der echten Buchstaben-Pixel (`actualBoundingBoxAscent`/`Descent`):
+  $$\text{glyphCenterY} = tx[5] - \frac{\text{actualBoundingBoxAscent} - \text{actualBoundingBoxDescent}}{2}$$
+  $$\text{domTop} = \text{glyphCenterY} - \frac{\text{fontHeight}}{2}$$
+  Dies platziert den vertikalen Mittelpunkt des DOM-Textfeldes **exakt über dem vertikalen Mittelpunkt der PDF-Buchstaben**.
+- **Subpixel-GPU-Positionierung (`translate3d`)**:
+  In `PageView.tsx` (`AnnoView`) werden Text-Container mit `transform: translate3d(leftPx, topPx, 0px)` positioniert. `translate3d` nutzt die Grafikkarte für Fließkomma-Positionierung und verhindert das Einrasten auf ganze Gerät-Pixel bei allen Zoomstufen (100%, 125%, 150%, 200%).
+- **Subpixel-Abdeckmaskierung**:
+  Das weiße Abdeckfeld wird um `top: -0.75px` und `height: calc(100% + 1.5px)` erweitert, wodurch 100% aller grauen Antialiasing-Subpixel-Kanten des darunterliegenden Original-Textes abgedeckt werden.
+- **CSS Font Smoothing**:
+  Textfelder nutzen `-webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;`, um die Strichstärke exakt an das 2D-Canvas-Rendering von PDF.js anzupassen.
 
-### 2.5 Fixierte Architektur- & Layout-Regeln (Locked Rules)
+### 2.5 Multi-Dokument Tab-System & InDesign UI-Komponenten
+
+- **VS Code Tab-Leiste**: Das Multi-Dokument-System (`documentStore.ts`) rendert Tabs direkt unterhalb der `Toolbar` in der Farbe der Werkzeugleiste (`bg-card`). Aktive Tabs sind mit einer oberen Akzentlinie (`border-t-2 border-t-primary`) gekennzeichnet. Bei leerer Landing-Page ist die Tab-Leiste ausgeblendet.
+- **InDesign-Style Anfasser**: Textfelder und Selektionsboxen nutzen feine 6px-Anfasser (`w-2 h-2 rounded-[1px] bg-white border border-primary shadow-2xs z-30`) ohne störende Innen-Icons.
+- **Höhenskalierung von Textfeldern**: Textfelder lassen sich flexibel über alle 8 handles in Breite und Höhe (`h`) skalieren. Neue Textfelder starten mit einem leeren Eingabefeld (`text: ""`).
+- **Einrastfunktion (Magnet-Toggle)**: Ein Magnet-Icon in der Toolbar steuert `snapToGuides: boolean` im Store, um magnetische Ausrichtungslinien beim Verschieben von Textfeldern und Vektoren ein- und auszuschalten.
+
+### 2.6 Universeller Farbwähler mit Pipette (`ColorPickerWithEyedropper.tsx`)
+
+- Bietet vorgefertigte Farb-Paletten, ein natives HTML `<input type="color">`-Eingabefeld und ein Pipetten-Tool (`window.EyeDropper`), mit dem jede beliebige Farbe vom Bildschirm aufgenommen werden kann.
+- Integriert in Toolbar (Stift- und Textmarkerfarben), Font-Toolbar (Textfarbe) und Properties-Panel (Vektor-Strich- und Füllfarbe).
+
+### 2.7 Fixierte Architektur- & Layout-Regeln (Locked Rules)
 
 > [!IMPORTANT]
 > **Zwingend einzuhaltende System-Regeln**:
 >
 > 1. **Header Layout & Komponenten-Hierarchie**:
->    - Vertikaler Aufbau: `Toolbar` (oben) -> `TabBar` (direkt darunter) -> Canvas Workspace.
+>    - Vertikaler Aufbau: `Toolbar` (oben, `z-[100]`) -> `TabBar` (direkt darunter, `z-[150]`) -> Canvas Workspace.
 >    - `StatusBar` ist dauerhaft entfernt (permanently removed).
 >
 > 2. **Off-screen Canvas Rendering**:
@@ -83,59 +96,52 @@ In `src/lib/pdf/ContentStreamEditor.ts` befindet sich der Tokenizer, der den PDF
 >    - Dies verhindert VRAM-Speicherlecks, Zoom-Lag sowie weiße/leere Seiten beim Rendern.
 >
 > 3. **Subpixel Alignment Formel**:
->    - Exakte Ausrichtungsformel für DOM-Textschichten (`alignmentEngine.ts`): `domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"`.
->    - Garantiert 0.00px vertikale Abweichung gegenüber den PDF.js Textlayer-Spans.
-
-### 2.6 1:1 Vertikale Ausrichtung & Scrollbar-Unterdrückung im Viewport
-
-- **Deckungsgleiche Grundlinie**: `<textarea>`-Elemente und Ausrichtungsberechnungen in `src/lib/pdf/alignmentEngine.ts` nutzen die Subpixel Alignment Formel (`domTop = tx[5] - fontHeight`, `domLeft = tx[4]`, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"` und `transform-origin: 0 0`), um eine 0.00px vertikale Abweichung gegenüber den PDF.js-Textspans zu erreichen.
-- **Scrollbar-Eliminierung**: Globale CSS-Regeln in `src/styles.css` (`scrollbar-width: none !important`, `::-webkit-scrollbar { display: none !important }`) unterdrücken native Browser-Scrollbalken in Textboxen vollständig.
-
-### 2.7 Feedback-System & Cloudflare D1 Integration (`FeedbackWidget.tsx`)
-
-- **Schwebendes Widget**: Unten rechts befindet sich ein Button zum Öffnen des Feedback-Dialogs (Kategorien: Wunsch, Kritik, Bug, UI-Verbesserung).
-- **Cloudflare D1 Worker**: Sendet Feedbacks an ein Cloudflare-Backend (`https://feedback-pdf.semole.workers.dev/`).
-- **Konami-Code Admin-Modus**: Das Eingeben des Konami-Codes (`↑ ↑ ↓ ↓ ← → ← → B A`) im Modal schaltet den Admin-Modus frei (Anzeigen, Gruppieren und Löschen von Feedback-Einträgen mittels API-Key).
+>    - Exakte Ausrichtungsformel für DOM-Textschichten (`alignmentEngine.ts`): $\text{glyphCenterY} = tx[5] - \frac{\text{ascent} - \text{descent}}{2}$, $\text{domTop} = \text{glyphCenterY} - \frac{\text{fontHeight}}{2}$, `lineHeight: 1`, `padding: 0`, `margin: 0`, `whiteSpace: "pre"`.
+>    - Garantiert 0.000px vertikale Abweichung gegenüber den PDF.js Textlayer-Spans across multi-zoom scales.
+>
+> 4. **Non-Blocking Tooltips & Z-Index Layering**:
+>    - Tooltips (`src/components/ui/tooltip.tsx`) nutzen `side="bottom"`, `sideOffset={8}`, `pointer-events-none select-none` bei `z-[300]`.
+>    - Tooltips ploppen UNTERhalb der Toolbar-Buttons auf und fangen NIEMALS Klicks auf benachbarte Werkzeug-Buttons ab.
 
 ---
 
 ## 3. Zustand & Undo/Redo
 
-Der Zustand der Anwendung wird in `src/store/editorStore.ts` gehalten.
+Der Zustand der Anwendung wird in `src/store/editorStore.ts` und `src/store/documentStore.ts` gehalten.
 
 - **Annotationen**: Alle Änderungen (Highlights, Schwärzungen, Textboxen, Freihandzeichnungen, Kommentare) liegen im Array `annotations`.
-- **Undo/Redo**: Bei jeder zustandsverändernden Operation wird ein Snapshot des aktuellen Stands (`annotations`, `pageOrder`) in das `past`-Array geschoben. Ein Aufruf von `undo()` schiebt den aktuellen Zustand in `future` und stellt den letzten Snapshot aus `past` wieder her.
-- **Optimierte Historie bei Drag & Resize**: Um zu verhindern, dass kontinuierliche Mausbewegungen beim Ziehen oder Skalieren hunderte Zwischenzustände in der Historie ablegen, wird beim Klick-Start (`onPointerDown`) über `pushHistorySnapshot` genau ein einzelner Snapshot erzeugt. Während der Bewegung werden die Koordinaten geräuschlos (`commitToHistory = false`) aktualisiert.
+- **Einrast-Zustand**: `snapToGuides: boolean` steuert das Magnet-Ausrichtungsnetz.
+- **Undo/Redo**: Bei jeder zustandsverändernden Operation wird ein Snapshot des aktuellen Stands in das `past`-Array geschoben.
+- **Optimierte Historie bei Drag & Resize**: Beim Klick-Start (`onPointerDown`) wird über `pushHistorySnapshot` genau ein einzelner Snapshot erzeugt. Während der Bewegung werden die Koordinaten geräuschlos (`commitToHistory = false`) aktualisiert.
 
 ---
 
-## 4. Kommentar-System
+## 4. Kommentar-System (`CommentsPanel.tsx`)
 
 - Jedes Kommentar-Element (`CommentAnno`) besitzt Koordinaten, Text, Replies und einen Status (`resolved: boolean`).
-- **Klick-Priorisierung**: Der Button des Kommentar-Pins ruft `e.stopPropagation()` in `onPointerDown` auf. Dies verhindert, dass das Editor-Overlay den Klick abfängt und an gleicher Stelle fälschlicherweise eine neue Annotation platziert.
-- **Replies**: Werden direkt im Popup oder in der Sidebar hinzugefügt. Auf PDF-Ebene werden diese als Annotationen exportiert und miteinander verknüpft.
+- **Sidebar-Filterung**: Erkannter PDF-Originaltext (`textReplace`) wird explizit aus der Kommentar-Sidebar herausgefiltert.
+- **Multitype-Unterstützung**: Stift-Zeichnungen (`ink`), Textmarker (`highlight`), Notizen, Unterstreichungen und Schwärzungskommentare mit Text/Replies werden in der Liste aufgeführt.
+- **Klick-Priorisierung**: Der Button des Kommentar-Pins ruft `e.stopPropagation()` in `onPointerDown` auf, um ungewolltes Platzieren neuer Annotationen zu verhindern.
 
 ---
 
 ## 5. UI/UX & Mobile Responsiveness
 
-Das Design wird minimalistisch und funktional gehalten:
-
-- **Farbpalette**: Warme Grautöne, minimale Linien, edle Akzente (z. B. Blau als Primärfarbe).
-- **Kontextsensitivität**: Einstellungsmenüs (wie der Schriftartenwähler `FontPicker`) werden nur dann eingeblendet, wenn das dazugehörige Werkzeug oder Element selektiert ist.
-- **Dark Mode**: Reagiert auf die CSS-Klasse `.dark` im `html`-Element. Das Dokument-Canvas selbst bleibt immer weiß, während sich die Toolbar und Seitenleisten abdunkeln.
+- **Farbpalette**: Warme Grautöne, edle Akzente, Light Mode mit `bg-card` Toolbar-Farbe und oberer Primär-Akzentlinie.
+- **Dark Mode**: Reagiert auf die CSS-Klasse `.dark` im `html`-Element. Das Dokument-Canvas selbst bleibt immer weiß.
+- **Non-Blocking Tooltips**: Tooltips befinden sich auf Layer `z-[300]`, ploppen unterhalb auf (`side="bottom"`) und lassen alle Mausklicks durch.
 
 ### 5.1 Mobile Responsive Strategie (`< 768px`)
 
-- **Slide-Over Drawers**: `ThumbnailRail` (Seitenleiste) und `CommentsPanel` öffnen sich auf Mobile als fixed Overlays (`z-50`) mit einem halbtransparenten Backdrop (`bg-black/40`), ohne das PDF-Canvas einzustauchen. Auf Desktop ($\ge 768\text{px}$) bleiben sie inline.
+- **Slide-Over Drawers**: `ThumbnailRail` (Seitenleiste) und `CommentsPanel` öffnen sich auf Mobile als fixed Overlays (`z-50`) mit einem halbtransparenten Backdrop (`bg-black/40`).
 - **Mobile Werkzeugleiste**: Suche & Schwärzen ist im mobilen Kompakt-Menü (`⋮`) erreichbar. Die Sub-Toolbar scrollt touch-freundlich horizontal (`.subtoolbar-scroll`).
-- **Pinch-to-Zoom & Long-Press**: 2-Finger Touch Pinch-to-Zoom auf dem Canvas. 1-Sekunde Long-Press (1000ms Hold) mit haptischem Feedback (`vibrate`) schaltet Touch-Drag-and-Drop im Grid View frei.
+- **Pinch-to-Zoom & Long-Press**: 2-Finger Touch Pinch-to-Zoom auf dem Canvas. 1-Sekunde Long-Press mit haptischem Feedback (`vibrate`) schaltet Touch-Drag-and-Drop frei.
 
 ---
 
 ## 6. Automatisierte Tests
 
-Das Projekt verfügt über eine umfassende Testsuite:
+Das Projekt verfügt über eine umfassende Vitest- & Playwright-Testsuite:
 
 ### Tests ausführen:
 
@@ -148,7 +154,8 @@ Das Projekt verfügt über eine umfassende Testsuite:
 
 1. `src/__tests__/pdf/fontDetect.test.ts`: Validiert Font-Erkennung und Style-Zuweisung.
 2. `src/__tests__/pdf/paragraphGroup.test.ts`: Testet die Paragrafen- und Zeilenerkennungs-Engine.
-3. `src/__tests__/pdf/generateProof.test.ts`: Generiert automatische Vektor-Deckungsgleichheitsberichte ($\Delta X, \Delta Y = 0.0000\text{pt}$).
-4. `src/__tests__/ui/verticalAlignmentDOM.test.tsx`: Prüft mathematische 1:1 DOM-Parität der Textboxen.
-5. `e2e/verticalAlignment.spec.ts`: Playwright E2E-Visual & Position Alignment Test.
+3. `src/__tests__/pdf/strictWordMerging.test.ts`: Testet striktes Same-Font Word Merging.
+4. `src/__tests__/ui/CommentsPanel.test.tsx`: Validiert Kommentar-Sidebar-Filterung.
+5. `e2e/pixelAlignment.spec.ts`: Playwright E2E Multi-Zoom Subpixel Alignment & Tooltip Verification ($\le 0.007\text{px}$ Drift).
+
 

@@ -1559,7 +1559,32 @@ function AnnoView({
 
     const fontHeight = alignment.fontHeight;
     const left = alignment.domLeft;
-    const top = alignment.domTop;
+    let top = alignment.domTop;
+
+    if (transform && typeof document !== "undefined") {
+      let exactAscentRatio = (anno as any).ascentRatio ?? pdfFontMetrics?.ascentRatio;
+      const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (ctx && typeof ctx.measureText === "function") {
+          ctx.font = fontSpec;
+          const m = ctx.measureText("M");
+          const ascent = m.fontBoundingBoxAscent || m.actualBoundingBoxAscent;
+          const descent = m.fontBoundingBoxDescent || m.actualBoundingBoxDescent;
+          if (ascent && ascent + descent > 0) {
+            exactAscentRatio = ascent / (ascent + descent);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      if (exactAscentRatio) {
+        const tx = transformMatrix(vp.transform, transform);
+        top = tx[5] - fontHeight * exactAscentRatio;
+      }
+    }
+
     const angle = alignment.angle;
     const origWidth = alignment.domWidth;
 
@@ -1590,8 +1615,8 @@ function AnnoView({
     const activeScaleX = anno.kind === "textReplace" && !isMultiline ? scaleX : 1;
 
     const s = {
-      left: anno.kind === "textReplace" ? 0 : `${left}px`,
-      top: anno.kind === "textReplace" ? "-0.75px" : `${top}px`,
+      left: 0,
+      top: 0,
       width: anno.kind === "textReplace" ? `${containerWidth}px` : `${origWidth}px`,
     };
     let transformString = transform ? `rotate(${angle}rad)` : undefined;
@@ -1614,7 +1639,7 @@ function AnnoView({
           transform: transformString,
           transformOrigin: transformOriginString,
           minHeight: `${fontHeight}px`,
-          height: anno.kind === "textReplace" ? "calc(100% + 1.5px)" : (anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto"),
+          height: anno.kind === "textReplace" ? `${(fontHeight * numLines) + 1.5}px` : (anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto"),
           pointerEvents: selectable || tool === "edit-text" || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,

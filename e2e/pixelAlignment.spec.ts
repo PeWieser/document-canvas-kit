@@ -91,11 +91,9 @@ test.describe("Pixel Alignment & Bottom-Popping Non-Blocking Tooltips E2E Spec",
       const spanFontSize = await buchSpan.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
       const editorFontSize = await textarea.evaluate((el) => parseFloat(window.getComputedStyle(el).fontSize));
 
-      // --- Letter Middle-Height Alignment Verification ---
-      // alignmentEngine positions domTop at glyphCenterY - fontHeight / 2 where glyphCenterY = tx[5] - (ascent - descent) / 2.
-      // Therefore, the text replacement container center (editorBox.y + fontHeight / 2) aligns subpixel-precisely (tolerance <= 0.05px)
-      // with the PDF text glyph center Y.
-      const middleHeightOffset = await textarea.evaluate((el) => {
+      // Measure DOM baseline Y using actual TextMetrics ascent ratio
+      const domBaselineY = await textarea.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
         const s = window.getComputedStyle(el);
         const fontSpec = `${s.fontSize} ${s.fontFamily}`;
         const canvas = document.createElement("canvas");
@@ -103,31 +101,40 @@ test.describe("Pixel Alignment & Bottom-Popping Non-Blocking Tooltips E2E Spec",
         const fontHeight = parseFloat(s.fontSize);
         if (ctx && typeof ctx.measureText === "function") {
           ctx.font = fontSpec;
-          const m = ctx.measureText("BUCH");
-          const ascent = m.actualBoundingBoxAscent || m.fontBoundingBoxAscent;
-          const descent = m.actualBoundingBoxDescent || m.fontBoundingBoxDescent;
-          if (ascent !== undefined && descent !== undefined) {
-            return (ascent - descent) / 2;
+          const m = ctx.measureText("M");
+          const ascent = m.fontBoundingBoxAscent || m.actualBoundingBoxAscent;
+          const descent = m.fontBoundingBoxDescent || m.actualBoundingBoxDescent;
+          if (ascent && ascent + descent > 0) {
+            return rect.top + fontHeight * (ascent / (ascent + descent));
           }
         }
-        return 0;
+        return rect.top + fontHeight * 0.8;
       });
 
-      // PDF text layer span baseline tx[5] = buchBox.y + spanFontSize
-      const tx5Baseline = (buchBox?.y ?? 0) + spanFontSize;
-      const pdfGlyphCenterY = tx5Baseline - middleHeightOffset;
-      const editorGlyphCenterY = (editorBox?.y ?? 0) + editorFontSize / 2;
+      // PDF text layer span baseline Y = buchBox.y + spanFontSize
+      const pdfBaselineY = (buchBox?.y ?? 0) + spanFontSize;
 
-      // Middle-height vertical drift
-      const verticalDrift = Math.abs(editorGlyphCenterY - pdfGlyphCenterY);
+      const baselineDrift = Math.abs(domBaselineY - pdfBaselineY);
       console.log(
-        `[Pixel Alignment Zoom ${(zoomLevel * 100).toFixed(0)}%] PDF Glyph Center Y: ${pdfGlyphCenterY.toFixed(
+        `[Pixel Alignment Zoom ${(zoomLevel * 100).toFixed(0)}%] PDF Baseline Y: ${pdfBaselineY.toFixed(
           3
-        )}px, Editor Center Y: ${editorGlyphCenterY.toFixed(3)}px, drift: ${verticalDrift.toFixed(3)}px`
+        )}px, DOM Baseline Y: ${domBaselineY.toFixed(3)}px, drift: ${baselineDrift.toFixed(3)}px`
       );
 
-      // Subpixel letter middle-height alignment tolerance (< 1.0px relative to zoom level)
-      expect(verticalDrift).toBeLessThanOrEqual(1.0 * zoomLevel);
+      // Subpixel baseline alignment tolerance (<= 0.05px)
+      expect(baselineDrift).toBeLessThanOrEqual(0.05 * zoomLevel);
+
+      // Verify strict container height bounds (must NOT be giant calc(100%) height!)
+      const containerDivHeight = await textarea.evaluate((el) => {
+        const parent = el.parentElement;
+        return parent ? parent.getBoundingClientRect().height : el.getBoundingClientRect().height;
+      });
+      console.log(
+        `[Pixel Alignment Zoom ${(zoomLevel * 100).toFixed(0)}%] Container Div Height: ${containerDivHeight.toFixed(
+          1
+        )}px, fontHeight: ${editorFontSize.toFixed(1)}px`
+      );
+      expect(containerDivHeight).toBeLessThanOrEqual(editorFontSize * 1.5 + 10);
 
       // Verify unclipped text container width (scrollWidth <= clientWidth)
       const widthMetrics = await textarea.evaluate((el) => {
