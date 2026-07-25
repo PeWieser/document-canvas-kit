@@ -28,6 +28,8 @@ export interface DocumentStoreState {
     isMove?: boolean,
   ) => void;
 
+  reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
+
   getActive: () => DocumentState | null;
   updateActive: (updater: (doc: DocumentState) => void) => void;
   updateDocument: (id: string, updater: (doc: DocumentState) => void) => void;
@@ -233,6 +235,13 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => {
           sDoc.annotations = sDoc.annotations.filter((anno) => !movedPageIds.includes(anno.page));
           sDoc.dirty = true;
         });
+      }
+    },
+
+    reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => {
+      const activeDoc = get().getActive();
+      if (activeDoc) {
+        activeDoc.reorderMultiplePages(indicesToMove, insertAtIndex);
       }
     },
 

@@ -103,4 +103,28 @@ describe("documentStore - Multi-PDF Tab System", () => {
     expect(doc1?.pageOrder).toHaveLength(2); // source decreased by 1
     expect(doc2?.pageOrder).toHaveLength(3); // target increased by 1
   });
+
+  it("reorders multiple pages as a contiguous block at target index", () => {
+    const store = useDocumentStore.getState();
+    const docId = store.openDocument({ fileName: "doc.pdf", bytes: new Uint8Array([1]), numPages: 5 });
+
+    // Initial pageOrder is [0, 1, 2, 3, 4]
+    // Move indices [1, 3] (pages 1 and 3) to insertAtIndex 0 (start)
+    useDocumentStore.getState().reorderMultiplePages([3, 1], 0);
+
+    const activeDoc = useDocumentStore.getState().getActive();
+    expect(activeDoc?.pageOrder).toEqual([1, 3, 0, 2, 4]);
+  });
+
+  it("reorders multiple pages to the end of document", () => {
+    const store = useDocumentStore.getState();
+    const docId = store.openDocument({ fileName: "doc.pdf", bytes: new Uint8Array([1]), numPages: 5 });
+
+    // Initial pageOrder is [0, 1, 2, 3, 4]
+    // Move indices [0, 1] (pages 0 and 1) to insertAtIndex 5 (end)
+    useDocumentStore.getState().reorderMultiplePages([0, 1], 5);
+
+    const activeDoc = useDocumentStore.getState().getActive();
+    expect(activeDoc?.pageOrder).toEqual([2, 3, 4, 0, 1]);
+  });
 });

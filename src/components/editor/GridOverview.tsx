@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Trash2, Plus, Minus } from "lucide-react";
+import { X, Trash2, Plus, Minus, CheckCircle2 } from "lucide-react";
 import type { PdfDocumentProxy } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
@@ -18,11 +18,16 @@ export function GridOverview({
   const setGridOpen = useEditor((s) => s.setGridOpen);
   const pageOrder = useEditor((s) => s.pageOrder);
   const reorderPages = useEditor((s) => s.reorderPages);
+  const reorderMultiplePages = useEditor((s) => s.reorderMultiplePages);
   const deletePage = useEditor((s) => s.deletePage);
   const pagesPerRow = useEditor((s) => s.pagesPerRow ?? 4);
   const setPagesPerRow = useEditor((s) => s.setPagesPerRow);
 
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<"before" | "after" | null>(null);
   const [dropSide, setDropSide] = useState<"left" | "right" | null>(null);
@@ -181,6 +186,36 @@ export function GridOverview({
     }
   };
 
+  const handleItemClick = (index: number, e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(index)) {
+          next.delete(index);
+        } else {
+          next.add(index);
+        }
+        return next;
+      });
+      setLastClickedIndex(index);
+    } else if (e.shiftKey) {
+      const start = lastClickedIndex !== null ? lastClickedIndex : 0;
+      const min = Math.min(start, index);
+      const max = Math.max(start, index);
+      setSelectedIndices((prev) => {
+        const next = new Set(prev);
+        for (let i = min; i <= max; i++) {
+          next.add(i);
+        }
+        return next;
+      });
+    } else {
+      setLastClickedIndex(index);
+      onJump(index);
+      setGridOpen(false);
+    }
+  };
+
   const handleTouchStart = (index: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
@@ -192,6 +227,10 @@ export function GridOverview({
       setDragFrom(index);
       setTouchDragging(index);
       setTouchPos({ x: touch.clientX, y: touch.clientY });
+      if (!selectedIndices.has(index) && selectedIndices.size > 0) {
+        setSelectedIndices(new Set([index]));
+        setLastClickedIndex(index);
+      }
     }, 1000);
   };
 
@@ -225,22 +264,33 @@ export function GridOverview({
     }
 
     if (touchDragging !== null && dropInsertionIndex !== null) {
-      const targetIndex = getTargetIndexFromInsertionIndex(touchDragging, dropInsertionIndex);
-      if (targetIndex !== touchDragging) {
-        reorderPages(touchDragging, targetIndex);
+      if (selectedIndices.size > 1 && selectedIndices.has(touchDragging)) {
+        reorderMultiplePages(Array.from(selectedIndices), dropInsertionIndex);
+      } else {
+        const targetIndex = getTargetIndexFromInsertionIndex(touchDragging, dropInsertionIndex);
+        if (targetIndex !== touchDragging) {
+          reorderPages(touchDragging, targetIndex);
+        }
       }
     }
 
     setTouchDragging(null);
     setTouchPos(null);
     setDragFrom(null);
+    setDragPos(null);
     resetDropState();
   };
 
   const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    if (e.dataTransfer) {
+      try { e.dataTransfer.dropEffect = "move"; } catch {}
+    }
+    if (e.nativeEvent && (e.nativeEvent as any).dataTransfer) {
+      try { (e.nativeEvent as any).dataTransfer.dropEffect = "move"; } catch {}
+    }
+    setDragPos({ x: e.clientX, y: e.clientY });
     if (dragFrom === null) return;
 
     const clientX = e.clientX;
@@ -251,13 +301,18 @@ export function GridOverview({
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (dragFrom !== null && dropInsertionIndex !== null) {
-      const targetIndex = getTargetIndexFromInsertionIndex(dragFrom, dropInsertionIndex);
-      if (targetIndex !== dragFrom) {
-        reorderPages(dragFrom, targetIndex);
+    if (dropInsertionIndex !== null) {
+      if (selectedIndices.size > 1 && (dragFrom === null || selectedIndices.has(dragFrom))) {
+        reorderMultiplePages(Array.from(selectedIndices), dropInsertionIndex);
+      } else if (dragFrom !== null) {
+        const targetIndex = getTargetIndexFromInsertionIndex(dragFrom, dropInsertionIndex);
+        if (targetIndex !== dragFrom) {
+          reorderPages(dragFrom, targetIndex);
+        }
       }
     }
     setDragFrom(null);
+    setDragPos(null);
     resetDropState();
   };
 
@@ -270,12 +325,43 @@ export function GridOverview({
       )}
     >
       <div className="flex items-center justify-between border-b px-5 py-3">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold">{t("gridView")}</h2>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            (Lange drücken zum Umsortieren per Touch)
-          </span>
-        </div>
+        {selectedIndices.size > 0 ? (
+          <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-md px-3 py-1.5 text-sm font-medium text-primary">
+            <span>{selectedIndices.size} Seiten ausgewählt</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedIndices(new Set());
+                setLastClickedIndex(null);
+              }}
+              className="text-xs underline hover:no-underline text-foreground cursor-pointer"
+              data-testid="deselect-all-btn"
+            >
+              Auswahl aufheben
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sorted = Array.from(selectedIndices).sort((a, b) => b - a);
+                sorted.forEach((idx) => deletePage(idx));
+                setSelectedIndices(new Set());
+                setLastClickedIndex(null);
+              }}
+              className="flex items-center gap-1 text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90 px-2 py-1 rounded transition-colors cursor-pointer"
+              data-testid="delete-selected-btn"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Ausgewählte löschen
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-semibold">{t("gridView")}</h2>
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              (Lange drücken zum Umsortieren per Touch)
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 border-r border-border pr-4">
@@ -335,90 +421,157 @@ export function GridOverview({
         }}
         data-testid="grid-container"
       >
-        {pageOrder.map((pageId, index) => (
-          <div
-            key={pageId}
-            ref={(el) => {
-              itemRefs.current[index] = el;
-            }}
-            data-grid-item-index={index}
-            draggable
-            onDragStart={() => {
-              setDragFrom(index);
-              resetDropState();
-            }}
-            onDragEnd={() => {
-              setDragFrom(null);
-              resetDropState();
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-            }}
-            onTouchStart={(e) => handleTouchStart(index, e)}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            className={cn(
-              "group relative p-2.5 outline-none rounded-lg transition-transform duration-150",
-              touchDragging === index && "opacity-40 scale-95",
-            )}
-            data-testid={`grid-item-${index}`}
-          >
-            {/* Drop indicator line */}
-            {dragOver === index &&
-              dragFrom !== null &&
-              dropTarget !== null &&
-              dropSide !== null && (
-                <div
-                  className={cn(
-                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
-                  )}
-                  style={{
-                    left: dropSide === "left" ? "-0.625rem" : undefined,
-                    right: dropSide === "right" ? "-0.625rem" : undefined,
-                  }}
-                  data-testid="drop-indicator"
-                />
-              )}
+        {pageOrder.map((pageId, index) => {
+          const isSelected = selectedIndices.has(index);
+          return (
             <div
-              onClick={() => {
-                if (touchDragging === null) {
-                  onJump(index);
-                  setGridOpen(false);
-                }
+              key={pageId}
+              ref={(el) => {
+                itemRefs.current[index] = el;
               }}
+              data-grid-item-index={index}
+              draggable
+              onDragStart={(e) => {
+                setDragFrom(index);
+                setDragPos({ x: e.clientX, y: e.clientY });
+                if (!selectedIndices.has(index) && selectedIndices.size > 0) {
+                  setSelectedIndices(new Set([index]));
+                  setLastClickedIndex(index);
+                }
+                resetDropState();
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragPos(null);
+                resetDropState();
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                setDragPos({ x: e.clientX, y: e.clientY });
+              }}
+              onTouchStart={(e) => handleTouchStart(index, e)}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
               className={cn(
-                "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
-                isDragging && "pointer-events-none",
+                "group relative p-2.5 outline-none rounded-lg transition-transform duration-150",
+                touchDragging === index && "opacity-40 scale-95",
               )}
-              title={t("reorderHint")}
+              data-testid={`grid-item-${index}`}
+              data-selected={isSelected ? "true" : "false"}
             >
-              <PageThumb doc={doc} pageId={pageId} width={240} />
-              <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
-                <span>{index + 1}</span>
+              {/* Drop indicator line */}
+              {dragOver === index &&
+                dragFrom !== null &&
+                dropTarget !== null &&
+                dropSide !== null && (
+                  <div
+                    className={cn(
+                      "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
+                    )}
+                    style={{
+                      left: dropSide === "left" ? "-0.625rem" : undefined,
+                      right: dropSide === "right" ? "-0.625rem" : undefined,
+                    }}
+                    data-testid="drop-indicator"
+                  />
+                )}
+              <div
+                onClick={(e) => {
+                  if (touchDragging === null) {
+                    handleItemClick(index, e);
+                  }
+                }}
+                className={cn(
+                  "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
+                  isSelected && "ring-2 ring-primary bg-primary/10",
+                  isDragging && "pointer-events-none",
+                )}
+                title={t("reorderHint")}
+              >
+                {isSelected && (
+                  <CheckCircle2 className="h-5 w-5 text-primary absolute top-2 left-2 z-20 fill-background" />
+                )}
+                <PageThumb doc={doc} pageId={pageId} width={240} />
+                <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
+                  <span>{index + 1}</span>
+                </div>
+                {pageOrder.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deletePage(index);
+                    }}
+                    className="absolute right-2 top-2 rounded-md bg-destructive p-1.5 text-destructive-foreground opacity-90 sm:opacity-0 transition group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
-              {pageOrder.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deletePage(index);
-                  }}
-                  className="absolute right-2 top-2 rounded-md bg-destructive p-1.5 text-destructive-foreground opacity-90 sm:opacity-0 transition group-hover:opacity-100"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Floating Drag Avatar for Touch Mode */}
-      {touchDragging !== null && touchPos && (
+      {/* Apple-Style 3D Stacked Cards Drag Avatar when multiple pages selected */}
+      {selectedIndices.size > 1 && isDragging && (touchPos || dragPos) && (
         <div
-          className="fixed z-50 pointer-events-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-90"
+          className="fixed z-[300] pointer-events-none select-none"
+          style={{
+            left: (touchPos?.x ?? dragPos?.x ?? 0) - 60,
+            top: (touchPos?.y ?? dragPos?.y ?? 0) - 80,
+            width: 130,
+          }}
+          data-testid="stacked-drag-avatar"
+        >
+          <div className="relative w-full">
+            {/* Card 3 (Bottom) */}
+            <div
+              className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md transition-transform"
+              style={{
+                top: "-12px",
+                left: "8px",
+                transform: "rotate(4deg)",
+                opacity: 0.7,
+              }}
+            >
+              <div className="w-full aspect-[3/4] bg-muted/50 rounded" />
+            </div>
+
+            {/* Card 2 (Middle) */}
+            <div
+              className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg transition-transform"
+              style={{
+                top: "-6px",
+                left: "4px",
+                transform: "rotate(-5deg)",
+                opacity: 0.85,
+              }}
+            >
+              <div className="w-full aspect-[3/4] bg-muted/50 rounded" />
+            </div>
+
+            {/* Card 1 (Top) */}
+            <div className="relative rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100">
+              <PageThumb
+                doc={doc}
+                pageId={pageOrder[dragFrom ?? Array.from(selectedIndices)[0]] ?? pageOrder[0]}
+                width={120}
+              />
+              <div className="absolute -top-2 -right-2 rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground shadow-md">
+                {selectedIndices.size} Seiten
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Drag Avatar for Touch Mode (Single Item) */}
+      {selectedIndices.size <= 1 && touchDragging !== null && touchPos && (
+        <div
+          className="fixed z-[300] pointer-events-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-90 select-none"
           style={{
             left: touchPos.x - 60,
             top: touchPos.y - 80,

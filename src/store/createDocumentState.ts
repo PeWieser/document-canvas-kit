@@ -83,6 +83,7 @@ export interface DocumentState {
   pushHistorySnapshot: () => void;
 
   reorderPages: (from: number, to: number) => void;
+  reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
   deletePage: (displayIndex: number) => void;
 
   undo: () => void;
@@ -265,6 +266,28 @@ export function createDocumentState(
         d.future = [];
         d.dirty = true;
         d.pageOrder = order;
+      }),
+
+    reorderMultiplePages: (indicesToMove, insertAtIndex) =>
+      runUpdate((d) => {
+        if (indicesToMove.length === 0) return;
+        const sorted = [...indicesToMove].sort((a, b) => a - b);
+        const countBefore = sorted.filter((idx) => idx < insertAtIndex).length;
+        const adjustedTarget = insertAtIndex - countBefore;
+
+        const movedItems = sorted
+          .map((idx) => d.pageOrder[idx])
+          .filter((item) => item !== undefined);
+        const remaining = d.pageOrder.filter((_, idx) => !sorted.includes(idx));
+
+        const clampedTarget = Math.max(0, Math.min(adjustedTarget, remaining.length));
+        const newOrder = [...remaining];
+        newOrder.splice(clampedTarget, 0, ...movedItems);
+
+        d.past = [...d.past, snap(d)];
+        d.future = [];
+        d.dirty = true;
+        d.pageOrder = newOrder;
       }),
 
     deletePage: (displayIndex) =>

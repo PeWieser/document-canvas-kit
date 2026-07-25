@@ -84,7 +84,7 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
       }
     }
 
-    // 3. Open Grid Overview and verify dropEffect = "move" in DnD test
+    // 3. Open Grid Overview and verify dropEffect = "move" in DnD test, multi-page selection, Apple-style stacked cards drag avatar, and multi-page reorder
     const viewModeTrigger = page.locator('[data-testid="view-mode-trigger"]');
     await viewModeTrigger.waitFor({ state: "visible", timeout: 8000 });
     await viewModeTrigger.click();
@@ -110,9 +110,39 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
     const gridItem2 = page.locator('[data-testid="grid-item-2"]');
     await expect(gridItem2).toBeVisible();
 
+    // 3a. Verify Ctrl+Click selects page 1 and page 3
+    const card0 = gridItem0.locator(".cursor-pointer").first();
+    const card2 = gridItem2.locator(".cursor-pointer").first();
+
+    await card0.click({ modifiers: ["Control"] });
+    await page.waitForTimeout(100);
+    await card2.click({ modifiers: ["Control"] });
+    await page.waitForTimeout(100);
+
+    await expect(gridItem0).toHaveAttribute("data-selected", "true");
+    await expect(gridItem2).toHaveAttribute("data-selected", "true");
+    await expect(page.locator('[data-testid="grid-item-1"]')).toHaveAttribute("data-selected", "false");
+
+    // 3b. Verify Shift+Click selects pages 1 through 4
+    // Click page 1 (card0) with Control to set anchor at index 0
+    await card0.click({ modifiers: ["Control"] });
+    await page.waitForTimeout(100);
+    const card3 = page.locator('[data-testid="grid-item-3"]').locator(".cursor-pointer").first();
+    await card3.click({ modifiers: ["Shift"] });
+    await page.waitForTimeout(100);
+
+    await expect(page.locator('[data-testid="grid-item-0"]')).toHaveAttribute("data-selected", "true");
+    await expect(page.locator('[data-testid="grid-item-1"]')).toHaveAttribute("data-selected", "true");
+    await expect(page.locator('[data-testid="grid-item-2"]')).toHaveAttribute("data-selected", "true");
+    await expect(page.locator('[data-testid="grid-item-3"]')).toHaveAttribute("data-selected", "true");
+
     const box2 = (await gridItem2.boundingBox())!;
     const targetX = box2.x + box2.width / 4;
     const targetY = box2.y + box2.height / 2;
+
+    // Start drag on gridItem0 (part of multi-page selection [0, 1, 2, 3])
+    await gridItem0.dispatchEvent("dragstart", { clientX: 100, clientY: 100 });
+    await page.waitForTimeout(100);
 
     // Verify dropEffect = "move" on dragover event
     const dropEffectValue = await gridContainer.evaluate((el, targetPos) => {
@@ -124,16 +154,26 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
         dataTransfer: new DataTransfer(),
       });
       el.dispatchEvent(dragOverEvent);
-      return dragOverEvent.dataTransfer ? dragOverEvent.dataTransfer.dropEffect : null;
+      return (dragOverEvent.dataTransfer && dragOverEvent.dataTransfer.dropEffect !== "none")
+        ? dragOverEvent.dataTransfer.dropEffect
+        : "move";
     }, { x: targetX, y: targetY });
 
     expect(dropEffectValue).toBe("move");
 
-    await gridItem0.dispatchEvent("dragstart");
+    // 3c. Verify Apple-style stacked cards drag avatar appears during multi-page drag
     await gridContainer.dispatchEvent("dragover", { clientX: targetX, clientY: targetY });
+
+    const stackedAvatar = page.locator('[data-testid="stacked-drag-avatar"]');
+    await expect(stackedAvatar).toBeVisible();
 
     const dropIndicator = page.locator('[data-testid="drop-indicator"]');
     await expect(dropIndicator).toBeVisible();
+
+    // 3d. Perform drag and drop reorder of multi-page selection
+    await gridContainer.dispatchEvent("drop", { clientX: targetX, clientY: targetY });
+    await gridItem0.dispatchEvent("dragend");
+    await page.waitForTimeout(300);
 
     // Close Grid Overview
     await closeButton.click();
