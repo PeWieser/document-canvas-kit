@@ -179,6 +179,17 @@ export function GridOverview({
     };
   }, []);
 
+  useEffect(() => {
+    if (isDragging) {
+      const rAF = requestAnimationFrame(() => {
+        setIsGathered(true);
+      });
+      return () => cancelAnimationFrame(rAF);
+    } else {
+      setIsGathered(false);
+    }
+  }, [isDragging]);
+
   if (!open) return null;
 
   type MeasuredGridItem = {
@@ -259,17 +270,6 @@ export function GridOverview({
     setDragOffsets(offsets);
     setIsGathered(false);
   };
-
-  useEffect(() => {
-    if (isDragging) {
-      const rAF = requestAnimationFrame(() => {
-        setIsGathered(true);
-      });
-      return () => cancelAnimationFrame(rAF);
-    } else {
-      setIsGathered(false);
-    }
-  }, [isDragging]);
 
   const resetDropState = () => {
     setDragOver(null);
