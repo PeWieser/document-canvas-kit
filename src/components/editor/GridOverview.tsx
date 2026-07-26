@@ -404,9 +404,10 @@ export function GridOverview({
     resetDropState();
   };
 
+  const dragFromRef = useRef<number | null>(null);
+
   const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.stopPropagation();
     if (e.dataTransfer) {
       try { e.dataTransfer.dropEffect = "move"; } catch {}
     }
@@ -414,26 +415,39 @@ export function GridOverview({
       try { (e.nativeEvent as any).dataTransfer.dropEffect = "move"; } catch {}
     }
     setDragPos({ x: e.clientX, y: e.clientY });
-    if (dragFrom === null) return;
+    const activeFrom = dragFromRef.current ?? dragFrom;
+    if (activeFrom === null) return;
 
-    const clientX = e.clientX;
-    const clientY = e.clientY;
-
-    updateDropStateAtPoint(clientX, clientY);
+    updateDropStateAtPoint(e.clientX, e.clientY);
   };
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (dropInsertionIndex !== null) {
-      if (selectedIndices.size > 1 && (dragFrom === null || selectedIndices.has(dragFrom))) {
-        reorderMultiplePages(Array.from(selectedIndices), dropInsertionIndex);
-      } else if (dragFrom !== null) {
-        const targetIndex = getTargetIndexFromInsertionIndex(dragFrom, dropInsertionIndex);
-        if (targetIndex !== dragFrom) {
-          reorderPages(dragFrom, targetIndex);
+    const fromIdx = dragFromRef.current ?? dragFrom;
+    if (fromIdx === null) return;
+
+    const targetInsertion =
+      dropInsertionIndex !== null
+        ? dropInsertionIndex
+        : getInsertionIndexAtPoint(e.clientX, e.clientY, fromIdx);
+
+    if (targetInsertion !== null) {
+      const activeSelected =
+        selectedIndices.size > 0 && selectedIndices.has(fromIdx)
+          ? Array.from(selectedIndices)
+          : [fromIdx];
+
+      if (activeSelected.length > 1) {
+        reorderMultiplePages(activeSelected, targetInsertion);
+      } else {
+        const targetIndex = getTargetIndexFromInsertionIndex(fromIdx, targetInsertion);
+        if (targetIndex !== fromIdx) {
+          reorderPages(fromIdx, targetIndex);
         }
       }
     }
+
+    dragFromRef.current = null;
     setDragFrom(null);
     setDragPos(null);
     resetDropState();
@@ -539,7 +553,7 @@ export function GridOverview({
 
       <div
         onClick={(e) => {
-          if (!isDragging) {
+          if (!isDragging && dragFromRef.current === null) {
             const slot = getInsertionIndexAtPoint(e.clientX, e.clientY, null);
             if (slot !== null) {
               setActivePasteSlot((prev) => (prev === slot ? null : slot));
@@ -578,6 +592,7 @@ export function GridOverview({
               data-grid-item-index={index}
               draggable
               onDragStart={(e) => {
+                dragFromRef.current = index;
                 if (e.dataTransfer) {
                   const transparentCanvas = document.createElement("canvas");
                   transparentCanvas.width = 1;
@@ -595,9 +610,12 @@ export function GridOverview({
                 resetDropState();
               }}
               onDragEnd={() => {
-                setDragFrom(null);
-                setDragPos(null);
-                resetDropState();
+                setTimeout(() => {
+                  dragFromRef.current = null;
+                  setDragFrom(null);
+                  setDragPos(null);
+                  resetDropState();
+                }, 50);
               }}
               onDragOver={(e) => {
                 e.preventDefault();
