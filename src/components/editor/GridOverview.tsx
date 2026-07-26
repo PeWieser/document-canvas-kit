@@ -307,6 +307,7 @@ export function GridOverview({
   };
 
   const handleItemClick = (index: number, e: React.MouseEvent) => {
+    setActivePasteSlot(null);
     if (e.ctrlKey || e.metaKey) {
       setSelectedIndices((prev) => {
         const next = new Set(prev);
@@ -444,7 +445,7 @@ export function GridOverview({
     <div
       ref={modalRef}
       className={cn(
-        "fixed inset-0 z-[200] flex flex-col bg-background/95 backdrop-blur select-none",
+        "fixed inset-0 z-200 flex flex-col bg-background/95 backdrop-blur select-none",
         isDragging && "cursor-move [&_*]:cursor-move",
       )}
     >
@@ -541,7 +542,9 @@ export function GridOverview({
           if (!isDragging) {
             const slot = getInsertionIndexAtPoint(e.clientX, e.clientY, null);
             if (slot !== null) {
-              setActivePasteSlot(slot);
+              setActivePasteSlot((prev) => (prev === slot ? null : slot));
+            } else {
+              setActivePasteSlot(null);
             }
           }
         }}
@@ -598,9 +601,13 @@ export function GridOverview({
               }}
               onDragOver={(e) => {
                 e.preventDefault();
-                e.stopPropagation();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                if (e.dataTransfer) {
+                  try { e.dataTransfer.dropEffect = "move"; } catch {}
+                }
                 setDragPos({ x: e.clientX, y: e.clientY });
+                if (dragFrom !== null) {
+                  updateDropStateAtPoint(e.clientX, e.clientY);
+                }
               }}
               onTouchStart={(e) => handleTouchStart(index, e)}
               onTouchMove={handleTouchMove}
@@ -668,7 +675,7 @@ export function GridOverview({
       {/* 100% Solid Floating Drag Avatar (Multi-Page: Apple 3D Stacked Cards) */}
       {isDragging && activeDragPos && selectedIndices.size > 1 && (
         <div
-          className="fixed z-[300] pointer-events-none select-none opacity-100 shadow-2xl"
+          className="fixed z-300 pointer-events-none select-none opacity-100 shadow-2xl"
           style={{
             left: activeDragPos.x - 100,
             top: activeDragPos.y - 120,
@@ -688,7 +695,7 @@ export function GridOverview({
                 transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
-              <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
+              <div className="w-full aspect-3/4 bg-muted/40 rounded" />
             </div>
 
             {/* Card 2 (Middle) */}
@@ -702,7 +709,7 @@ export function GridOverview({
                 transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
-              <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
+              <div className="w-full aspect-3/4 bg-muted/40 rounded" />
             </div>
 
             {/* Card 1 (Top) */}
@@ -731,7 +738,7 @@ export function GridOverview({
       {/* 100% Solid Floating Drag Avatar (Single Page) */}
       {isDragging && activeDragPos && selectedIndices.size <= 1 && (
         <div
-          className="fixed z-[300] pointer-events-none select-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100"
+          className="fixed z-300 pointer-events-none select-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100"
           style={{
             left: activeDragPos.x - 100,
             top: activeDragPos.y - 120,
