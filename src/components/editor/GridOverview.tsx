@@ -282,9 +282,15 @@ export function GridOverview({
   const getTargetIndexFromInsertionIndex = (from: number, insertionIndex: number) =>
     insertionIndex > from ? insertionIndex - 1 : insertionIndex;
 
-  const updateDropStateAtPoint = (clientX: number, clientY: number) => {
-    const activeFrom = dragFrom ?? touchDragging;
-    const insertionIndex = getInsertionIndexAtPoint(clientX, clientY, activeFrom);
+  const updateDropStateAtPoint = (
+    clientX: number,
+    clientY: number,
+    sourceIndex: number | null = dragFromRef.current ?? dragFrom ?? touchDragging,
+  ) => {
+    // Drag events can arrive before React has committed the dragFrom state
+    // update. Always prefer the ref (set in dragstart) so the first dragover
+    // already computes a real drop slot instead of clearing the indicator.
+    const insertionIndex = getInsertionIndexAtPoint(clientX, clientY, sourceIndex);
     if (insertionIndex === null || pageOrder.length === 0) {
       resetDropState();
       return;
@@ -417,7 +423,7 @@ export function GridOverview({
     const activeFrom = dragFromRef.current ?? dragFrom;
     if (activeFrom === null) return;
 
-    updateDropStateAtPoint(e.clientX, e.clientY);
+    updateDropStateAtPoint(e.clientX, e.clientY, activeFrom);
   };
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -622,8 +628,9 @@ export function GridOverview({
                   try { e.dataTransfer.dropEffect = "move"; } catch {}
                 }
                 setDragPos({ x: e.clientX, y: e.clientY });
-                if (dragFrom !== null) {
-                  updateDropStateAtPoint(e.clientX, e.clientY);
+                const activeFrom = dragFromRef.current ?? dragFrom;
+                if (activeFrom !== null) {
+                  updateDropStateAtPoint(e.clientX, e.clientY, activeFrom);
                 }
               }}
               onTouchStart={(e) => handleTouchStart(index, e)}
