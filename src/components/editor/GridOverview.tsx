@@ -72,6 +72,7 @@ export function GridOverview({
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
+  const dragFromRef = useRef<number | null>(null);
 
   const isDragging = dragFrom !== null || touchDragging !== null;
 
@@ -403,8 +404,6 @@ export function GridOverview({
     setDragPos(null);
     resetDropState();
   };
-
-  const dragFromRef = useRef<number | null>(null);
 
   const handleParentDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
