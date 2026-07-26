@@ -101,6 +101,21 @@ export function predictWidthFromFontMetrics(
 }
 
 /**
+ * Converts a PDF baseline into the DOM top coordinate while accounting for
+ * CSS line-height leading and vertical padding.
+ */
+export function computeDomTopFromBaseline(
+  baselineY: number,
+  fontHeight: number,
+  ascentRatio: number,
+  lineHeight: number = 1,
+  paddingTop: number = 0,
+): number {
+  const leading = (fontHeight * Math.max(0, lineHeight - 1)) / 2;
+  return baselineY - fontHeight * ascentRatio - leading - paddingTop;
+}
+
+/**
  * Computes subpixel-precise alignment metrics for a PDF text item.
  */
 export function computeAlignmentMetrics(
@@ -136,7 +151,7 @@ export function computeAlignmentMetrics(
 
   // Baseline shift compensation: PDF.js text layer span top is positioned relative to baseline (tx[5]).
   // Using domTop = tx[5] - fontHeight * exactDomAscentRatio anchors domTop to the exact typographic baseline.
-  const domTop = tx[5] - fontHeight * exactDomAscentRatio;
+  const domTop = computeDomTopFromBaseline(tx[5], fontHeight, exactDomAscentRatio);
 
   const domLeft = tx[4];
   const domHeight = fontHeight;

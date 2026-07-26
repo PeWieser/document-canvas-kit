@@ -23,7 +23,7 @@ import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 import bunnyFamilies from "@/lib/pdf/font-families.json";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
-import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
+import { computeAlignmentMetrics, computeDomTopFromBaseline } from "@/lib/pdf/alignmentEngine";
 import { useAlignmentScaleX } from "@/hooks/useAlignmentScaleX";
 import { extractTextLayoutHints } from "@/lib/pdf/textLayoutHints";
 
@@ -1604,9 +1604,10 @@ function AnnoView({
     const fontHeight = alignment.fontHeight;
     const left = alignment.domLeft;
     let top = alignment.domTop;
+    let exactAscentRatio = alignment.ascentRatio;
 
     if (transform && typeof document !== "undefined") {
-      let exactAscentRatio = (anno as any).ascentRatio ?? pdfFontMetrics?.ascentRatio;
+      exactAscentRatio = (anno as any).ascentRatio ?? pdfFontMetrics?.ascentRatio ?? alignment.ascentRatio;
       const fontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? "bold" : "normal"} ${fontHeight}px ${family}`;
       try {
         const canvas = document.createElement("canvas");
@@ -1623,10 +1624,20 @@ function AnnoView({
       } catch {
         /* ignore */
       }
-      if (exactAscentRatio) {
-        const tx = transformMatrix(vp.transform, transform);
-        top = tx[5] - fontHeight * exactAscentRatio;
-      }
+    }
+
+    const textReplaceLineHeight = 1.15;
+    const textReplacePaddingY = 2;
+
+    if (transform && exactAscentRatio) {
+      const tx = transformMatrix(vp.transform, transform);
+      top = computeDomTopFromBaseline(
+        tx[5],
+        fontHeight,
+        exactAscentRatio,
+        anno.kind === "textReplace" ? textReplaceLineHeight : 1,
+        anno.kind === "textReplace" ? textReplacePaddingY : 0,
+      );
     }
 
     const angle = alignment.angle;
@@ -1689,7 +1700,7 @@ function AnnoView({
           transformOrigin: transformOriginString,
           minHeight: anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : `${fontHeight * 1.2}px`,
           paddingBlock: anno.kind === "textReplace" ? "2px" : undefined,
-          lineHeight: 1.15,
+          lineHeight: anno.kind === "textReplace" ? textReplaceLineHeight : 1.15,
           height:
             anno.kind === "textReplace"
               ? `${fontHeight * numLines * 1.25 + 4}px`
@@ -1759,9 +1770,9 @@ function AnnoView({
               fontFamily: family,
               fontWeight: anno.bold ? 700 : 400,
               fontStyle: anno.italic ? "italic" : "normal",
-              lineHeight: 1.15,
-              paddingBlock: anno.kind === "textReplace" ? "2px" : undefined,
-              padding: anno.kind === "textReplace" ? "2px 0" : 0,
+              lineHeight: anno.kind === "textReplace" ? textReplaceLineHeight : 1.15,
+              paddingBlock: anno.kind === "textReplace" ? `${textReplacePaddingY}px` : undefined,
+              padding: anno.kind === "textReplace" ? `${textReplacePaddingY}px 0` : 0,
               margin: 0,
               border: "none",
               outline: "none",
