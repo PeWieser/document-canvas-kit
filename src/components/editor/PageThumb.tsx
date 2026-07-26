@@ -1,20 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import type { PdfDocumentProxy } from "@/lib/pdf/pdfjs";
-import { memoryManager } from "@/lib/pdf/memoryManager";
+import { lowResCache, renderLowResThumbnail } from "@/lib/pdf/lowResCache";
 
 export function PageThumb({
   doc,
   pageId,
   width = 130,
+  pagesPerRow,
 }: {
   doc: PdfDocumentProxy;
   pageId: number;
   width?: number;
+  pagesPerRow?: number;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
-  const [ratio, setRatio] = useState(1.414); // h/w placeholder until measured
+  const [ratio, setRatio] = useState(1.414);
+
+  // Matrix Thumbnail Resolution Scaling
+  let targetWidth = width;
+  if (pagesPerRow !== undefined) {
+    if (pagesPerRow >= 5) {
+      targetWidth = 160;
+    } else if (pagesPerRow >= 3) {
+      targetWidth = 280;
+    } else {
+      targetWidth = 480;
+    }
+  }
+
+  const scale = Math.round((targetWidth / 600) * 100) / 100;
+  const cacheKey = doc ? lowResCache.getCacheKey(doc, pageId, scale) : "";
+  const [imgUrl, setImgUrl] = useState<string | undefined>(() =>
+    doc ? lowResCache.get(cacheKey) : undefined
+  );
 
   // Only render the thumbnail once it scrolls into view.
   useEffect(() => {
@@ -31,87 +50,44 @@ export function PageThumb({
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !doc) return;
+
+    const cached = lowResCache.get(cacheKey);
+    if (cached) {
+      setImgUrl(cached);
+      return;
+    }
+
     let cancelled = false;
-    let idleId: any = null;
 
-    const renderThumb = async () => {
-      const cacheKey = `thumb_${pageId}_${width}`;
-      const cached = memoryManager.getThumbnail(cacheKey);
-
-      if (cached && canvasRef.current && cached instanceof HTMLCanvasElement) {
-        canvasRef.current.width = cached.width;
-        canvasRef.current.height = cached.height;
-        const ctx = canvasRef.current.getContext("2d");
-        ctx?.drawImage(cached, 0, 0);
-        return;
-      }
-
-      const page = await doc.getPage(pageId + 1);
-      const base = page.getViewport({ scale: 1 });
-      if (!cancelled) setRatio(base.height / base.width);
-      const scale = width / base.width;
-      const vp = page.getViewport({ scale });
-      if (cancelled) return;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      canvas.width = Math.floor(vp.width);
-      canvas.height = Math.floor(vp.height);
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        if (!cancelled && canvas.width > 0 && canvas.height > 0) {
-          try {
-            const clone = document.createElement("canvas");
-            clone.width = canvas.width;
-            clone.height = canvas.height;
-            const cloneCtx = clone.getContext("2d");
-            cloneCtx?.drawImage(canvas, 0, 0);
-            memoryManager.setThumbnail(cacheKey, clone);
-          } catch {
-            // ignore clone errors
-          }
+    renderLowResThumbnail(doc, pageId, scale)
+      .then((url) => {
+        if (!cancelled) {
+          setImgUrl(url);
         }
-      }
-    };
-
-    // Defer thumbnail rendering off main looper using requestIdleCallback
-    const scheduleRender = () => {
-      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-        idleId = (window as any).requestIdleCallback(
-          () => {
-            if (!cancelled) void renderThumb();
-          },
-          { timeout: 1000 }
-        );
-      } else {
-        idleId = setTimeout(() => {
-          if (!cancelled) void renderThumb();
-        }, 1);
-      }
-    };
-
-    scheduleRender();
+      })
+      .catch(() => {
+        // ignore thumbnail render errors
+      });
 
     return () => {
       cancelled = true;
-      if (idleId !== null) {
-        if (typeof window !== "undefined" && "cancelIdleCallback" in window) {
-          (window as any).cancelIdleCallback(idleId);
-        } else {
-          clearTimeout(idleId);
-        }
-      }
     };
-  }, [doc, pageId, width, visible]);
+  }, [doc, pageId, scale, cacheKey, visible]);
 
   return (
     <div ref={wrapRef} className="w-full">
-      {visible ? (
-        <canvas ref={canvasRef} className="block h-auto w-full rounded-sm bg-white" />
+      {visible && imgUrl ? (
+        <img
+          src={imgUrl}
+          alt={`Seite ${pageId + 1}`}
+          className="block h-auto w-full rounded-sm bg-white"
+        />
       ) : (
-        <div className="w-full rounded-sm bg-white" style={{ paddingBottom: `${ratio * 100}%` }} />
+        <div
+          className="w-full rounded-sm bg-white"
+          style={{ paddingBottom: `${ratio * 100}%` }}
+        />
       )}
     </div>
   );

@@ -7,6 +7,34 @@ import { useI18n } from "@/lib/i18n";
 import { PageThumb } from "./PageThumb";
 import { cn } from "@/lib/utils";
 
+export function calculateDropInsertionIndex(
+  itemRect: { left: number; right: number },
+  clientX: number,
+  itemIndex: number,
+): number {
+  const midpoint = (itemRect.left + itemRect.right) / 2;
+  return clientX < midpoint ? itemIndex : itemIndex + 1;
+}
+
+export function getActivePasteSlot(
+  dropInsertionIndex: number | null,
+  selectedIndices: Set<number>,
+  lastClickedIndex: number | null,
+  totalPages: number,
+): number {
+  if (dropInsertionIndex !== null) {
+    return dropInsertionIndex;
+  }
+  if (selectedIndices.size > 0) {
+    const maxSelected = Math.max(...Array.from(selectedIndices));
+    return maxSelected + 1;
+  }
+  if (lastClickedIndex !== null) {
+    return lastClickedIndex + 1;
+  }
+  return totalPages;
+}
+
 export function GridOverview({
   doc,
   onJump,
@@ -47,6 +75,10 @@ export function GridOverview({
 
   const isDragging = dragFrom !== null || touchDragging !== null;
 
+  const [activePasteSlot, setActivePasteSlot] = useState<number | null>(null);
+  const [isGathered, setIsGathered] = useState(false);
+  const [dragOffsets, setDragOffsets] = useState<{ dx: number; dy: number }[]>([]);
+
   // Listen to window keydown for Clipboard Shortcuts (Ctrl+C, Ctrl+X, Ctrl+V)
   useEffect(() => {
     if (!open) return;
@@ -78,7 +110,9 @@ export function GridOverview({
         e.preventDefault();
 
         let targetInsertion: number;
-        if (dropInsertionIndex !== null) {
+        if (activePasteSlot !== null) {
+          targetInsertion = activePasteSlot;
+        } else if (dropInsertionIndex !== null) {
           targetInsertion = dropInsertionIndex;
         } else if (selectedIndices.size > 0) {
           const maxSelected = Math.max(...Array.from(selectedIndices));
@@ -91,9 +125,11 @@ export function GridOverview({
 
         if (clipboard.mode === "copy") {
           duplicatePages(clipboard.indices, targetInsertion);
+          setActivePasteSlot(targetInsertion + clipboard.indices.length);
         } else if (clipboard.mode === "cut") {
           reorderMultiplePages(clipboard.indices, targetInsertion);
           setClipboard(null);
+          setActivePasteSlot(targetInsertion);
         }
       }
     };
@@ -106,6 +142,7 @@ export function GridOverview({
     open,
     selectedIndices,
     clipboard,
+    activePasteSlot,
     dropInsertionIndex,
     lastClickedIndex,
     pageOrder.length,
@@ -188,38 +225,51 @@ export function GridOverview({
     }
 
     const sortedRow = [...nearestRow].sort((a, b) => a.rect.left - b.rect.left);
-    const first = sortedRow[0];
-    const last = sortedRow[sortedRow.length - 1];
-    const inferredHalfGap =
-      sortedRow.length > 1
-        ? Math.max(0, (sortedRow[1].rect.left - sortedRow[0].rect.right) / 2)
-        : 8;
-
-    const slots: { x: number; insertionIndex: number }[] = [
-      { x: first.rect.left - inferredHalfGap, insertionIndex: first.index },
-    ];
-
-    for (let i = 0; i < sortedRow.length - 1; i++) {
-      const current = sortedRow[i];
-      const next = sortedRow[i + 1];
-      slots.push({
-        x: (current.rect.right + next.rect.left) / 2,
-        insertionIndex: next.index,
-      });
+    let insertionIndex = sortedRow[0].index;
+    for (const item of sortedRow) {
+      const centerX = (item.rect.left + item.rect.right) / 2;
+      if (clientX < centerX) {
+        insertionIndex = item.index;
+        break;
+      } else {
+        insertionIndex = item.index + 1;
+      }
     }
 
-    slots.push({
-      x: last.rect.right + inferredHalfGap,
-      insertionIndex: last.index + 1,
-    });
+    if (isNoopInsertionIndex(from, insertionIndex)) {
+      return null;
+    }
 
-    const validSlots = slots.filter((slot) => !isNoopInsertionIndex(from, slot.insertionIndex));
-    if (validSlots.length === 0) return null;
-
-    return validSlots.reduce((nearest, slot) =>
-      Math.abs(clientX - slot.x) < Math.abs(clientX - nearest.x) ? slot : nearest,
-    ).insertionIndex;
+    return insertionIndex;
   };
+
+  const captureDragOffsets = (pointerX: number, pointerY: number, activeIndices: Set<number> | number[]) => {
+    const indices = Array.from(activeIndices).sort((a, b) => a - b);
+    const offsets = indices.map((idx) => {
+      const el = itemRefs.current[idx];
+      if (!el) return { dx: 0, dy: 0 };
+      const rect = el.getBoundingClientRect();
+      const cardCenterX = rect.left + rect.width / 2;
+      const cardCenterY = rect.top + rect.height / 2;
+      return {
+        dx: cardCenterX - pointerX,
+        dy: cardCenterY - pointerY,
+      };
+    });
+    setDragOffsets(offsets);
+    setIsGathered(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      const rAF = requestAnimationFrame(() => {
+        setIsGathered(true);
+      });
+      return () => cancelAnimationFrame(rAF);
+    } else {
+      setIsGathered(false);
+    }
+  }, [isDragging]);
 
   const resetDropState = () => {
     setDragOver(null);
@@ -297,10 +347,12 @@ export function GridOverview({
       setDragFrom(index);
       setTouchDragging(index);
       setTouchPos({ x: touch.clientX, y: touch.clientY });
+      const targetIndices = selectedIndices.has(index) ? selectedIndices : new Set([index]);
       if (!selectedIndices.has(index) && selectedIndices.size > 0) {
         setSelectedIndices(new Set([index]));
         setLastClickedIndex(index);
       }
+      captureDragOffsets(touch.clientX, touch.clientY, targetIndices);
     }, 1000);
   };
 
@@ -485,6 +537,14 @@ export function GridOverview({
       </div>
 
       <div
+        onClick={(e) => {
+          if (!isDragging) {
+            const slot = getInsertionIndexAtPoint(e.clientX, e.clientY, null);
+            if (slot !== null) {
+              setActivePasteSlot(slot);
+            }
+          }
+        }}
         onDragOver={handleParentDragOver}
         onDrop={handleParentDrop}
         className="grid flex-1 overflow-y-auto p-6 gap-4"
@@ -496,6 +556,16 @@ export function GridOverview({
         {pageOrder.map((pageId, index) => {
           const isSelected = selectedIndices.has(index);
           const isGreyedOut = isDragging && (dragFrom === index || selectedIndices.has(index));
+          const showActivePasteLine =
+            !isDragging &&
+            activePasteSlot !== null &&
+            (activePasteSlot === index || (activePasteSlot === pageOrder.length && index === pageOrder.length - 1));
+          const pasteLineSide = showActivePasteLine
+            ? activePasteSlot === index
+              ? "left"
+              : "right"
+            : null;
+
           return (
             <div
               key={`${pageId}-${index}`}
@@ -513,10 +583,12 @@ export function GridOverview({
                 }
                 setDragFrom(index);
                 setDragPos({ x: e.clientX, y: e.clientY });
+                const activeIndices = selectedIndices.has(index) ? selectedIndices : new Set([index]);
                 if (!selectedIndices.has(index) && selectedIndices.size > 0) {
                   setSelectedIndices(new Set([index]));
                   setLastClickedIndex(index);
                 }
+                captureDragOffsets(e.clientX, e.clientY, activeIndices);
                 resetDropState();
               }}
               onDragEnd={() => {
@@ -541,22 +613,19 @@ export function GridOverview({
               data-selected={isSelected ? "true" : "false"}
               data-dragging={isGreyedOut ? "true" : "false"}
             >
-              {/* Drop indicator line */}
-              {dragOver === index &&
-                dragFrom !== null &&
-                dropTarget !== null &&
-                dropSide !== null && (
-                  <div
-                    className={cn(
-                      "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
-                    )}
-                    style={{
-                      left: dropSide === "left" ? "-0.625rem" : undefined,
-                      right: dropSide === "right" ? "-0.625rem" : undefined,
-                    }}
-                    data-testid="drop-indicator"
-                  />
-                )}
+              {/* Drop / Active paste indicator line */}
+              {((dragOver === index && dragFrom !== null && dropTarget !== null && dropSide !== null) || showActivePasteLine) && (
+                <div
+                  className={cn(
+                    "absolute z-50 bg-primary rounded-full pointer-events-none top-2.5 bottom-2.5 w-1 shadow-md",
+                  )}
+                  style={{
+                    left: (dropSide ?? pasteLineSide) === "left" ? "-0.625rem" : undefined,
+                    right: (dropSide ?? pasteLineSide) === "right" ? "-0.625rem" : undefined,
+                  }}
+                  data-testid="drop-indicator"
+                />
+              )}
               <div
                 onClick={(e) => {
                   if (touchDragging === null) {
@@ -574,7 +643,7 @@ export function GridOverview({
                 {isSelected && !isGreyedOut && (
                   <CheckCircle2 className="h-5 w-5 text-primary absolute top-2 left-2 z-20 fill-background" />
                 )}
-                <PageThumb doc={doc} pageId={pageId} width={240} />
+                <PageThumb doc={doc} pageId={pageId} pagesPerRow={pagesPerRow} />
                 <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
                   <span>{index + 1}</span>
                 </div>
@@ -612,9 +681,11 @@ export function GridOverview({
             <div
               className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md"
               style={{
-                transform: "rotate(4deg) translateY(-10px) translateX(6px)",
+                transform: isGathered
+                  ? "translate3d(0, 0, 0) rotate(4deg) translateY(-10px) translateX(6px)"
+                  : `translate3d(${dragOffsets[2]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[2]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
                 opacity: 0.85,
-                transition: "transform 250ms ease-out, opacity 200ms ease-out",
+                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
@@ -624,9 +695,11 @@ export function GridOverview({
             <div
               className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg"
               style={{
-                transform: "rotate(-5deg) translateY(-5px) translateX(-4px)",
+                transform: isGathered
+                  ? "translate3d(0, 0, 0) rotate(-5deg) translateY(-5px) translateX(-4px)"
+                  : `translate3d(${dragOffsets[1]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[1]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
                 opacity: 0.9,
-                transition: "transform 250ms ease-out, opacity 200ms ease-out",
+                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
@@ -636,13 +709,16 @@ export function GridOverview({
             <div
               className="relative rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100"
               style={{
-                transition: "transform 250ms ease-out, opacity 200ms ease-out",
+                transform: isGathered
+                  ? "translate3d(0, 0, 0)"
+                  : `translate3d(${dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[0]?.dy ?? 0}px, 0)`,
+                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <PageThumb
                 doc={doc}
                 pageId={pageOrder[dragFrom ?? touchDragging ?? Array.from(selectedIndices)[0]] ?? pageOrder[0]}
-                width={180}
+                pagesPerRow={pagesPerRow}
               />
               <div className="absolute -top-2.5 -right-2.5 rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground shadow-lg">
                 {selectedIndices.size} Seiten
@@ -660,13 +736,17 @@ export function GridOverview({
             left: activeDragPos.x - 100,
             top: activeDragPos.y - 120,
             width: 200,
+            transform: isGathered
+              ? "translate3d(0, 0, 0)"
+              : `translate3d(${dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[0]?.dy ?? 0}px, 0)`,
+            transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
           }}
           data-testid="single-drag-avatar"
         >
           <PageThumb
             doc={doc}
             pageId={pageOrder[dragFrom ?? touchDragging ?? 0] ?? pageOrder[0]}
-            width={180}
+            pagesPerRow={pagesPerRow}
           />
           <div className="mt-1.5 text-center font-mono text-xs font-bold text-primary">
             Seite {(dragFrom ?? touchDragging ?? 0) + 1}

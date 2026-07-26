@@ -1149,20 +1149,17 @@ export function PageView({ doc, pageId }: Props) {
         <div
           ref={wrapRef}
           className="relative shadow-lg ring-1 ring-black/5"
-          style={{ width: viewport?.width, height: viewport?.height, background: "white" }}
+          style={{
+            width: (renderedViewport ?? viewport)?.width,
+            height: (renderedViewport ?? viewport)?.height,
+            background: "white",
+            transform: zoomRatio !== 1 ? `scale(${zoomRatio})` : "none",
+            transformOrigin: "top left",
+            willChange: "transform",
+          }}
           onContextMenu={onContextMenu}
         >
-          <div
-            style={{
-              width: renderedViewport?.width,
-              height: renderedViewport?.height,
-              transform: zoomRatio !== 1 ? `scale(${zoomRatio})` : "none",
-              transformOrigin: "top left",
-              willChange: zoomRatio !== 1 ? "transform" : "auto",
-            }}
-          >
-            <canvas ref={canvasRef} className="block" />
-          </div>
+          <canvas ref={canvasRef} className="block" />
           {workerLoading && (
             <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center pointer-events-auto">
               <div className="flex flex-col items-center gap-4 max-w-xs px-4">
