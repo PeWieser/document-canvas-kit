@@ -818,12 +818,17 @@ export function PageView({ doc, pageId }: Props) {
       while (leftIdx > 0) {
         const curr = candidates[leftIdx];
         const prev = candidates[leftIdx - 1];
-        // If prev overlaps with curr (duplicate text layer), break
-        if (curr.transform[4] < prev.transform[4] + prev.width * 0.3) {
+        // If prev starts at virtually the same X coordinate (duplicate text layer), break
+        if (curr.transform[4] < prev.transform[4] + 2.0) {
           break;
         }
         const gap = curr.transform[4] - (prev.transform[4] + prev.width);
-        if (gap >= -2.0 && gap <= targetFontSize * 0.35 && !prev.str.endsWith(" ") && !curr.str.startsWith(" ")) {
+        if (
+          gap >= -targetFontSize * 0.6 &&
+          gap <= targetFontSize * 0.35 &&
+          !prev.str.endsWith(" ") &&
+          !curr.str.startsWith(" ")
+        ) {
           leftIdx--;
         } else {
           break;
@@ -834,12 +839,17 @@ export function PageView({ doc, pageId }: Props) {
       while (rightIdx < candidates.length - 1) {
         const curr = candidates[rightIdx];
         const next = candidates[rightIdx + 1];
-        // If next overlaps with curr (duplicate text layer), break
-        if (next.transform[4] < curr.transform[4] + curr.width * 0.3) {
+        // If next starts at virtually the same X coordinate (duplicate text layer), break
+        if (next.transform[4] < curr.transform[4] + 2.0) {
           break;
         }
         const gap = next.transform[4] - (curr.transform[4] + curr.width);
-        if (gap >= -2.0 && gap <= targetFontSize * 0.35 && !curr.str.endsWith(" ") && !next.str.startsWith(" ")) {
+        if (
+          gap >= -targetFontSize * 0.6 &&
+          gap <= targetFontSize * 0.35 &&
+          !curr.str.endsWith(" ") &&
+          !next.str.startsWith(" ")
+        ) {
           rightIdx++;
         } else {
           break;
@@ -1680,8 +1690,15 @@ function AnnoView({
           ...s,
           transform: transformString,
           transformOrigin: transformOriginString,
-          minHeight: `${fontHeight}px`,
-          height: anno.kind === "textReplace" ? `${(fontHeight * numLines) + 1.5}px` : (anno.kind === "textbox" ? `${((anno as TextboxAnno).h || (anno.fontSize * 2)) * vp.scale}px` : "auto"),
+          minHeight: anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : `${fontHeight * 1.2}px`,
+          paddingBlock: anno.kind === "textReplace" ? "2px" : undefined,
+          lineHeight: 1.15,
+          height:
+            anno.kind === "textReplace"
+              ? `${fontHeight * numLines * 1.25 + 4}px`
+              : anno.kind === "textbox"
+                ? `${((anno as TextboxAnno).h || anno.fontSize * 2) * vp.scale}px`
+                : "auto",
           pointerEvents: selectable || tool === "edit-text" || selected ? "auto" : "none",
           // hide the original glyph underneath as soon as the replacement exists
           background: anno.kind === "textReplace" ? "white" : undefined,
@@ -1724,7 +1741,7 @@ function AnnoView({
                   el.style.height = "auto";
                   el.style.height = `${el.scrollHeight}px`;
                 } else {
-                  el.style.height = `${fontHeight}px`;
+                  el.style.height = anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : `${fontHeight * 1.22}px`;
                 }
               }
               onUpdate({ text: el.value } as any);
@@ -1738,15 +1755,16 @@ function AnnoView({
               top: 0,
               left: 0,
               width: "100%",
-              height: anno.kind === "textbox" ? "100%" : `${fontHeight}px`,
-              minHeight: anno.kind === "textbox" ? "100%" : undefined,
+              height: anno.kind === "textbox" ? "100%" : (anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : `${fontHeight * 1.22}px`),
+              minHeight: anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : (anno.kind === "textbox" ? "100%" : undefined),
               fontSize: `${fontHeight}px`,
               color: anno.color,
               fontFamily: family,
               fontWeight: anno.bold ? 700 : 400,
               fontStyle: anno.italic ? "italic" : "normal",
-              lineHeight: 1,
-              padding: 0,
+              lineHeight: 1.15,
+              paddingBlock: anno.kind === "textReplace" ? "2px" : undefined,
+              padding: anno.kind === "textReplace" ? "2px 0" : 0,
               margin: 0,
               border: "none",
               outline: "none",

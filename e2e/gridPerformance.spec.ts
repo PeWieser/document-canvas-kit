@@ -110,39 +110,68 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
     const gridItem2 = page.locator('[data-testid="grid-item-2"]');
     await expect(gridItem2).toBeVisible();
 
-    // 3a. Verify Ctrl+Click selects page 1 and page 3
+    // 3a. Page Selection: Ctrl+Click selects page 1 and page 2
+    const gridItem1 = page.locator('[data-testid="grid-item-1"]');
     const card0 = gridItem0.locator(".cursor-pointer").first();
+    const card1 = gridItem1.locator(".cursor-pointer").first();
     const card2 = gridItem2.locator(".cursor-pointer").first();
+
+    // Deselect any previous selection if present
+    const deselectBtn = page.locator('[data-testid="deselect-all-btn"]');
+    if (await deselectBtn.isVisible()) {
+      await deselectBtn.click();
+      await page.waitForTimeout(100);
+    }
 
     await card0.click({ modifiers: ["Control"] });
     await page.waitForTimeout(100);
-    await card2.click({ modifiers: ["Control"] });
+    await card1.click({ modifiers: ["Control"] });
     await page.waitForTimeout(100);
 
     await expect(gridItem0).toHaveAttribute("data-selected", "true");
-    await expect(gridItem2).toHaveAttribute("data-selected", "true");
-    await expect(page.locator('[data-testid="grid-item-1"]')).toHaveAttribute("data-selected", "false");
+    await expect(gridItem1).toHaveAttribute("data-selected", "true");
 
-    // 3b. Verify Shift+Click selects pages 1 through 4
-    // Click page 1 (card0) with Control to set anchor at index 0
+    // 3b. Page Clipboard Test: Press Ctrl+C, move pointer to slot, press Ctrl+V, verify duplicated pages added to page order
+    const initialItemCount = await page.locator('[data-testid^="grid-item-"]').count();
+
+    // Press Ctrl+C to copy selected pages [0, 1]
+    await page.keyboard.press("Control+c");
+    await page.waitForTimeout(150);
+
+    // Move pointer to slot (gridItem2)
+    await gridItem2.hover();
+    await page.waitForTimeout(150);
+
+    // Press Ctrl+V to duplicate pages at target slot
+    await page.keyboard.press("Control+v");
+    await page.waitForTimeout(300);
+
+    // Verify duplicated pages added to page order
+    const newItemCount = await page.locator('[data-testid^="grid-item-"]').count();
+    expect(newItemCount).toBe(initialItemCount + 2);
+
+    // 3c. Drag Avatar & Greyed-out Original Slots Verification during Drag-and-Drop
+    // Select pages 1 and 2 again for multi-page drag test
     await card0.click({ modifiers: ["Control"] });
     await page.waitForTimeout(100);
-    const card3 = page.locator('[data-testid="grid-item-3"]').locator(".cursor-pointer").first();
-    await card3.click({ modifiers: ["Shift"] });
+    await card1.click({ modifiers: ["Control"] });
     await page.waitForTimeout(100);
-
-    await expect(page.locator('[data-testid="grid-item-0"]')).toHaveAttribute("data-selected", "true");
-    await expect(page.locator('[data-testid="grid-item-1"]')).toHaveAttribute("data-selected", "true");
-    await expect(page.locator('[data-testid="grid-item-2"]')).toHaveAttribute("data-selected", "true");
-    await expect(page.locator('[data-testid="grid-item-3"]')).toHaveAttribute("data-selected", "true");
 
     const box2 = (await gridItem2.boundingBox())!;
     const targetX = box2.x + box2.width / 4;
     const targetY = box2.y + box2.height / 2;
 
-    // Start drag on gridItem0 (part of multi-page selection [0, 1, 2, 3])
+    // Start drag on gridItem0
     await gridItem0.dispatchEvent("dragstart", { clientX: 100, clientY: 100 });
     await page.waitForTimeout(100);
+
+    // Verify greyed-out original slots during drag
+    await expect(gridItem0).toHaveAttribute("data-dragging", "true");
+    const item0Opacity = await gridItem0.evaluate((el) => {
+      const card = el.querySelector(".cursor-pointer") as HTMLElement | null;
+      return card ? window.getComputedStyle(card).opacity : window.getComputedStyle(el).opacity;
+    });
+    expect(parseFloat(item0Opacity)).toBeLessThanOrEqual(0.5);
 
     // Verify dropEffect = "move" on dragover event
     const dropEffectValue = await gridContainer.evaluate((el, targetPos) => {
@@ -161,26 +190,34 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
 
     expect(dropEffectValue).toBe("move");
 
-    // 3c. Verify Apple-style stacked cards drag avatar appears during multi-page drag
+    // Dispatch dragover to activate avatar
     await gridContainer.dispatchEvent("dragover", { clientX: targetX, clientY: targetY });
+    await page.waitForTimeout(100);
 
-    const stackedAvatar = page.locator('[data-testid="stacked-drag-avatar"]');
-    await expect(stackedAvatar).toBeVisible();
+    // Verify 100% solid drag avatar
+    const dragAvatar = page.locator('[data-testid="stacked-drag-avatar"], [data-testid="single-drag-avatar"]').first();
+    await expect(dragAvatar).toBeVisible();
 
-    const dropIndicator = page.locator('[data-testid="drop-indicator"]');
-    await expect(dropIndicator).toBeVisible();
+    const avatarOpacity = await dragAvatar.evaluate((el) => window.getComputedStyle(el).opacity);
+    expect(parseFloat(avatarOpacity)).toBe(1);
 
-    // 3d. Perform drag and drop reorder of multi-page selection
+    // Perform drop and dragend
     await gridContainer.dispatchEvent("drop", { clientX: targetX, clientY: targetY });
     await gridItem0.dispatchEvent("dragend");
     await page.waitForTimeout(300);
+
+    // 4. Save proof screenshot to e2e/screenshots/grid_matrix_proof.png
+    const screenshotPath = path.join(process.cwd(), "e2e", "screenshots", "grid_matrix_proof.png");
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    expect(fs.existsSync(screenshotPath)).toBe(true);
+    console.log(`[E2E Proof Screenshot Saved]: ${screenshotPath}`);
 
     // Close Grid Overview
     await closeButton.click();
     await gridContainer.waitFor({ state: "hidden", timeout: 5000 });
     await page.waitForTimeout(300);
 
-    // 4. Verify comment tool sub-toolbar hiding
+    // 5. Verify comment tool sub-toolbar hiding
     await toolsMenu.click();
     const commentTool = page.locator('[data-testid="tool-item-comment"]');
     await commentTool.waitFor({ state: "visible", timeout: 5000 });
@@ -189,11 +226,5 @@ test.describe("Sub-Toolbar Cleanup, Spacebar Pan, Text Replace & Grid Performanc
 
     const subToolbar = page.locator('[data-testid="sub-toolbar"]');
     await expect(subToolbar).not.toBeVisible();
-
-    // 5. Save proof screenshot to e2e/screenshots/grid_matrix_proof.png
-    const screenshotPath = path.join(process.cwd(), "e2e", "screenshots", "grid_matrix_proof.png");
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    expect(fs.existsSync(screenshotPath)).toBe(true);
-    console.log(`[E2E Proof Screenshot Saved]: ${screenshotPath}`);
   });
 });

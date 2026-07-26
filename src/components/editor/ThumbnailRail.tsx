@@ -72,7 +72,7 @@ export function ThumbnailRail({
           const isSelected = selectedPages.includes(index);
           return (
             <div
-              key={pageId}
+              key={`${pageId}-${index}`}
               ref={activeIndex === index ? activeRef : undefined}
               draggable
               onDragStart={() => setDragFrom(index)}

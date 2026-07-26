@@ -84,6 +84,7 @@ export interface DocumentState {
 
   reorderPages: (from: number, to: number) => void;
   reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
+  duplicatePages: (indicesToDuplicate: number[], insertAtIndex?: number) => void;
   deletePage: (displayIndex: number) => void;
 
   undo: () => void;
@@ -288,6 +289,41 @@ export function createDocumentState(
         d.future = [];
         d.dirty = true;
         d.pageOrder = newOrder;
+      }),
+
+    duplicatePages: (indicesToDuplicate, insertAtIndex) =>
+      runUpdate((d) => {
+        if (indicesToDuplicate.length === 0) return;
+        const sorted = [...indicesToDuplicate].sort((a, b) => a - b);
+        const validIndices = sorted.filter((idx) => idx >= 0 && idx < d.pageOrder.length);
+        if (validIndices.length === 0) return;
+
+        const targetIndex =
+          insertAtIndex !== undefined
+            ? Math.max(0, Math.min(insertAtIndex, d.pageOrder.length))
+            : d.pageOrder.length;
+
+        const duplicatedItems = validIndices.map((idx) => d.pageOrder[idx]);
+
+        const duplicatedAnnotations: Annotation[] = [];
+        d.annotations.forEach((anno) => {
+          if (duplicatedItems.includes(anno.page)) {
+            duplicatedAnnotations.push({
+              ...anno,
+              id: `anno-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            });
+          }
+        });
+
+        const newPageOrder = [...d.pageOrder];
+        newPageOrder.splice(targetIndex, 0, ...duplicatedItems);
+
+        d.past = [...d.past, snap(d)];
+        d.future = [];
+        d.dirty = true;
+        d.numPages = d.numPages + duplicatedItems.length;
+        d.pageOrder = newPageOrder;
+        d.annotations = [...d.annotations, ...duplicatedAnnotations];
       }),
 
     deletePage: (displayIndex) =>

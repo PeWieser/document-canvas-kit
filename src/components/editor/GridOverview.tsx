@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Trash2, Plus, Minus, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import type { PdfDocumentProxy } from "@/lib/pdf/pdfjs";
 import { useEditor } from "@/store/editorStore";
 import { useI18n } from "@/lib/i18n";
@@ -19,12 +20,15 @@ export function GridOverview({
   const pageOrder = useEditor((s) => s.pageOrder);
   const reorderPages = useEditor((s) => s.reorderPages);
   const reorderMultiplePages = useEditor((s) => s.reorderMultiplePages);
+  const duplicatePages = useEditor((s) => s.duplicatePages);
   const deletePage = useEditor((s) => s.deletePage);
   const pagesPerRow = useEditor((s) => s.pagesPerRow ?? 4);
   const setPagesPerRow = useEditor((s) => s.setPagesPerRow);
 
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+
+  const [clipboard, setClipboard] = useState<{ mode: "copy" | "cut"; indices: number[] } | null>(null);
 
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
@@ -42,6 +46,72 @@ export function GridOverview({
   const modalRef = useRef<HTMLDivElement>(null);
 
   const isDragging = dragFrom !== null || touchDragging !== null;
+
+  // Listen to window keydown for Clipboard Shortcuts (Ctrl+C, Ctrl+X, Ctrl+V)
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const isCtrl = e.ctrlKey || e.metaKey;
+
+      if (isCtrl && e.key.toLowerCase() === "c") {
+        if (selectedIndices.size === 0) return;
+        e.preventDefault();
+        const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+        setClipboard({ mode: "copy", indices });
+        toast(`${indices.length} Seiten kopiert`);
+      } else if (isCtrl && e.key.toLowerCase() === "x") {
+        if (selectedIndices.size === 0) return;
+        e.preventDefault();
+        const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+        setClipboard({ mode: "cut", indices });
+        toast(`${indices.length} Seiten ausgeschnitten`);
+      } else if (isCtrl && e.key.toLowerCase() === "v") {
+        if (!clipboard || clipboard.indices.length === 0) return;
+        e.preventDefault();
+
+        let targetInsertion: number;
+        if (dropInsertionIndex !== null) {
+          targetInsertion = dropInsertionIndex;
+        } else if (selectedIndices.size > 0) {
+          const maxSelected = Math.max(...Array.from(selectedIndices));
+          targetInsertion = maxSelected + 1;
+        } else if (lastClickedIndex !== null) {
+          targetInsertion = lastClickedIndex + 1;
+        } else {
+          targetInsertion = pageOrder.length;
+        }
+
+        if (clipboard.mode === "copy") {
+          duplicatePages(clipboard.indices, targetInsertion);
+        } else if (clipboard.mode === "cut") {
+          reorderMultiplePages(clipboard.indices, targetInsertion);
+          setClipboard(null);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [
+    open,
+    selectedIndices,
+    clipboard,
+    dropInsertionIndex,
+    lastClickedIndex,
+    pageOrder.length,
+    duplicatePages,
+    reorderMultiplePages,
+  ]);
 
   // Wheel listener for Ctrl + Scroll to adjust pagesPerRow
   useEffect(() => {
@@ -316,6 +386,8 @@ export function GridOverview({
     resetDropState();
   };
 
+  const activeDragPos = touchPos ?? dragPos;
+
   return (
     <div
       ref={modalRef}
@@ -423,15 +495,22 @@ export function GridOverview({
       >
         {pageOrder.map((pageId, index) => {
           const isSelected = selectedIndices.has(index);
+          const isGreyedOut = isDragging && (dragFrom === index || selectedIndices.has(index));
           return (
             <div
-              key={pageId}
+              key={`${pageId}-${index}`}
               ref={(el) => {
                 itemRefs.current[index] = el;
               }}
               data-grid-item-index={index}
               draggable
               onDragStart={(e) => {
+                if (e.dataTransfer) {
+                  const transparentCanvas = document.createElement("canvas");
+                  transparentCanvas.width = 1;
+                  transparentCanvas.height = 1;
+                  e.dataTransfer.setDragImage(transparentCanvas, 0, 0);
+                }
                 setDragFrom(index);
                 setDragPos({ x: e.clientX, y: e.clientY });
                 if (!selectedIndices.has(index) && selectedIndices.size > 0) {
@@ -456,10 +535,11 @@ export function GridOverview({
               onTouchEnd={handleTouchEnd}
               className={cn(
                 "group relative p-2.5 outline-none rounded-lg transition-transform duration-150",
-                touchDragging === index && "opacity-40 scale-95",
+                touchDragging === index && "scale-95",
               )}
               data-testid={`grid-item-${index}`}
               data-selected={isSelected ? "true" : "false"}
+              data-dragging={isGreyedOut ? "true" : "false"}
             >
               {/* Drop indicator line */}
               {dragOver === index &&
@@ -487,17 +567,18 @@ export function GridOverview({
                   "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
                   isSelected && "ring-2 ring-primary bg-primary/10",
                   isDragging && "pointer-events-none",
+                  isGreyedOut && "opacity-30 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
                 )}
                 title={t("reorderHint")}
               >
-                {isSelected && (
+                {isSelected && !isGreyedOut && (
                   <CheckCircle2 className="h-5 w-5 text-primary absolute top-2 left-2 z-20 fill-background" />
                 )}
                 <PageThumb doc={doc} pageId={pageId} width={240} />
                 <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-xs text-muted-foreground">
                   <span>{index + 1}</span>
                 </div>
-                {pageOrder.length > 1 && (
+                {pageOrder.length > 1 && !isGreyedOut && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -515,52 +596,55 @@ export function GridOverview({
         })}
       </div>
 
-      {/* Apple-Style 3D Stacked Cards Drag Avatar when multiple pages selected */}
-      {selectedIndices.size > 1 && isDragging && (touchPos || dragPos) && (
+      {/* 100% Solid Floating Drag Avatar (Multi-Page: Apple 3D Stacked Cards) */}
+      {isDragging && activeDragPos && selectedIndices.size > 1 && (
         <div
-          className="fixed z-[300] pointer-events-none select-none"
+          className="fixed z-[300] pointer-events-none select-none opacity-100 shadow-2xl"
           style={{
-            left: (touchPos?.x ?? dragPos?.x ?? 0) - 60,
-            top: (touchPos?.y ?? dragPos?.y ?? 0) - 80,
-            width: 130,
+            left: activeDragPos.x - 100,
+            top: activeDragPos.y - 120,
+            width: 200,
           }}
           data-testid="stacked-drag-avatar"
         >
           <div className="relative w-full">
             {/* Card 3 (Bottom) */}
             <div
-              className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md transition-transform"
+              className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md"
               style={{
-                top: "-12px",
-                left: "8px",
-                transform: "rotate(4deg)",
-                opacity: 0.7,
+                transform: "rotate(4deg) translateY(-10px) translateX(6px)",
+                opacity: 0.85,
+                transition: "transform 250ms ease-out, opacity 200ms ease-out",
               }}
             >
-              <div className="w-full aspect-[3/4] bg-muted/50 rounded" />
+              <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
             </div>
 
             {/* Card 2 (Middle) */}
             <div
-              className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg transition-transform"
+              className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg"
               style={{
-                top: "-6px",
-                left: "4px",
-                transform: "rotate(-5deg)",
-                opacity: 0.85,
+                transform: "rotate(-5deg) translateY(-5px) translateX(-4px)",
+                opacity: 0.9,
+                transition: "transform 250ms ease-out, opacity 200ms ease-out",
               }}
             >
-              <div className="w-full aspect-[3/4] bg-muted/50 rounded" />
+              <div className="w-full aspect-[3/4] bg-muted/40 rounded" />
             </div>
 
             {/* Card 1 (Top) */}
-            <div className="relative rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100">
+            <div
+              className="relative rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100"
+              style={{
+                transition: "transform 250ms ease-out, opacity 200ms ease-out",
+              }}
+            >
               <PageThumb
                 doc={doc}
-                pageId={pageOrder[dragFrom ?? Array.from(selectedIndices)[0]] ?? pageOrder[0]}
-                width={120}
+                pageId={pageOrder[dragFrom ?? touchDragging ?? Array.from(selectedIndices)[0]] ?? pageOrder[0]}
+                width={180}
               />
-              <div className="absolute -top-2 -right-2 rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground shadow-md">
+              <div className="absolute -top-2.5 -right-2.5 rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground shadow-lg">
                 {selectedIndices.size} Seiten
               </div>
             </div>
@@ -568,19 +652,24 @@ export function GridOverview({
         </div>
       )}
 
-      {/* Floating Drag Avatar for Touch Mode (Single Item) */}
-      {selectedIndices.size <= 1 && touchDragging !== null && touchPos && (
+      {/* 100% Solid Floating Drag Avatar (Single Page) */}
+      {isDragging && activeDragPos && selectedIndices.size <= 1 && (
         <div
-          className="fixed z-[300] pointer-events-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-90 select-none"
+          className="fixed z-[300] pointer-events-none select-none rounded-lg border-2 border-primary bg-card p-2 shadow-2xl opacity-100"
           style={{
-            left: touchPos.x - 60,
-            top: touchPos.y - 80,
-            width: 120,
+            left: activeDragPos.x - 100,
+            top: activeDragPos.y - 120,
+            width: 200,
           }}
+          data-testid="single-drag-avatar"
         >
-          <PageThumb doc={doc} pageId={pageOrder[touchDragging]} width={100} />
-          <div className="mt-1 text-center font-mono text-[10px] font-bold text-primary">
-            Seite {touchDragging + 1}
+          <PageThumb
+            doc={doc}
+            pageId={pageOrder[dragFrom ?? touchDragging ?? 0] ?? pageOrder[0]}
+            width={180}
+          />
+          <div className="mt-1.5 text-center font-mono text-xs font-bold text-primary">
+            Seite {(dragFrom ?? touchDragging ?? 0) + 1}
           </div>
         </div>
       )}

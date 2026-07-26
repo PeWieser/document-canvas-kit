@@ -29,6 +29,7 @@ export interface DocumentStoreState {
   ) => void;
 
   reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
+  duplicatePages: (indicesToDuplicate: number[], insertAtIndex?: number) => void;
 
   getActive: () => DocumentState | null;
   updateActive: (updater: (doc: DocumentState) => void) => void;
@@ -242,6 +243,13 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => {
       const activeDoc = get().getActive();
       if (activeDoc) {
         activeDoc.reorderMultiplePages(indicesToMove, insertAtIndex);
+      }
+    },
+
+    duplicatePages: (indicesToDuplicate: number[], insertAtIndex?: number) => {
+      const activeDoc = get().getActive();
+      if (activeDoc) {
+        activeDoc.duplicatePages(indicesToDuplicate, insertAtIndex);
       }
     },
 

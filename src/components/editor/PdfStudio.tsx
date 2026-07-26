@@ -838,7 +838,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
                 const isVisible = visiblePages.has(index);
                 return (
                   <div
-                    key={pageId}
+                    key={`${pageId}-${index}`}
                     data-index={index}
                     ref={(el) => {
                       pageRefs.current[index] = el;
