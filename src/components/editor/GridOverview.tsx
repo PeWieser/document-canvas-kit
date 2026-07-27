@@ -697,7 +697,7 @@ export function GridOverview({
                   // Keep the source slot in the grid to prevent layout jumps, but
                   // hide its preview completely. The floating avatar is the only
                   // visible representation while dragging.
-                  isGreyedOut && "opacity-0 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
+                  isGreyedOut && "opacity-50 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
                 )}
                 title={t("reorderHint")}
               >
