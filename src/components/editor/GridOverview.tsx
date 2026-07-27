@@ -73,6 +73,9 @@ export function GridOverview({
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
   const dragFromRef = useRef<number | null>(null);
+  // Native HTML drag can emit a click after dragend. Suppress that click so
+  // finishing a reorder cannot trigger the normal "jump and close" action.
+  const suppressClickAfterDragRef = useRef(false);
 
   const isDragging = dragFrom !== null || touchDragging !== null;
 
@@ -597,6 +600,7 @@ export function GridOverview({
               data-grid-item-index={index}
               draggable
               onDragStart={(e) => {
+                suppressClickAfterDragRef.current = true;
                 dragFromRef.current = index;
                 if (e.dataTransfer) {
                   const transparentCanvas = document.createElement("canvas");
@@ -659,14 +663,19 @@ export function GridOverview({
               )}
               <div
                 onClick={(e) => {
-                  if (touchDragging === null) {
+                  if (suppressClickAfterDragRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    suppressClickAfterDragRef.current = false;
+                    return;
+                  }
+                  if (touchDragging === null && !isDragging && dragFromRef.current === null) {
                     handleItemClick(index, e);
                   }
                 }}
                 className={cn(
                   "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
                   isSelected && "ring-2 ring-primary bg-primary/10",
-                  isDragging && "pointer-events-none",
                   isGreyedOut && "opacity-30 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
                 )}
                 title={t("reorderHint")}

@@ -1440,6 +1440,29 @@ function AnnoView({
   const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
   const dragStartRect = useRef<Rect | null>(null);
   const dragStartTransform = useRef<number[] | null>(null);
+  const fontReadyKeyRef = useRef<string | null>(null);
+  const [, setFontRevision] = useState(0);
+
+  // Font CSS is loaded asynchronously. Re-measure after the actual font is
+  // available; otherwise canvas metrics are taken from a fallback font and
+  // only some replacements get a visibly wrong baseline.
+  const readyFontFamily = cssFontStack(anno.fontFamily || "");
+  const readyFontSpec = `${anno.italic ? "italic" : "normal"} ${anno.bold ? 700 : 400} ${anno.fontSize || 12}px ${readyFontFamily}`;
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts || !readyFontFamily) return;
+    const key = readyFontSpec;
+    if (fontReadyKeyRef.current === key) return;
+    fontReadyKeyRef.current = key;
+    let cancelled = false;
+    void loadWebFont(readyFontFamily).then(() => document.fonts.load(readyFontSpec)).then(() => {
+      if (!cancelled) setFontRevision((revision) => revision + 1);
+    }).catch(() => {
+      // Keep the fallback metrics if the web font cannot be loaded.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [readyFontFamily, readyFontSpec]);
 
   if (anno.kind === "highlight") {
     return (

@@ -137,6 +137,9 @@ export function DropZone({ onFile, onOpen }: DropZoneProps) {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold tracking-wide">
             <Sparkles className="w-3.5 h-3.5" />
             <span>PDF Studio 2.0</span>
+            <span className="rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+              Testing
+            </span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
             {t("appName")}
