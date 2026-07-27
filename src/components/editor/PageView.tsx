@@ -33,7 +33,7 @@ interface TextItem {
   width: number;
   height: number;
   fontName?: string;
-  color?: Uint8ClampedArray | number[];
+  color?: string;
   charSpacing?: number;
 }
 
@@ -403,7 +403,7 @@ export function PageView({ doc, pageId }: Props) {
             width: it.width as number,
             height: it.height as number,
             fontName: (it as any).fontName,
-            color: undefined, // Resolved lazily on-demand
+            color: (it as any).color || hints.get(i)?.color,
             charSpacing: hints.get(i)?.charSpacing ?? (it as any).charSpacing ?? 0,
           });
         }
@@ -418,6 +418,68 @@ export function PageView({ doc, pageId }: Props) {
       cancelled = true;
     };
   }, [doc, pageId]);
+
+  // --- background font pre-pass (0ms scroll/render impact) ---
+  useEffect(() => {
+    if (!pdfPage || items.length === 0) return;
+
+    let cancelled = false;
+
+    const schedule =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? (cb: () => void) => (window as any).requestIdleCallback(cb, { timeout: 2000 })
+        : (cb: () => void) => setTimeout(cb, 50);
+
+    const handle = schedule(async () => {
+      if (cancelled) return;
+
+      const itemsByFont = new Map<string, TextItem[]>();
+      for (const it of items) {
+        if (it.fontName) {
+          const list = itemsByFont.get(it.fontName) || [];
+          list.push(it);
+          itemsByFont.set(it.fontName, list);
+        }
+      }
+
+      for (const [fontName, fontItems] of itemsByFont.entries()) {
+        if (cancelled) break;
+
+        if (globalFontMapping[fontName] && globalFontInfo[fontName]) {
+          continue;
+        }
+
+        // Pick the longest text item on the page for this fontName
+        const longestItem = fontItems.reduce((prev, curr) =>
+          (curr.str?.length || 0) > (prev.str?.length || 0) ? curr : prev
+        );
+
+        try {
+          if (!globalFontInfo[fontName]) {
+            const info = await getFontInfo(pdfPage, fontName);
+            if (!cancelled && info) {
+              globalFontInfo[fontName] = info;
+            }
+          }
+          if (!globalFontMapping[fontName]) {
+            const mapping = await matchSingleFontOnPage(pdfPage, fontName);
+            if (!cancelled && mapping) {
+              globalFontMapping[fontName] = mapping;
+            }
+          }
+        } catch {
+          /* background pre-pass non-fatal error */
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined" && "cancelIdleCallback" in window && handle) {
+        (window as any).cancelIdleCallback(handle);
+      }
+    };
+  }, [pdfPage, items]);
 
   // --- render page (double-buffered to eliminate white zoom flashes) ---
   useEffect(() => {
@@ -885,7 +947,7 @@ export function PageView({ doc, pageId }: Props) {
       rect,
       text: mergedText,
       fontSize: targetFontSize,
-      color: defaultColor,
+      color: targetItem.color || defaultColor,
       fontFamily: family,
       bold: isBold,
       italic: isItalic,
@@ -915,7 +977,7 @@ export function PageView({ doc, pageId }: Props) {
           : Math.min(colors.length - 1, Math.floor((idx / items.length) * colors.length));
         col = colors[colorIdx];
       }
-      const textColor = rgbToHex(col);
+      const textColor = targetItem.color || rgbToHex(col);
       updateAnnotation(annoId, { color: textColor } as Partial<Annotation>);
     }).catch(() => {
       // keep default color if extraction fails

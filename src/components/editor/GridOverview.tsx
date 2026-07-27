@@ -73,12 +73,21 @@ export function GridOverview({
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
   const dragFromRef = useRef<number | null>(null);
+  const suppressClickAfterDragRef = useRef(false);
 
   const isDragging = dragFrom !== null || touchDragging !== null;
 
   const [activePasteSlot, setActivePasteSlot] = useState<number | null>(null);
   const [isGathered, setIsGathered] = useState(false);
   const [dragOffsets, setDragOffsets] = useState<{ dx: number; dy: number }[]>([]);
+
+  const cleanupDragImage = (canvas: HTMLCanvasElement) => {
+    setTimeout(() => {
+      if (canvas && canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    }, 0);
+  };
 
   // Listen to window keydown for Clipboard Shortcuts (Ctrl+C, Ctrl+X, Ctrl+V)
   useEffect(() => {
@@ -282,8 +291,12 @@ export function GridOverview({
   const getTargetIndexFromInsertionIndex = (from: number, insertionIndex: number) =>
     insertionIndex > from ? insertionIndex - 1 : insertionIndex;
 
-  const updateDropStateAtPoint = (clientX: number, clientY: number) => {
-    const activeFrom = dragFrom ?? touchDragging;
+  const updateDropStateAtPoint = (
+    clientX: number,
+    clientY: number,
+    sourceIndex?: number | null,
+  ) => {
+    const activeFrom = sourceIndex ?? dragFromRef.current ?? dragFrom ?? touchDragging;
     const insertionIndex = getInsertionIndexAtPoint(clientX, clientY, activeFrom);
     if (insertionIndex === null || pageOrder.length === 0) {
       resetDropState();
@@ -308,6 +321,10 @@ export function GridOverview({
   };
 
   const handleItemClick = (index: number, e: React.MouseEvent) => {
+    if (suppressClickAfterDragRef.current) {
+      suppressClickAfterDragRef.current = false;
+      return;
+    }
     setActivePasteSlot(null);
     if (e.ctrlKey || e.metaKey) {
       setSelectedIndices((prev) => {
@@ -377,7 +394,7 @@ export function GridOverview({
       e.preventDefault();
       setTouchPos({ x: touch.clientX, y: touch.clientY });
 
-      updateDropStateAtPoint(touch.clientX, touch.clientY);
+      updateDropStateAtPoint(touch.clientX, touch.clientY, touchDragging);
     }
   };
 
@@ -387,13 +404,20 @@ export function GridOverview({
       timerRef.current = null;
     }
 
-    if (touchDragging !== null && dropInsertionIndex !== null) {
-      if (selectedIndices.size > 1 && selectedIndices.has(touchDragging)) {
-        reorderMultiplePages(Array.from(selectedIndices), dropInsertionIndex);
-      } else {
-        const targetIndex = getTargetIndexFromInsertionIndex(touchDragging, dropInsertionIndex);
-        if (targetIndex !== touchDragging) {
-          reorderPages(touchDragging, targetIndex);
+    if (touchDragging !== null) {
+      suppressClickAfterDragRef.current = true;
+      setTimeout(() => {
+        suppressClickAfterDragRef.current = false;
+      }, 50);
+
+      if (dropInsertionIndex !== null) {
+        if (selectedIndices.size > 1 && selectedIndices.has(touchDragging)) {
+          reorderMultiplePages(Array.from(selectedIndices), dropInsertionIndex);
+        } else {
+          const targetIndex = getTargetIndexFromInsertionIndex(touchDragging, dropInsertionIndex);
+          if (targetIndex !== touchDragging) {
+            reorderPages(touchDragging, targetIndex);
+          }
         }
       }
     }
@@ -417,11 +441,16 @@ export function GridOverview({
     const activeFrom = dragFromRef.current ?? dragFrom;
     if (activeFrom === null) return;
 
-    updateDropStateAtPoint(e.clientX, e.clientY);
+    updateDropStateAtPoint(e.clientX, e.clientY, activeFrom);
   };
 
   const handleParentDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    suppressClickAfterDragRef.current = true;
+    setTimeout(() => {
+      suppressClickAfterDragRef.current = false;
+    }, 50);
+
     const fromIdx = dragFromRef.current ?? dragFrom;
     if (fromIdx === null) return;
 
@@ -552,6 +581,10 @@ export function GridOverview({
 
       <div
         onClick={(e) => {
+          if (suppressClickAfterDragRef.current) {
+            suppressClickAfterDragRef.current = false;
+            return;
+          }
           if (!isDragging && dragFromRef.current === null) {
             const slot = getInsertionIndexAtPoint(e.clientX, e.clientY, null);
             if (slot !== null) {
@@ -596,7 +629,13 @@ export function GridOverview({
                   const transparentCanvas = document.createElement("canvas");
                   transparentCanvas.width = 1;
                   transparentCanvas.height = 1;
+                  transparentCanvas.style.position = "fixed";
+                  transparentCanvas.style.top = "-9999px";
+                  transparentCanvas.style.left = "-9999px";
+                  transparentCanvas.style.opacity = "0";
+                  document.body.appendChild(transparentCanvas);
                   e.dataTransfer.setDragImage(transparentCanvas, 0, 0);
+                  cleanupDragImage(transparentCanvas);
                 }
                 setDragFrom(index);
                 setDragPos({ x: e.clientX, y: e.clientY });
@@ -609,7 +648,9 @@ export function GridOverview({
                 resetDropState();
               }}
               onDragEnd={() => {
+                suppressClickAfterDragRef.current = true;
                 setTimeout(() => {
+                  suppressClickAfterDragRef.current = false;
                   dragFromRef.current = null;
                   setDragFrom(null);
                   setDragPos(null);
@@ -622,8 +663,8 @@ export function GridOverview({
                   try { e.dataTransfer.dropEffect = "move"; } catch {}
                 }
                 setDragPos({ x: e.clientX, y: e.clientY });
-                if (dragFrom !== null) {
-                  updateDropStateAtPoint(e.clientX, e.clientY);
+                if (dragFrom !== null || dragFromRef.current !== null) {
+                  updateDropStateAtPoint(e.clientX, e.clientY, dragFromRef.current ?? dragFrom);
                 }
               }}
               onTouchStart={(e) => handleTouchStart(index, e)}
@@ -709,7 +750,9 @@ export function GridOverview({
                   ? "translate3d(0, 0, 0) rotate(4deg) translateY(-10px) translateX(6px)"
                   : `translate3d(${dragOffsets[2]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[2]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
                 opacity: 0.85,
-                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+                transition: isGathered
+                  ? "opacity 200ms ease-out"
+                  : "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <div className="w-full aspect-3/4 bg-muted/40 rounded" />
@@ -723,7 +766,9 @@ export function GridOverview({
                   ? "translate3d(0, 0, 0) rotate(-5deg) translateY(-5px) translateX(-4px)"
                   : `translate3d(${dragOffsets[1]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[1]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
                 opacity: 0.9,
-                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+                transition: isGathered
+                  ? "opacity 200ms ease-out"
+                  : "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <div className="w-full aspect-3/4 bg-muted/40 rounded" />
@@ -736,7 +781,9 @@ export function GridOverview({
                 transform: isGathered
                   ? "translate3d(0, 0, 0)"
                   : `translate3d(${dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[0]?.dy ?? 0}px, 0)`,
-                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+                transition: isGathered
+                  ? "opacity 200ms ease-out"
+                  : "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
               }}
             >
               <PageThumb
@@ -763,7 +810,9 @@ export function GridOverview({
             transform: isGathered
               ? "translate3d(0, 0, 0)"
               : `translate3d(${dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[0]?.dy ?? 0}px, 0)`,
-            transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+            transition: isGathered
+              ? "opacity 200ms ease-out"
+              : "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
           }}
           data-testid="single-drag-avatar"
         >

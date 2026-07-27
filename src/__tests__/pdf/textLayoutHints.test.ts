@@ -46,4 +46,44 @@ describe("extractTextLayoutHints", () => {
       expect(hint?.charSpacing).toBeCloseTo(expectedCharSpacing, 3);
     }
   });
+
+  it("verifies RGB, Gray, and CMYK fill color extraction from PDF operator lists", async () => {
+    const mockPage = {
+      getOperatorList: async () => ({
+        fnArray: [
+          pdfjsLib.OPS.setFillRGBColor,
+          pdfjsLib.OPS.showText,
+          pdfjsLib.OPS.setFillGray,
+          pdfjsLib.OPS.showText,
+          pdfjsLib.OPS.setFillCMYKColor || pdfjsLib.OPS.setCMYKColor || pdfjsLib.OPS.setFillColorN,
+          pdfjsLib.OPS.showText,
+        ],
+        argsArray: [
+          [1, 0, 0],
+          ["Red Text"],
+          [0.5],
+          ["Gray Text"],
+          [0, 1, 0, 0],
+          ["CMYK Text"],
+        ],
+      }),
+    };
+
+    const textItems: any[] = [
+      { str: "Red Text" },
+      { str: "Gray Text" },
+      { str: "CMYK Text" },
+    ];
+
+    const hints = await extractTextLayoutHints(mockPage, textItems);
+
+    expect(hints.get(0)?.color).toBe("#ff0000");
+    expect(textItems[0].color).toBe("#ff0000");
+
+    expect(hints.get(1)?.color).toBe("#808080");
+    expect(textItems[1].color).toBe("#808080");
+
+    expect(hints.get(2)?.color).toBe("#ff00ff");
+    expect(textItems[2].color).toBe("#ff00ff");
+  });
 });
