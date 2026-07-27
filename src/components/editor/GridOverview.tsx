@@ -73,6 +73,7 @@ export function GridOverview({
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
   const dragFromRef = useRef<number | null>(null);
+  const dragImageRef = useRef<HTMLCanvasElement | null>(null);
   // Native HTML drag can emit a click after dragend. Suppress that click so
   // finishing a reorder cannot trigger the normal "jump and close" action.
   const suppressClickAfterDragRef = useRef(false);
@@ -282,6 +283,14 @@ export function GridOverview({
     setDropInsertionIndex(null);
   };
 
+  // Browsers use a native drag preview in addition to our custom avatar. A
+  // detached canvas is ignored by some browsers, so keep a truly transparent
+  // drag image attached to the document for the complete drag lifecycle.
+  const cleanupDragImage = () => {
+    dragImageRef.current?.remove();
+    dragImageRef.current = null;
+  };
+
   const getTargetIndexFromInsertionIndex = (from: number, insertionIndex: number) =>
     insertionIndex > from ? insertionIndex - 1 : insertionIndex;
 
@@ -456,6 +465,7 @@ export function GridOverview({
     }
 
     dragFromRef.current = null;
+    cleanupDragImage();
     setDragFrom(null);
     setDragPos(null);
     resetDropState();
@@ -602,10 +612,17 @@ export function GridOverview({
               onDragStart={(e) => {
                 suppressClickAfterDragRef.current = true;
                 dragFromRef.current = index;
+                cleanupDragImage();
                 if (e.dataTransfer) {
                   const transparentCanvas = document.createElement("canvas");
                   transparentCanvas.width = 1;
                   transparentCanvas.height = 1;
+                  transparentCanvas.style.position = "fixed";
+                  transparentCanvas.style.left = "-100px";
+                  transparentCanvas.style.top = "-100px";
+                  transparentCanvas.style.pointerEvents = "none";
+                  document.body.appendChild(transparentCanvas);
+                  dragImageRef.current = transparentCanvas;
                   e.dataTransfer.setDragImage(transparentCanvas, 0, 0);
                 }
                 setDragFrom(index);
@@ -621,6 +638,7 @@ export function GridOverview({
               onDragEnd={() => {
                 setTimeout(() => {
                   dragFromRef.current = null;
+                  cleanupDragImage();
                   setDragFrom(null);
                   setDragPos(null);
                   resetDropState();
