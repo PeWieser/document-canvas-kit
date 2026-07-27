@@ -676,7 +676,10 @@ export function GridOverview({
                 className={cn(
                   "relative cursor-pointer rounded-lg border-2 bg-card p-2 shadow-sm transition group-hover:shadow-md border-border",
                   isSelected && "ring-2 ring-primary bg-primary/10",
-                  isGreyedOut && "opacity-30 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
+                  // Keep the source slot in the grid to prevent layout jumps, but
+                  // hide its preview completely. The floating avatar is the only
+                  // visible representation while dragging.
+                  isGreyedOut && "opacity-0 grayscale saturate-0 border-dashed border-muted-foreground/40 bg-muted/20 shadow-none ring-0",
                 )}
                 title={t("reorderHint")}
               >
