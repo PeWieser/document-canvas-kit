@@ -23,7 +23,7 @@ import { getFontInfo, type FontInfo } from "@/lib/pdf/fontIntrospect";
 import bunnyFamilies from "@/lib/pdf/font-families.json";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { extractFontMetrics, type FontMetrics } from "@/lib/pdf/fontMetrics";
-import { computeAlignmentMetrics } from "@/lib/pdf/alignmentEngine";
+import { computeAlignmentMetrics, computeDomTopFromBaseline } from "@/lib/pdf/alignmentEngine";
 import { useAlignmentScaleX } from "@/hooks/useAlignmentScaleX";
 import { extractTextLayoutHints } from "@/lib/pdf/textLayoutHints";
 
@@ -1503,6 +1503,28 @@ function AnnoView({
   const dragStartRect = useRef<Rect | null>(null);
   const dragStartTransform = useRef<number[] | null>(null);
 
+  const fontReadyKeyRef = useRef<string | null>(null);
+  const [, setFontRevision] = useState(0);
+
+  const readyFontFamily = cssFontStack((anno as any).fontFamily || "");
+  const readyFontSpec = `${(anno as any).italic ? "italic" : "normal"} ${(anno as any).bold ? 700 : 400} ${(anno as any).fontSize || 12}px ${readyFontFamily}`;
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts || !readyFontFamily) return;
+    const key = readyFontSpec;
+    if (fontReadyKeyRef.current === key) return;
+    fontReadyKeyRef.current = key;
+    let cancelled = false;
+    void loadWebFont(readyFontFamily)
+      .then(() => document.fonts.load(readyFontSpec))
+      .then(() => {
+        if (!cancelled) setFontRevision((revision) => revision + 1);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [readyFontFamily, readyFontSpec]);
+
   if (anno.kind === "highlight") {
     return (
       <>
@@ -1640,6 +1662,9 @@ function AnnoView({
   }
 
   if (anno.kind === "textReplace" || anno.kind === "textbox") {
+    const textReplaceLineHeight = 1.15;
+    const textReplacePaddingY = 2;
+
     const transform = anno.kind === "textReplace"
       ? (anno as TextReplaceAnno).transform
       : ((anno as TextboxAnno).transform || [(anno as TextboxAnno).fontSize || 12, 0, 0, (anno as TextboxAnno).fontSize || 12, (anno as TextboxAnno).x, (anno as TextboxAnno).y]);
@@ -1687,7 +1712,13 @@ function AnnoView({
       }
       if (exactAscentRatio) {
         const tx = transformMatrix(vp.transform, transform);
-        top = tx[5] - fontHeight * exactAscentRatio;
+        top = computeDomTopFromBaseline(
+          tx[5],
+          fontHeight,
+          exactAscentRatio,
+          anno.kind === "textReplace" ? textReplaceLineHeight : 1,
+          anno.kind === "textReplace" ? textReplacePaddingY : 0
+        );
       }
     }
 
@@ -1750,8 +1781,9 @@ function AnnoView({
           transform: transformString,
           transformOrigin: transformOriginString,
           minHeight: anno.kind === "textReplace" ? `${fontHeight * 1.25 + 4}px` : `${fontHeight * 1.2}px`,
-          paddingBlock: anno.kind === "textReplace" ? "2px" : undefined,
-          lineHeight: 1.15,
+          paddingBlock: anno.kind === "textReplace" ? `${textReplacePaddingY}px` : undefined,
+          padding: anno.kind === "textReplace" ? `${textReplacePaddingY}px 0` : 0,
+          lineHeight: anno.kind === "textReplace" ? textReplaceLineHeight : 1.15,
           height:
             anno.kind === "textReplace"
               ? `${fontHeight * numLines * 1.25 + 4}px`
