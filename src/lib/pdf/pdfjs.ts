@@ -21,6 +21,12 @@ export interface LoadedTextItem {
   transform: number[];
   width: number;
   height: number;
+  fontName?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  color?: string;
 }
 
 export async function loadPdfDocument(data: ArrayBuffer) {
@@ -41,6 +47,12 @@ export async function getPageTextItems(page: PdfPageProxy): Promise<LoadedTextIt
         transform: it.transform as number[],
         width: it.width as number,
         height: it.height as number,
+        fontName: (it as any).fontName,
+        fontFamily: (it as any).fontFamily,
+        fontSize: (it as any).fontSize,
+        bold: (it as any).bold,
+        italic: (it as any).italic,
+        color: (it as any).color,
       });
     }
   }

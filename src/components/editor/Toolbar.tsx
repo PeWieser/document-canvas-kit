@@ -118,15 +118,14 @@ export function Toolbar({
 
   const tools: { id: Tool; icon: typeof MousePointer2; label: string; hint: string }[] = [
     { id: "select", icon: MousePointer2, label: t("select"), hint: t("toolSelectHint") },
-    { id: "highlight", icon: Highlighter, label: t("highlight"), hint: t("toolHighlightHint") },
+    { id: "highlight", icon: Highlighter, label: `${t("highlight")} & ${t("comments")}`, hint: t("toolHighlightHint") },
     { id: "redact", icon: Square, label: t("redact"), hint: t("toolRedactHint") },
     { id: "edit-text", icon: TextCursorInput, label: t("editText"), hint: t("toolEditHint") },
     { id: "textbox", icon: Type, label: t("textbox"), hint: t("toolTextboxHint") },
     { id: "pen", icon: Pen, label: t("pen"), hint: t("toolPenHint") },
-    { id: "comment", icon: MessageSquarePlus, label: t("comment"), hint: t("toolCommentHint") },
     { id: "crop", icon: Crop, label: t("cropTool"), hint: t("toolCropHint") },
   ];
-  const activeTool = tools.find((x) => x.id === tool);
+  const activeTool = tools.find((x) => x.id === tool) || (tool === "comment" ? tools.find((x) => x.id === "highlight") : undefined);
 
   const showSubToolbar =
     tool === "highlight" ||

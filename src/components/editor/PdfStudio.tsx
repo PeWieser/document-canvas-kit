@@ -16,6 +16,7 @@ import { PageView, clearGlobalFontCache } from "./PageView";
 import { TwoPageView } from "./TwoPageView";
 import { CommentsPanel } from "./CommentsPanel";
 import { SearchRedactPanel } from "./SearchRedactPanel";
+import { SearchReplacePanel } from "./SearchReplacePanel";
 import { CropToolPanel } from "./CropToolPanel";
 import { FeedbackWidget } from "./FeedbackWidget";
 import { ShortcutsPanel } from "./ShortcutsPanel";
@@ -50,6 +51,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
   const removeAnnotation = useEditor((s) => s.removeAnnotation);
   const select = useEditor((s) => s.select);
   const setGridOpen = useEditor((s) => s.setGridOpen);
+  const setSearchOpen = useEditor((s) => s.setSearchOpen);
   const sidebarOpen = useEditor((s) => s.sidebarOpen);
   const commentsPanelOpen = useEditor((s) => s.commentsPanelOpen);
   const toggleSidebar = useEditor((s) => s.toggleSidebar);
@@ -578,6 +580,11 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
         selectAllPDFText();
         return;
       }
+      if (mod && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -633,6 +640,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
     setZoom,
     select,
     setGridOpen,
+    setSearchOpen,
     selectedId,
     removeAnnotation,
     setTool,
@@ -867,6 +875,7 @@ export function PdfStudio({ onOpenPicker }: PdfStudioProps = {}) {
         </main>
         <CommentsPanel onJump={jumpTo} />
         <SearchRedactPanel doc={doc ?? null} />
+        <SearchReplacePanel doc={doc ?? null} />
       </div>
       {doc && currentTool === "crop" && <CropToolPanel doc={doc} />}
       {doc && <GridOverview doc={doc} onJump={jumpTo} />}

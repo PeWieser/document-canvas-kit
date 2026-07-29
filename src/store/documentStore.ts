@@ -30,6 +30,7 @@ export interface DocumentStoreState {
 
   reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
   duplicatePages: (indicesToDuplicate: number[], insertAtIndex?: number) => void;
+  deleteEmptyPages: (pdfDoc?: any) => Promise<number[]>;
 
   getActive: () => DocumentState | null;
   updateActive: (updater: (doc: DocumentState) => void) => void;
@@ -56,8 +57,8 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => {
     set((state) => {
       const existing = state.documents.get(id);
       if (!existing) return state;
+      updater(existing);
       const updatedDoc = { ...existing };
-      updater(updatedDoc);
       const newMap = new Map(state.documents);
       newMap.set(id, updatedDoc);
       return { documents: newMap };
@@ -251,6 +252,14 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => {
       if (activeDoc) {
         activeDoc.duplicatePages(indicesToDuplicate, insertAtIndex);
       }
+    },
+
+    deleteEmptyPages: async (pdfDoc?: any) => {
+      const activeDoc = get().getActive();
+      if (activeDoc) {
+        return await activeDoc.deleteEmptyPages(pdfDoc);
+      }
+      return [];
     },
 
     getActive: () => {

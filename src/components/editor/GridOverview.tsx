@@ -472,6 +472,7 @@ export function GridOverview({
   };
 
   const activeDragPos = touchPos ?? dragPos;
+  const draggedList = Array.from(selectedIndices).sort((a, b) => a - b);
 
   return (
     <div
@@ -739,32 +740,44 @@ export function GridOverview({
         >
           <div className="relative w-full">
             {/* Card 3 (Bottom) */}
-            <div
-              className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md"
-              style={{
-                transform: isGathered
-                  ? "translate3d(0, 0, 0) rotate(4deg) translateY(-10px) translateX(6px)"
-                  : `translate3d(${dragOffsets[2]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[2]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
-                opacity: 0.85,
-                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
-              }}
-            >
-              <div className="w-full aspect-3/4 bg-muted/40 rounded" />
-            </div>
+            {selectedIndices.size >= 3 && (
+              <div
+                className="absolute inset-0 rounded-lg border-2 border-primary/40 bg-card p-2 shadow-md"
+                style={{
+                  transform: isGathered
+                    ? "translate3d(0, 0, 0) rotate(4deg) translateY(-10px) translateX(6px)"
+                    : `translate3d(${dragOffsets[2]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[2]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
+                  opacity: 0.85,
+                  transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+                }}
+              >
+                <PageThumb
+                  doc={doc}
+                  pageId={pageOrder[draggedList[2] ?? draggedList[0]] ?? pageOrder[0]}
+                  pagesPerRow={pagesPerRow}
+                />
+              </div>
+            )}
 
             {/* Card 2 (Middle) */}
-            <div
-              className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg"
-              style={{
-                transform: isGathered
-                  ? "translate3d(0, 0, 0) rotate(-5deg) translateY(-5px) translateX(-4px)"
-                  : `translate3d(${dragOffsets[1]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[1]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
-                opacity: 0.9,
-                transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
-              }}
-            >
-              <div className="w-full aspect-3/4 bg-muted/40 rounded" />
-            </div>
+            {selectedIndices.size >= 2 && (
+              <div
+                className="absolute inset-0 rounded-lg border-2 border-primary/60 bg-card p-2 shadow-lg"
+                style={{
+                  transform: isGathered
+                    ? "translate3d(0, 0, 0) rotate(-5deg) translateY(-5px) translateX(-4px)"
+                    : `translate3d(${dragOffsets[1]?.dx ?? dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[1]?.dy ?? dragOffsets[0]?.dy ?? 0}px, 0)`,
+                  opacity: 0.9,
+                  transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+                }}
+              >
+                <PageThumb
+                  doc={doc}
+                  pageId={pageOrder[draggedList[1] ?? draggedList[0]] ?? pageOrder[0]}
+                  pagesPerRow={pagesPerRow}
+                />
+              </div>
+            )}
 
             {/* Card 1 (Top) */}
             <div
@@ -778,7 +791,7 @@ export function GridOverview({
             >
               <PageThumb
                 doc={doc}
-                pageId={pageOrder[dragFrom ?? touchDragging ?? Array.from(selectedIndices)[0]] ?? pageOrder[0]}
+                pageId={pageOrder[dragFrom ?? touchDragging ?? draggedList[0]] ?? pageOrder[0]}
                 pagesPerRow={pagesPerRow}
               />
               <div className="absolute -top-2.5 -right-2.5 rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground shadow-lg">
@@ -800,7 +813,7 @@ export function GridOverview({
             transform: isGathered
               ? "translate3d(0, 0, 0)"
               : `translate3d(${dragOffsets[0]?.dx ?? 0}px, ${dragOffsets[0]?.dy ?? 0}px, 0)`,
-            transition: "transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out",
+            transition: "0ms",
           }}
           data-testid="single-drag-avatar"
         >

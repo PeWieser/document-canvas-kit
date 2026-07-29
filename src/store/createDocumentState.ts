@@ -1,4 +1,5 @@
 import type { Annotation, Tool, ViewMode, PenStyle } from "@/lib/pdf/types";
+import { pdfjsLib } from "@/lib/pdf/pdfjs";
 
 export interface Snapshot {
   annotations: Annotation[];
@@ -86,6 +87,7 @@ export interface DocumentState {
   reorderMultiplePages: (indicesToMove: number[], insertAtIndex: number) => void;
   duplicatePages: (indicesToDuplicate: number[], insertAtIndex?: number) => void;
   deletePage: (displayIndex: number) => void;
+  deleteEmptyPages: (pdfDoc?: any) => Promise<number[]>;
 
   undo: () => void;
   redo: () => void;
@@ -187,7 +189,7 @@ export function createDocumentState(
     setFileHandle: (h) => runUpdate((d) => { d.fileHandle = h; }),
     markSaved: (bytes) => runUpdate((d) => { d.originalBytes = bytes; d.dirty = false; }),
 
-    setTool: (t) => runUpdate((d) => { d.tool = t; d.selectedId = null; }),
+    setTool: (t) => runUpdate((d) => { d.tool = t; d.selectedId = null; if (t === "redact") d.searchOpen = true; }),
     setColor: (c) => runUpdate((d) => { d.color = c; }),
     setHighlightColor: (c) => runUpdate((d) => { d.highlightColor = c; }),
     setFontSize: (n) => runUpdate((d) => { d.fontSize = n; }),
@@ -336,6 +338,71 @@ export function createDocumentState(
         d.pageOrder = d.pageOrder.filter((_, i) => i !== displayIndex);
         d.annotations = d.annotations.filter((a) => a.page !== pageId);
       }),
+
+    deleteEmptyPages: async (pdfDoc) => {
+      const emptyDisplayIndices: number[] = [];
+      const currentOrder = [...doc.pageOrder];
+
+      for (let i = 0; i < currentOrder.length; i++) {
+        const pageId = currentOrder[i];
+
+        // 1. Check annotations in store for this pageId
+        const pageAnnos = doc.annotations.filter((a) => a.page === pageId);
+        if (pageAnnos.length > 0) {
+          continue;
+        }
+
+        let textCount = 0;
+        let imageCount = 0;
+
+        if (pdfDoc && typeof pdfDoc.getPage === "function") {
+          try {
+            const page = await pdfDoc.getPage(pageId + 1);
+            if (page) {
+              if (typeof page.getTextContent === "function") {
+                const textContent = await page.getTextContent();
+                const items = textContent?.items || [];
+                textCount = items.filter(
+                  (it: any) => typeof it.str === "string" && it.str.trim().length > 0
+                ).length;
+              }
+              if (typeof page.getOperatorList === "function") {
+                const ops = await page.getOperatorList();
+                const fnArray = ops?.fnArray || [];
+                const OPS = pdfjsLib?.OPS || {};
+                for (let k = 0; k < fnArray.length; k++) {
+                  const fn = fnArray[k];
+                  if (
+                    fn === OPS.paintImageXObject ||
+                    fn === OPS.paintImageXObjectRepeat ||
+                    fn === OPS.paintInlineImageXObject ||
+                    fn === 85 ||
+                    fn === 86 ||
+                    fn === 87
+                  ) {
+                    imageCount++;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Error scanning empty page", e);
+          }
+        }
+
+        if (textCount === 0 && pageAnnos.length === 0 && imageCount === 0) {
+          emptyDisplayIndices.push(i);
+        }
+      }
+
+      // Delete matching pages in reverse order so display indices remain valid
+      const reversed = [...emptyDisplayIndices].sort((a, b) => b - a);
+      for (const idx of reversed) {
+        doc.deletePage(idx);
+      }
+
+      return emptyDisplayIndices;
+    },
 
     undo: () =>
       runUpdate((d) => {

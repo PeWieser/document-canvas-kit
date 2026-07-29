@@ -324,6 +324,7 @@ export function PageView({ doc, pageId }: Props) {
   const removeAnnotation = useEditor((s) => s.removeAnnotation);
   const pushHistorySnapshot = useEditor((s) => s.pushHistorySnapshot);
   const select = useEditor((s) => s.select);
+  const setCommentsPanelOpen = useEditor((s) => s.setCommentsPanelOpen);
   const setFingerprints = useEditor((s) => s.setFingerprints);
   const snapToGuides = useEditor((s) => s.snapToGuides);
   const { t } = useI18n();
@@ -785,18 +786,23 @@ export function PageView({ doc, pageId }: Props) {
           addAnnotation({ id: uid(), kind: "redact", page: pageId, rect: r } as Annotation);
         }
       } else {
+        const annoId = uid();
         addAnnotation({
-          id: uid(),
+          id: annoId,
           kind: "highlight",
           page: pageId,
           rects,
           color: highlightColor,
+          comment: "",
+          replies: [],
         } as Annotation);
+        select(annoId);
+        setCommentsPanelOpen(true);
       }
       sel.removeAllRanges();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, highlightColor, pageId, viewport]);
+  }, [tool, highlightColor, pageId, viewport, select, setCommentsPanelOpen]);
 
   // --- click a span to replace its text (font-aware) ---
   const replaceSpan = async (idx: number) => {
